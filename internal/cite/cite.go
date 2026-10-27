@@ -324,10 +324,65 @@ func insightCite(symbol string) bool {
 	return symbol == "it-1" || symbol == "it-2"
 }
 
-// articleTitle reads an Insight article name, such as "Sovereignty" or
-// "Guard, Gate of the". It stops before a following word that is not part
-// of a name. A name may end with a small word ("of the") when nothing follows.
+// articleTitle reads an Insight article name, such as Sovereignty or
+// "Guard, Gate of the". The Research Guide writes the name in quotes,
+// “Sovereignty” or "Sovereignty", and that resolves as the same name.
+// It stops before a following word that is not part of a name. A name may
+// end with a small word ("of the") when nothing follows.
 func (p *parser) articleTitle() (string, bool) {
+	start := p.pos
+	p.ws()
+	if close, ok := p.openTitleQuote(); ok {
+		title, ok := p.quotedArticleTitle(close)
+		if !ok {
+			p.pos = start
+			return "", false
+		}
+		return title, true
+	}
+	p.pos = start
+	return p.bareArticleTitle()
+}
+
+// openTitleQuote consumes a straight " or a curly “ and reports the mark that closes it.
+func (p *parser) openTitleQuote() (rune, bool) {
+	if p.pos >= len(p.s) {
+		return 0, false
+	}
+	switch p.s[p.pos] {
+	case '"':
+		p.pos++
+		return '"', true
+	case '“':
+		p.pos++
+		return '”', true
+	default:
+		return 0, false
+	}
+}
+
+func (p *parser) quotedArticleTitle(close rune) (string, bool) {
+	var words []string
+	for {
+		save := p.pos
+		p.ws()
+		if p.pos < len(p.s) && p.s[p.pos] == close {
+			p.pos++
+			if len(words) == 0 || !hasUpper(words[0]) {
+				return "", false
+			}
+			return strings.Join(words, " "), true
+		}
+		w, ok := p.titleToken()
+		if !ok || !titleTokenOK(strings.TrimRight(w, ",")) {
+			p.pos = save
+			return "", false
+		}
+		words = append(words, w)
+	}
+}
+
+func (p *parser) bareArticleTitle() (string, bool) {
 	start := p.pos
 	type piece struct {
 		end  int

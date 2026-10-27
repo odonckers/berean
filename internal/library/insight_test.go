@@ -36,6 +36,12 @@ func TestInsightCitationRules(t *testing.T) {
 		if len(hits) != 1 || hits[0].Document != "Sovereignty" || hits[0].DocumentID != 20 || hits[0].Symbol != "it" {
 			t.Fatalf("hits = %+v", hits)
 		}
+		for _, citation := range []string{"it-2 “Sovereignty”", "it-2 \"Sovereignty\""} {
+			quoted := mustResolve(t, lib, citation)
+			if len(quoted) != 1 || quoted[0].DocumentID != hits[0].DocumentID || quoted[0].Document != "Sovereignty" {
+				t.Fatalf("%s hits = %+v", citation, quoted)
+			}
+		}
 		hits = mustResolve(t, lib, "it-1 Guard")
 		if len(hits) != 1 || hits[0].Document != "Guard" || hits[0].DocumentID != 10 {
 			t.Fatalf("hits = %+v", hits)

@@ -21,11 +21,18 @@ import (
 )
 
 func TestLinkInsightTitle(t *testing.T) {
-	in := "See it-2 Sovereignty today."
-	got := linkCitations(in)
-	want := "See [" + "it-2 Sovereignty" + "](jwcite:" + url.PathEscape("it-2 Sovereignty") + ") today."
-	if got != want {
-		t.Fatalf("link = %s", got)
+	for _, citation := range []string{
+		"it-2 Sovereignty",
+		"it-2 “Sovereignty”",
+		"it-2 \"Sovereignty\"",
+		"it-1 “Aaron”",
+	} {
+		in := "See " + citation + " today."
+		got := linkCitations(in)
+		want := "See [" + citation + "](jwcite:" + url.PathEscape(citation) + ") today."
+		if got != want {
+			t.Fatalf("linkCitations(%q) = %s", in, got)
+		}
 	}
 	joined := linkCitations("it-2 Sovereignty and it-1 Guard.")
 	if !strings.Contains(joined, "[it-2 Sovereignty](jwcite:"+url.PathEscape("it-2 Sovereignty")+")") ||
@@ -41,6 +48,10 @@ func TestLinkInsightTitle(t *testing.T) {
 	plain := "See it Sovereignty today."
 	if linkCitations(plain) != plain {
 		t.Fatalf("plain it was linked: %s", linkCitations(plain))
+	}
+	plainQuoted := "See it “Sovereignty” today."
+	if linkCitations(plainQuoted) != plainQuoted {
+		t.Fatalf("plain it quote was linked: %s", linkCitations(plainQuoted))
 	}
 	page := linkCitations("See it p. 1011 today.")
 	if !strings.Contains(page, "[it p. 1011](jwcite:"+url.PathEscape("it p. 1011")+")") {
@@ -121,10 +132,19 @@ func TestInsightChipsOpenTheArticle(t *testing.T) {
 	}
 
 	sov := mustOne(t, lib, "it-2 Sovereignty")
+	curly := mustOne(t, lib, "it-2 “Sovereignty”")
+	straight := mustOne(t, lib, "it-2 \"Sovereignty\"")
 	guard := mustOne(t, lib, "it-1 Guard")
+	aaron := mustOne(t, lib, "it-1 “Aaron”")
 	page := mustOne(t, lib, "it-2 p. 1011")
 	if sov.Document != "Sovereignty" || sov.Symbol != "it" || page.DocumentID != sov.DocumentID {
 		t.Fatalf("sovereignty=%+v page=%+v", sov, page)
+	}
+	if curly.DocumentID != sov.DocumentID || straight.DocumentID != sov.DocumentID {
+		t.Fatalf("quoted sovereignty curly=%+v straight=%+v bare=%+v", curly, straight, sov)
+	}
+	if aaron.Document != "Aaron" || aaron.DocumentID == sov.DocumentID {
+		t.Fatalf("aaron=%+v", aaron)
 	}
 	if guard.Document != "Guard" || guard.DocumentID == sov.DocumentID {
 		t.Fatalf("guard=%+v", guard)
@@ -147,7 +167,7 @@ func TestInsightChipsOpenTheArticle(t *testing.T) {
 	tt.SetPreferences(ui.Preferences{ReduceMotion: true, TextScale: 1})
 	tt.Frame()
 	started := app.docID
-	writeNote(t, tt, "it-2 Sovereignty. it-1 Guard. it-2 p. 1011. it p. 1011.")
+	writeNote(t, tt, "it-2 “Sovereignty”. it-2 \"Sovereignty\". it-2 Sovereignty. it-1 “Aaron”. it-1 Guard. it-2 p. 1011. it p. 1011.")
 	if len(app.problems) != 1 || app.problems[0] != "it p. 1011: it needs a page and a paragraph" {
 		t.Fatalf("editor problems = %q", app.problems)
 	}
@@ -191,7 +211,10 @@ func TestInsightChipsOpenTheArticle(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
+	openChip("it-2 “Sovereignty”", sov)
+	openChip("it-2 \"Sovereignty\"", sov)
 	openChip("it-2 Sovereignty", sov)
+	openChip("it-1 “Aaron”", aaron)
 	openChip("it-1 Guard", guard)
 	openChip("it-2 p. 1011", page)
 	if app.docID == guard.DocumentID {
