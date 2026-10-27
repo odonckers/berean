@@ -103,6 +103,8 @@ type App struct {
 	paneSplit float32
 
 	panX, panY, zoom float32
+	canvasView       ui.Handle
+	viewW, viewH     float32
 	panning          bool
 	panLX, panLY     float32
 	cards            []Clip

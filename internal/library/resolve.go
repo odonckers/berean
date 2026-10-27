@@ -40,7 +40,7 @@ func (l *Library) resolve(ctx context.Context, citation string) ([]Hit, error) {
 	}
 	switch c.Kind {
 	case cite.KindPub:
-		return l.resolvePub(ctx, c)
+		return l.resolvePub(ctx, citation, c)
 	case cite.KindBible:
 		return l.resolveBible(ctx, c, false)
 	case cite.KindStudyNote:
@@ -58,7 +58,7 @@ type pubRow struct {
 	Year, Month, Day int
 }
 
-func (l *Library) resolvePub(ctx context.Context, c cite.Citation) ([]Hit, error) {
+func (l *Library) resolvePub(ctx context.Context, citation string, c cite.Citation) ([]Hit, error) {
 	q := `SELECT id, symbol, title, issue_title, year, month, day
 		FROM publication WHERE meps_language=? AND cite_symbol=?`
 	args := []any{resolveLanguage, c.Symbol}
@@ -88,20 +88,19 @@ func (l *Library) resolvePub(ctx context.Context, c cite.Citation) ([]Hit, error
 	var hits []Hit
 	err = eachNumber(c.Pars, func(n int) error {
 		found := false
-		sawParagraph := false
-		var onFirst, onLast int
+		var spans []pageSpan
+		seen := map[[2]int]bool{}
 		for _, pub := range pubs {
 			rows, err := l.paragraphs(ctx, pub.ID, n)
 			if err != nil {
 				return err
 			}
-			if len(rows) > 0 && !sawParagraph {
-				// The paragraph exists. Its stored pages are the right ones
-				// when the citation named a different page.
-				sawParagraph = true
-				onFirst, onLast = rows[0].first, rows[0].last
-			}
 			for _, row := range rows {
+				key := [2]int{row.first, row.last}
+				if !seen[key] {
+					seen[key] = true
+					spans = append(spans, pageSpan{row.first, row.last})
+				}
 				if !overlaps(row.first, row.last, c.Pages) {
 					continue
 				}
@@ -124,8 +123,8 @@ func (l *Library) resolvePub(ctx context.Context, c cite.Citation) ([]Hit, error
 			}
 		}
 		if !found {
-			if sawParagraph {
-				return wrongPage(n, onFirst, onLast, c.Pages)
+			if len(spans) > 0 {
+				return wrongPage(citation, n, spans, c.Pages)
 			}
 			return fmt.Errorf("par. %d was not found in %s", n, pubLabel(c))
 		}
@@ -356,14 +355,51 @@ func pubLabel(c cite.Citation) string {
 	return s
 }
 
-func wrongPage(n, first, last int, cited []cite.Range) error {
-	where := fmt.Sprintf("p. %d", first)
-	if last > first {
-		where = fmt.Sprintf("pp. %d-%d", first, last)
-	}
+type pageSpan struct{ first, last int }
+
+func wrongPage(citation string, n int, spans []pageSpan, cited []cite.Range) error {
 	return &ResolveError{
 		Result: "wrong_page",
-		msg:    fmt.Sprintf("par. %d is on %s, not p. %s", n, where, pagePhrase(cited)),
+		msg:    fmt.Sprintf("%s: par. %d is on %s, not p. %s", citation, n, formatSpans(spans), pagePhrase(cited)),
+	}
+}
+
+// formatSpans lists every page span of a paragraph. One span stays "p. 2"
+// or "pp. 3-4". Several spans read "pp. 2, 8-9, and 14-15".
+func formatSpans(spans []pageSpan) string {
+	if len(spans) == 1 {
+		return oneSpan(spans[0], true)
+	}
+	parts := make([]string, len(spans))
+	for i, s := range spans {
+		parts[i] = oneSpan(s, false)
+	}
+	return "pp. " + joinAnd(parts)
+}
+
+func oneSpan(s pageSpan, label bool) string {
+	if s.last > s.first {
+		if label {
+			return fmt.Sprintf("pp. %d-%d", s.first, s.last)
+		}
+		return fmt.Sprintf("%d-%d", s.first, s.last)
+	}
+	if label {
+		return fmt.Sprintf("p. %d", s.first)
+	}
+	return fmt.Sprintf("%d", s.first)
+}
+
+func joinAnd(parts []string) string {
+	switch len(parts) {
+	case 0:
+		return ""
+	case 1:
+		return parts[0]
+	case 2:
+		return parts[0] + " and " + parts[1]
+	default:
+		return strings.Join(parts[:len(parts)-1], ", ") + ", and " + parts[len(parts)-1]
 	}
 }
 

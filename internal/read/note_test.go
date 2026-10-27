@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"net/url"
+
 	"github.com/egoist/mygo/ui"
 	"github.com/odonckers/berean/internal/library"
 )
@@ -55,6 +57,55 @@ func TestLinkCitations(t *testing.T) {
 	}
 	if chips != 2 {
 		t.Fatalf("chips = %d in %+v", chips, paras)
+	}
+}
+
+func TestCitationStopsBeforeTrailingText(t *testing.T) {
+	cases := []struct {
+		in, cite, rest string
+	}{
+		{"See Matt. 24:14, the sign.", "Matt. 24:14", ", the sign."},
+		{"See Matt. 24:14 - the sign.", "Matt. 24:14", " - the sign."},
+		{"See Matt. 24:14 15 times.", "Matt. 24:14", " 15 times."},
+		{"See w23.01 p. 2 par. 3, which says.", "w23.01 p. 2 par. 3", ", which says."},
+	}
+	for _, c := range cases {
+		got := linkCitations(c.in)
+		want := "See [" + c.cite + "](jwcite:" + url.PathEscape(c.cite) + ")" + c.rest
+		if got != want {
+			t.Fatalf("linkCitations(%q) = %s, want %s", c.in, got, want)
+		}
+	}
+}
+
+func TestOpenDraftIsKept(t *testing.T) {
+	app := &App{
+		zoom: 1, log: slog.Default(),
+		boxes: map[int64]cardBox{}, citeCache: map[string]citeMemo{},
+		noteCache: map[string][]notePara{}, openChip: map[string]bool{},
+		cards: []Clip{
+			{ID: 1, Kind: kindNote},
+			{ID: 2, Kind: kindNote, Markdown: "Already saved."},
+		},
+		nextClip:    2,
+		editingNote: 1,
+		noteDraft:   "See Matt. 24:14 before switching.",
+	}
+	app.editNote(2)
+	if !strings.Contains(app.cards[0].Markdown, "jwcite:Matt.%2024:14") {
+		t.Fatalf("Edit dropped the open draft: %q", app.cards[0].Markdown)
+	}
+	if app.editingNote != 2 || !strings.Contains(app.noteDraft, "Already saved.") {
+		t.Fatalf("Edit did not open the other note: id=%d draft=%q", app.editingNote, app.noteDraft)
+	}
+
+	app.noteDraft = "A second thought, w23.01 p. 2 par. 3."
+	app.addNote(nil)
+	if !strings.Contains(app.cards[1].Markdown, "jwcite:w23.01%20p.%202%20par.%203") {
+		t.Fatalf("New note dropped the open draft: %q", app.cards[1].Markdown)
+	}
+	if app.editingNote == 2 || app.noteDraft != "" {
+		t.Fatalf("New note did not start empty: id=%d draft=%q", app.editingNote, app.noteDraft)
 	}
 }
 
@@ -112,7 +163,7 @@ func TestNotesAndClipPlacement(t *testing.T) {
 	}
 	const (
 		good   = "w23.01 p. 2 par. 3"
-		wrong  = "par. 3 is on p. 2, not p. 5"
+		wrong  = "w23.01 p. 5 par. 3: par. 3 is on pp. 2, 8-9, 14-15, 20, and 26-27, not p. 5"
 		absent = "Import the August 2022 study edition of The Watchtower (w22.08)."
 		broken = `Couldn't read the citation "w23.13 p. 2 par. 1".`
 	)

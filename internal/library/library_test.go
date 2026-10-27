@@ -93,8 +93,25 @@ func TestImportAndResolve(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected par. 3 to be rejected on p. 5")
 		}
-		if err.Error() != "par. 3 is on p. 2, not p. 5" {
+		const want = "w23.01 p. 5 par. 3: par. 3 is on pp. 2, 8-9, 14-15, 20, and 26-27, not p. 5"
+		if err.Error() != want {
 			t.Fatalf("error = %q", err.Error())
+		}
+	})
+
+	t.Run("paragraph number in several articles", func(t *testing.T) {
+		_, err := lib.Resolve(ctx, "w23.01 p. 16 par. 3")
+		if err == nil {
+			t.Fatal("expected par. 3 to be rejected on p. 16")
+		}
+		msg := err.Error()
+		if !strings.HasPrefix(msg, "w23.01 p. 16 par. 3") {
+			t.Fatalf("error %q does not start with the citation", msg)
+		}
+		for _, part := range []string{"2", "8-9", "14-15", "20", "26-27", "not p. 16"} {
+			if !strings.Contains(msg, part) {
+				t.Fatalf("error %q missing %q", msg, part)
+			}
 		}
 	})
 
@@ -107,7 +124,8 @@ func TestImportAndResolve(t *testing.T) {
 			t.Fatalf("hits = %+v", hits)
 		}
 		_, err = lib.Resolve(ctx, "w23.01 p. 2 par. 8")
-		if err == nil || err.Error() != "par. 8 is on pp. 3-4, not p. 2" {
+		const want = "w23.01 p. 2 par. 8: par. 8 is on pp. 3-4, 10, 16, 22, and 29, not p. 2"
+		if err == nil || err.Error() != want {
 			t.Fatalf("error = %v", err)
 		}
 	})

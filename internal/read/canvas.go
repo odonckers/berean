@@ -28,7 +28,11 @@ func (a *App) canvas(c *ui.Context) {
 	if a.zoom == 0 {
 		a.zoom = 1
 	}
-	viewport := ui.Box(c).Grow(1).FillHeight().Clip().Background(t.Background).HandleInput(a.canvasInput)
+	viewport := ui.Box(c.Key("canvas")).Grow(1).FillHeight().Clip().Background(t.Background).HandleInput(a.canvasInput)
+	viewport.Bind(&a.canvasView)
+	if b := a.canvasView.Bounds(c); b.W > 1 && b.H > 1 {
+		a.viewW, a.viewH = b.W, b.H
+	}
 	if a.panning {
 		viewport.Cursor(ui.CursorGrabbing)
 	} else {
@@ -120,6 +124,7 @@ func (a *App) acceptClip(c *ui.Context, viewport ui.Element, p passage) {
 // another card's header. The header stays inside the canvas; a tall
 // paragraph can hang below it.
 func (a *App) nudge(c *ui.Context, clip *Clip) {
+	a.pullHeaderInside(clip)
 	ox, oy := clip.X, clip.Y
 	for n := 0; n <= nudgeLimit; n++ {
 		clip.X = ox + float32(n)*nudgeStepX
@@ -127,33 +132,80 @@ func (a *App) nudge(c *ui.Context, clip *Clip) {
 		if !a.headerOnCanvas(clip) {
 			clip.X = ox
 		}
-		if !a.blocked(c, clip) && a.headerOnCanvas(clip) {
+		if a.headerOnCanvas(clip) && !a.blocked(c, clip) {
 			return
 		}
 	}
 	clip.X, clip.Y = ox, oy
 }
 
+// pullHeaderInside moves a drop that landed outside the viewport back
+// inside, using the measured canvas rather than a fixed window.
+func (a *App) pullHeaderInside(clip *Clip) {
+	z := a.zoom
+	if z == 0 || a.viewW < 1 || a.viewH < 1 {
+		return
+	}
+	header := a.headerBand(clip)
+	const margin = float32(8)
+	left := a.panX + clip.X*z
+	top := a.panY + clip.Y*z
+	maxLeft := a.viewW - margin - cardWidth*z
+	maxTop := a.viewH - margin - header*z
+	if maxLeft < margin {
+		maxLeft = margin
+	}
+	if maxTop < margin {
+		maxTop = margin
+	}
+	if left < margin {
+		left = margin
+	} else if left > maxLeft {
+		left = maxLeft
+	}
+	if top < margin {
+		top = margin
+	} else if top > maxTop {
+		top = maxTop
+	}
+	clip.X = (left - a.panX) / z
+	clip.Y = (top - a.panY) / z
+}
+
 // headerOnCanvas reports that the card's header band is inside the canvas
-// viewport, with a small margin so the citation is not clipped.
+// viewport measured last frame, with a small margin so the citation is not
+// clipped. Before that measurement, the drop point is left alone.
 func (a *App) headerOnCanvas(clip *Clip) bool {
 	z := a.zoom
 	if z == 0 {
 		z = 1
 	}
-	box := a.cardBoxOf(nil, clip)
-	header := box.header
-	if header < 28 {
-		header = 36
+	if a.viewW < 1 || a.viewH < 1 {
+		return true
 	}
+	header := a.headerBand(clip)
 	const margin = float32(8)
-	viewW := float32(1440 - leftWidth - 1)
-	viewH := float32(900)
 	left := a.panX + clip.X*z
 	top := a.panY + clip.Y*z
-	right := left + cardWidth*z
-	bottom := top + header*z
-	return left >= margin && top >= margin && right <= viewW-margin && bottom <= viewH-margin
+	width := cardWidth * z
+	height := header * z
+	horiz := left >= margin && left+width <= a.viewW-margin
+	if width+2*margin > a.viewW {
+		horiz = left >= margin-1 && left <= margin+1
+	}
+	vert := top >= margin && top+height <= a.viewH-margin
+	if height+2*margin > a.viewH {
+		vert = top >= margin-1 && top <= margin+1
+	}
+	return horiz && vert
+}
+
+func (a *App) headerBand(clip *Clip) float32 {
+	box := a.cardBoxOf(nil, clip)
+	if box.header < 28 {
+		return 36
+	}
+	return box.header
 }
 
 func (a *App) blocked(c *ui.Context, clip *Clip) bool {

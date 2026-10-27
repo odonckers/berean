@@ -38,6 +38,7 @@ type notePara struct {
 }
 
 func (a *App) addNote(c *ui.Context) {
+	a.finishNote()
 	a.nextClip++
 	z := a.zoom
 	if z == 0 {
@@ -60,6 +61,9 @@ func (a *App) addNote(c *ui.Context) {
 
 func (a *App) finishNote() {
 	id := a.editingNote
+	if id == 0 {
+		return
+	}
 	md := linkCitations(a.noteDraft)
 	for i := range a.cards {
 		if a.cards[i].ID == id {
@@ -72,6 +76,9 @@ func (a *App) finishNote() {
 }
 
 func (a *App) editNote(id int64) {
+	if a.editingNote != id {
+		a.finishNote()
+	}
 	for _, card := range a.cards {
 		if card.ID == id {
 			a.noteDraft = unlinkCitations(card.Markdown)
@@ -515,6 +522,7 @@ func takeCite(s string, i int) int {
 		limit += size
 	}
 	best := -1
+	var parsed cite.Citation
 	for end := limit; end > i; {
 		if end < len(s) && isIdentByte(s[end]) {
 			end--
@@ -527,6 +535,7 @@ func takeCite(s string, i int) int {
 		}
 		if c, err := cite.Parse(chunk); err == nil && substantial(c) {
 			best = end
+			parsed = c
 			break
 		}
 		_, size := utf8.DecodeLastRuneInString(s[:end])
@@ -538,14 +547,57 @@ func takeCite(s string, i int) int {
 	if best <= i {
 		return 0
 	}
+	// The publication parser accepts a trailing comma. Drop it, and a
+	// trailing dash, when the citation still parses without them.
+	best, parsed = trimLooseTail(s, i, best)
+	// A finished citation stops before a comma, dash, or number that
+	// follows it. A shorter hit such as "w23" inside "w23.13 p. 2 par. 1"
+	// is not finished, so the broken tail stays one span.
+	if completeCite(parsed) {
+		return best
+	}
 	further := extendCiteTokens(s, best)
-	further = i + len(strings.TrimRight(s[i:further], " \t"))
+	further = i + len(strings.TrimRight(s[i:further], " \t,-–"))
 	if further > best {
 		if _, err := cite.Parse(s[i:further]); err != nil {
 			return further
 		}
 	}
 	return best
+}
+
+// trimLooseTail drops a trailing comma or dash that cite.Parse swallowed
+// but that is not part of the citation, as in "par. 3, which".
+func trimLooseTail(s string, i, end int) (int, cite.Citation) {
+	c, _ := cite.Parse(s[i:end])
+	for end > i {
+		r, size := utf8.DecodeLastRuneInString(s[i:end])
+		if r != ',' && r != '-' && r != '–' {
+			break
+		}
+		shorter := strings.TrimRight(s[i:end-size], " \t")
+		next, err := cite.Parse(shorter)
+		if err != nil || !substantial(next) {
+			break
+		}
+		end = i + len(shorter)
+		c = next
+	}
+	return end, c
+}
+
+// completeCite is a citation a reader could open: a scripture span, or a
+// publication that names a page, a paragraph, or a unit. A bare issue such
+// as "w23" is not one.
+func completeCite(c cite.Citation) bool {
+	switch c.Kind {
+	case cite.KindBible, cite.KindStudyNote:
+		return len(c.Spans) > 0
+	case cite.KindPub:
+		return len(c.Pages) > 0 || len(c.Pars) > 0 || c.Unit != 0
+	default:
+		return false
+	}
 }
 
 func substantial(c cite.Citation) bool {

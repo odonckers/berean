@@ -18,6 +18,47 @@ import (
 	"github.com/odonckers/berean/internal/library"
 )
 
+func TestNudgeUsesMeasuredViewport(t *testing.T) {
+	// At zoom 2.4 a card is 720 DIP wide. That is wider than the old fixed
+	// 679-wide canvas, and narrower than a viewport of 1000.
+	app := &App{
+		zoom: 2.4, viewW: 1000, viewH: 800,
+		boxes: map[int64]cardBox{1: {w: cardWidth, h: 120, header: 40}},
+		cards: []Clip{{ID: 1, X: 30, Y: 30, Kind: kindBible, Citation: "Matt. 24:14", Text: "verse"}},
+	}
+	clip := Clip{ID: 2, X: 30, Y: 30, Kind: kindBible, Citation: "Matt. 24:14", Text: "verse"}
+	app.nudge(nil, &clip)
+	head := frect{30, 30, cardWidth, 40}
+	me := frect{clip.X, clip.Y, cardWidth, 40}
+	if intersects(me, head) {
+		t.Fatalf("new card at (%.0f, %.0f) covers the header", clip.X, clip.Y)
+	}
+	left := app.panX + clip.X*app.zoom
+	top := app.panY + clip.Y*app.zoom
+	if left < 0 || top < 0 || left+cardWidth*app.zoom > app.viewW || top+40*app.zoom > app.viewH {
+		t.Fatalf("header at local (%.0f, %.0f) is outside %.0fx%.0f", left, top, app.viewW, app.viewH)
+	}
+}
+
+func TestCanvasViewportFollowsWindow(t *testing.T) {
+	lib, err := library.Open(filepath.Join(t.TempDir(), "berean.db"), slog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { lib.Close() })
+	app, err := New(lib, slog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	tt := ui.NewTester(app.View, 1800, 1000)
+	tt.SetPreferences(ui.Preferences{ReduceMotion: true, TextScale: 1})
+	tt.SetSize(1800, 1000)
+	tt.Frame()
+	if app.viewW < 900 || app.viewH < 900 {
+		t.Fatalf("canvas viewport %.0fx%.0f, want the 1800x1000 window, not 679x900", app.viewW, app.viewH)
+	}
+}
+
 func TestCitationFormat(t *testing.T) {
 	pub := library.PublicationInfo{Symbol: "w23", Month: 1}
 	if got := publicationCitation(pub, 2, 3, 3); got != "w23.01 p. 2 par. 3" {
