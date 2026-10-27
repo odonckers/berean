@@ -12,14 +12,14 @@
   - Reviews: https://allenpike.com/2025/why-is-chatgpt-so-good-claude/, https://www.macstories.net/linked/why-is-chatgpt-for-mac-so-good/, https://daringfireball.net/linked/2026/07/06/allen-pike-chatgpt, https://9to5mac.com/2026/07/09/openai-announcing-the-next-chapter-for-chatgpt-today-watch-here/, https://9to5mac.com/2026/07/17/openai-fixes-chat-access-in-the-chatgpt-app-for-mac/, https://spyglass.org/chatgpt-gets-to-work/
   - Apple: WWDC25 session 310 https://developer.apple.com/videos/play/wwdc2025/310/ and the HIG pages listed below
 
-## First, which app? (important)
+## Which app (two exist)
 There are now two ChatGPT Mac apps, and only one of them is native.
 - **ChatGPT Classic:** the original Mac app. On July 9, 2026 it was renamed "ChatGPT Classic" and "continues to be supported" ([download help](https://help.openai.com/en/articles/9275200-downloading-the-chatgpt-macos-app)). It "continues to receive model updates, bug fixes, security patches" ([moving help](https://help.openai.com/en/articles/20001276-moving-to-the-new-chatgpt-desktop-app)).
   - At launch, OpenAI's Javi said it is "a fully native macOS app. Not Electron. Not even Catalyst." AAPL Ch. reports it was built with SwiftUI and AppKit ([AAPL Ch.](https://applech2.com/archives/20240514-chatgpt-for-mac.html)).
   - A Hacker News commenter (saagarjha, third-party, not OpenAI) wrote: "They have some shared SwiftUI code and AppKit for platform native stuff" ([HN](https://news.ycombinator.com/item?id=45690616)).
 - **New ChatGPT app (Chat + Work + Codex):** the old Codex app, renamed ([9to5Mac, Jul 9](https://9to5mac.com/2026/07/09/openai-announcing-the-next-chapter-for-chatgpt-today-watch-here/)). 9to5Mac says it "replaced the previous native Mac client with a much larger Electron-based app" ([9to5Mac, Jul 17](https://9to5mac.com/2026/07/17/openai-fixes-chat-access-in-the-chatgpt-app-for-mac/)). Desktop Insights lists its runtime as Electron, at 1924 MB ([desktopinsights](https://desktopinsights.com/apps/chatgpt)).
 - 9to5Mac: "The ChatGPT Classic app looks more native Mac-like" ([Jul 9](https://9to5mac.com/2026/07/09/openai-announcing-the-next-chapter-for-chatgpt-today-watch-here/)).
-- **Open question for Owen:** the native feel he likes most likely comes from **Classic**, but he may be using the new app. Everything below is about Classic unless a line says "new app".
+- **Owen's reference (answered Oct 26, 2026, via Rook):** the app that "looks and feels native but looks the same on macOS and windows", which is the new cross-platform app. The goal is one consistent native-feeling look on every platform. Classic's Mac-only details below (sidebar, Mac conventions) are polish where they fit, not the target. Everything below is about Classic unless a line says "new app".
 
 ## Who it's for and pricing
 - Anyone with a ChatGPT account. It requires macOS 14 and runs on Apple Silicon or Intel. Download it at https://chatgpt.com/download/ ([download help](https://help.openai.com/en/articles/9275200-downloading-the-chatgpt-macos-app)).
