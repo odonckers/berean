@@ -20,9 +20,11 @@ type Document struct {
 
 // Verse is one scripture verse already mapped to book, chapter, and verse.
 // Verse 0 is a superscription, such as a psalm heading.
+// Text is plain. Markup keeps emphasis when the verse has any.
 type Verse struct {
 	Book, Chapter, Verse int
 	Text                 string
+	Markup               string
 }
 
 // StudyNote is the study-note text for one verse.
@@ -149,7 +151,7 @@ func (p *Publication) ForEachVerse(ctx context.Context, fn func(Verse) error) er
 		if err != nil {
 			return err
 		}
-		if err := fn(Verse{Book: loc.Book, Chapter: loc.Chapter, Verse: loc.Verse, Text: plain}); err != nil {
+		if err := fn(Verse{Book: loc.Book, Chapter: loc.Chapter, Verse: loc.Verse, Text: plain, Markup: markupFragment(text)}); err != nil {
 			return err
 		}
 	}
