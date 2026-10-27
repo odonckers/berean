@@ -556,6 +556,13 @@ func (a *App) setStatus(msg string) {
 	}
 }
 
+// showClickError records an error a click just showed. The status line
+// keeps its text when it already says msg. The log does not depend on that.
+func (a *App) showClickError(msg string) {
+	a.status = msg
+	a.logShownError("", msg)
+}
+
 func (a *App) follow(href string) {
 	target, err := a.lib.ResolveLink(context.Background(), href)
 	if err != nil || target.Kind == library.LinkBad {
@@ -563,7 +570,7 @@ func (a *App) follow(href string) {
 			err = fmt.Errorf("unrecognized link")
 		}
 		a.log.Error("link", "href", href, "err", err)
-		a.setStatus("Unrecognized link")
+		a.showClickError("Unrecognized link")
 		return
 	}
 	switch target.Kind {
@@ -584,7 +591,7 @@ func (a *App) follow(href string) {
 		a.goPublication(target.PubID, target.DocumentID, from, to, from > 0, "open", "")
 	case library.LinkMissing:
 		a.log.Error("link", "href", href, "meps_document_id", target.MepsDocumentID, "paragraphs", fmt.Sprintf("%d-%d", target.ParFrom, target.ParTo), "err", "not in the library")
-		a.setStatus("Not in the library")
+		a.showClickError("Not in the library")
 	case library.LinkExternal:
 		a.log.Info("link skipped", "href", href, "reason", "outside the library")
 	}

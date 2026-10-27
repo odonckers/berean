@@ -199,7 +199,8 @@ func (a *App) noteBody(c *ui.Context, id int64, md string) {
 					ui.Text(c, "\n")
 				case segChip:
 					el := ui.Text(c, seg.text).Cursor(ui.CursorPointer)
-					if _, err := a.lookup(seg.cite); err != nil {
+					_, lookupErr := a.lookup(seg.cite)
+					if lookupErr != nil {
 						missing := ui.Hex("#9e4705")
 						el.TextColor(missing).Background(missing.Alpha(0.16)).WavyUnderline()
 					} else {
@@ -208,6 +209,9 @@ func (a *App) noteBody(c *ui.Context, id int64, md string) {
 					el.HandleInput(func(ev ui.InputEvent) bool { return a.passClick(id, ev) })
 					citeStr := seg.cite
 					if el.Clicked() {
+						if lookupErr != nil {
+							a.logShownError(citeStr, lookupErr.Error())
+						}
 						a.toggleChip(id, citeStr)
 					}
 					if a.chipOpen(id, citeStr) {

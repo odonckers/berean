@@ -627,6 +627,59 @@ func TestRepeatedErrorIsLoggedTwice(t *testing.T) {
 	}
 }
 
+func TestBrokenChipClickLogsTwice(t *testing.T) {
+	dir := t.TempDir()
+	lib, err := library.Open(filepath.Join(dir, "berean.db"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { lib.Close() })
+	app, err := New(lib, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tt := ui.NewTester(app.View, 1440, 900)
+	tt.SetPreferences(ui.Preferences{ReduceMotion: true, TextScale: 1})
+	tt.Frame()
+	if err := tt.Click("New note"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Note editor"); err != nil {
+		t.Fatal(err)
+	}
+	const broken = "w23.13 p. 2 par. 1"
+	tt.Type("See " + broken + ".")
+	tt.Frame()
+	if err := tt.Click("Done"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	writeStubBench(t, lib.Path())
+	app.beginStudy()
+	app.phase = phaseTask
+	tt.Frame()
+	if err := tt.Click(broken); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click(broken); err != nil {
+		t.Fatal(err)
+	}
+	var messages []string
+	for _, ev := range mustStudy(t, app.studyPath()) {
+		if ev["event"] == "error" {
+			messages = append(messages, str(ev["message"]))
+			if ev["citation"] != broken {
+				t.Fatalf("error citation %#v", ev["citation"])
+			}
+		}
+	}
+	const shown = `Couldn't read the citation "w23.13 p. 2 par. 1".`
+	if len(messages) != 2 || messages[0] != shown || messages[1] != shown {
+		t.Fatalf("error events %#v", messages)
+	}
+}
+
 func writeStubBench(t *testing.T, db string) {
 	t.Helper()
 	b := benchResult{
