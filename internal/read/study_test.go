@@ -176,7 +176,8 @@ func TestSetupGate(t *testing.T) {
 	}
 	tt.Frame()
 	for _, label := range []string{
-		"Insight on the Scriptures Vol. 2 (it-2)",
+		"Insight on the Scriptures (it)",
+		"covers it-2 citations",
 		"Worship the Only True God (wt)",
 		"The Watchtower, June 2017 (w17.06)",
 	} {
@@ -184,6 +185,10 @@ func TestSetupGate(t *testing.T) {
 			t.Fatalf("setup missing %q", label)
 		}
 	}
+	if tt.HasText("Insight on the Scriptures Vol. 2 (it-2)") {
+		t.Fatal("setup still names Insight volume 2")
+	}
+	saveShot(t, tt, "setup-insight-row.png")
 	if tt.HasText("✓ ") {
 		t.Fatal("a check mark showed before any import")
 	}
@@ -197,7 +202,7 @@ func TestSetupGate(t *testing.T) {
 		t.Fatal("the setup screen did not take the dropped file")
 	}
 	tt.Frame()
-	const allMissing = "Still missing: Insight on the Scriptures Vol. 2 (it-2), Worship the Only True God (wt), and The Watchtower, June 2017 (w17.06)."
+	const allMissing = "Still missing: Insight on the Scriptures (it), Worship the Only True God (wt), and The Watchtower, June 2017 (w17.06)."
 	if !tt.HasText(allMissing) {
 		t.Fatalf("wrong file did not name what is missing; sample %q", sampleTexts(tt, "Still missing"))
 	}
@@ -208,7 +213,7 @@ func TestSetupGate(t *testing.T) {
 	if !tt.HasText("✓ Worship the Only True God (wt)") {
 		t.Fatal("wt has no check mark")
 	}
-	const partial = "Still missing: Insight on the Scriptures Vol. 2 (it-2) and The Watchtower, June 2017 (w17.06)."
+	const partial = "Still missing: Insight on the Scriptures (it) and The Watchtower, June 2017 (w17.06)."
 	if !tt.HasText(partial) {
 		t.Fatalf("partial setup: %q", sampleTexts(tt, "Still missing"))
 	}
@@ -220,7 +225,7 @@ func TestSetupGate(t *testing.T) {
 	}
 	tt.Frame()
 	for _, label := range []string{
-		"✓ Insight on the Scriptures Vol. 2 (it-2)",
+		"✓ Insight on the Scriptures (it)",
 		"✓ Worship the Only True God (wt)",
 		"✓ The Watchtower, June 2017 (w17.06)",
 	} {
