@@ -28,17 +28,17 @@ const (
 )
 
 type studyNeed struct {
-	title, symbol string
-	match         func(library.PublicationInfo) bool
+	title, symbol, note string
+	match               func(library.PublicationInfo) bool
 }
 
 func (n studyNeed) label() string { return n.title + " (" + n.symbol + ")" }
 
 func requiredPubs() []studyNeed {
 	return []studyNeed{
-		{"Insight on the Scriptures Vol. 2", "it-2", pubIsInsight},
-		{"Worship the Only True God", "wt", pubIsWorship},
-		{"The Watchtower, June 2017", "w17.06", pubIsJune2017},
+		{"Insight on the Scriptures", "it", "covers it-2 citations", pubIsInsight},
+		{"Worship the Only True God", "wt", "", pubIsWorship},
+		{"The Watchtower, June 2017", "w17.06", "", pubIsJune2017},
 	}
 }
 
@@ -211,7 +211,12 @@ func (a *App) setupView(c *ui.Context) {
 			if have[label] {
 				label = "✓ " + label
 			}
-			ui.Text(c, label).FontSize(16)
+			ui.Column(c).Gap(2).Children(func() {
+				ui.Text(c, label).FontSize(16)
+				if n.note != "" {
+					ui.Text(c, n.note).FontSize(13).TextColor(t.TextMuted)
+				}
+			})
 		}
 		if len(missing) > 0 {
 			ui.Text(c, joinMissing(missing)).FontSize(14).TextColor(t.Danger).FillWidth()
