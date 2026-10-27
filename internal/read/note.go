@@ -270,16 +270,18 @@ func (a *App) expandedChip(c *ui.Context, citation string) {
 			ui.Text(c, err.Error()).FontSize(12).TextColor(t.Danger)
 			return
 		}
-		for _, h := range hits {
-			ui.Text(c, h.Text).FontSize(13).LineHeight(1.35)
-		}
 		if len(hits) == 0 {
 			return
 		}
+		// The button stays with the citation. A long paragraph range would
+		// push it off the card if it followed the text.
 		btn := ui.Button(c, "Open source")
 		btn.HandleInput(func(ev ui.InputEvent) bool { return false })
 		if btn.Clicked() {
 			a.openHits(citation, hits)
+		}
+		for _, h := range hits {
+			ui.Text(c, h.Text).FontSize(13).LineHeight(1.35)
 		}
 	})
 }

@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -26,6 +27,8 @@ func TestLinkInsightTitle(t *testing.T) {
 		"it-2 “Sovereignty”",
 		"it-2 \"Sovereignty\"",
 		"it-1 “Aaron”",
+		"it-2 “Sovereignty” pars. 12-31",
+		"it-1 “High Priest” pars. 3-10",
 	} {
 		in := "See " + citation + " today."
 		got := linkCitations(in)
@@ -167,7 +170,7 @@ func TestInsightChipsOpenTheArticle(t *testing.T) {
 	tt.SetPreferences(ui.Preferences{ReduceMotion: true, TextScale: 1})
 	tt.Frame()
 	started := app.docID
-	writeNote(t, tt, "it-2 “Sovereignty”. it-2 \"Sovereignty\". it-2 Sovereignty. it-1 “Aaron”. it-1 Guard. it-2 p. 1011. it p. 1011.")
+	writeNote(t, tt, "it-2 “Sovereignty”. it-2 \"Sovereignty\". it-2 Sovereignty. it-1 “Aaron”. it-1 Guard. it-2 p. 1011. it p. 1011. it-2 “Sovereignty” pars. 12-31. it-1 “High Priest” pars. 3-10.")
 	if len(app.problems) != 1 || app.problems[0] != "it p. 1011: it needs a page and a paragraph" {
 		t.Fatalf("editor problems = %q", app.problems)
 	}
@@ -189,8 +192,8 @@ func TestInsightChipsOpenTheArticle(t *testing.T) {
 			t.Fatal(err)
 		}
 		tt.Frame()
-		if app.docID != doc.DocumentID || app.title != doc.Document {
-			t.Fatalf("%s opened doc=%d title=%q, want %d %s", citation, app.docID, app.title, doc.DocumentID, doc.Document)
+		if app.docID != doc.DocumentID || app.title != doc.Document || app.focusParFrom != 0 {
+			t.Fatalf("%s opened doc=%d title=%q mark=%d, want %d %s at the top", citation, app.docID, app.title, app.focusParFrom, doc.DocumentID, doc.Document)
 		}
 		if !tt.HasText(doc.Document) || !tt.HasText(fmt.Sprintf("doc=%d", doc.DocumentID)) {
 			t.Fatalf("%s article is not on screen", citation)
@@ -220,6 +223,49 @@ func TestInsightChipsOpenTheArticle(t *testing.T) {
 	if app.docID == guard.DocumentID {
 		t.Fatal("it-2 page stayed on the volume 1 article")
 	}
+
+	sovPars := mustResolve(t, lib, "it-2 “Sovereignty” pars. 12-31")
+	priestPars := mustResolve(t, lib, "it-1 “High Priest” pars. 3-10")
+	if len(sovPars) != 20 || sovPars[0].Paragraph != 12 || sovPars[0].ParagraphIndex != 13 || sovPars[len(sovPars)-1].Paragraph != 31 || sovPars[len(sovPars)-1].ParagraphIndex != 33 {
+		t.Fatalf("sovereignty pars = %d first=%+v last=%+v", len(sovPars), sovPars[0], sovPars[len(sovPars)-1])
+	}
+	if len(priestPars) != 8 || priestPars[0].Paragraph != 3 || priestPars[0].ParagraphIndex != 4 || priestPars[len(priestPars)-1].Paragraph != 10 || priestPars[len(priestPars)-1].ParagraphIndex != 11 {
+		t.Fatalf("high priest pars = %d first=%+v last=%+v", len(priestPars), priestPars[0], priestPars[len(priestPars)-1])
+	}
+	openParagraph := func(citation string, hits []library.Hit) {
+		t.Helper()
+		first, last := hits[0], hits[len(hits)-1]
+		before := countContains(tt, first.Text)
+		if err := tt.Click(citation); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		if countContains(tt, first.Text) < before+1 || !tt.HasText("Open source") {
+			t.Fatalf("chip %s did not show paragraph %d", citation, first.Paragraph)
+		}
+		bringOnScreen(t, tt, app, "Open source")
+		if err := tt.Click("Open source"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		mark := fmt.Sprintf("pid=%d ord=", first.ParagraphIndex)
+		if app.docID != first.DocumentID || app.title != first.Document || app.focusParFrom != first.ParagraphIndex || app.focusParTo != last.ParagraphIndex || !markedLabel(tt, mark) {
+			t.Fatalf("%s doc=%d title=%q mark=%d-%d marked=%v, want %d %s at %d-%d", citation, app.docID, app.title, app.focusParFrom, app.focusParTo, markedLabel(tt, mark), first.DocumentID, first.Document, first.ParagraphIndex, last.ParagraphIndex)
+		}
+		if countExact(tt, strconv.Itoa(first.Paragraph)) < 1 {
+			t.Fatalf("%s did not show paragraph number %d", citation, first.Paragraph)
+		}
+		if first.ParagraphIndex > 5 && app.pubScroll.Y <= 0 {
+			t.Fatalf("%s did not scroll to paragraph %d (y=%.1f)", citation, first.Paragraph, app.pubScroll.Y)
+		}
+		bringOnScreen(t, tt, app, citation)
+		if err := tt.Click(citation); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+	}
+	openParagraph("it-2 “Sovereignty” pars. 12-31", sovPars)
+	openParagraph("it-1 “High Priest” pars. 3-10", priestPars)
 }
 
 func openEmpty(t *testing.T) *library.Library {

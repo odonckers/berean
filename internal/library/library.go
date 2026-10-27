@@ -271,6 +271,9 @@ func (l *Library) Import(ctx context.Context, path string) (ImportResult, error)
 		if err := l.fillVolumes(ctx, existingID, pub); err != nil {
 			return ImportResult{}, err
 		}
+		if err := l.fillInsightParagraphs(ctx, existingID, pub); err != nil {
+			return ImportResult{}, err
+		}
 		res, err := l.storedResult(ctx, existingID, meta, time.Since(start))
 		if err != nil {
 			return ImportResult{}, err
@@ -496,6 +499,53 @@ func (l *Library) fillVolumes(ctx context.Context, pubID int64, pub *jwpub.Publi
 		if _, err := stmt.ExecContext(ctx, vol, pubID, id); err != nil {
 			return err
 		}
+	}
+	return tx.Commit()
+}
+
+// fillInsightParagraphs numbers Insight body paragraphs on a publication
+// imported before those numbers were stored. The Research Guide cites them
+// as pars. N. Other publications already carry their own paragraph labels.
+func (l *Library) fillInsightParagraphs(ctx context.Context, pubID int64, pub *jwpub.Publication) error {
+	meta := pub.Meta()
+	if meta.Symbol != "it" && meta.CiteSymbol != "it" {
+		return nil
+	}
+	var n int
+	if err := l.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM paragraph WHERE publication_id=? AND paragraph_number IS NOT NULL`, pubID).Scan(&n); err != nil {
+		return err
+	}
+	if n > 0 {
+		return nil
+	}
+	tx, err := l.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	stmt, err := tx.PrepareContext(ctx, `
+		UPDATE paragraph SET paragraph_number=?
+		WHERE publication_id=? AND document_id=? AND paragraph_index=? AND ordinal=?`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+	err = pub.ForEachDocument(ctx, func(d jwpub.Document) error {
+		seen := map[int]int{}
+		for _, para := range d.Paragraphs {
+			ord := seen[para.Index]
+			seen[para.Index]++
+			if !para.Numbered {
+				continue
+			}
+			if _, err := stmt.ExecContext(ctx, para.Number, pubID, d.ID, para.Index, ord); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 	return tx.Commit()
 }

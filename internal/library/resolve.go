@@ -281,12 +281,51 @@ func (l *Library) resolveTitle(ctx context.Context, citation string, c cite.Cita
 		}
 	}
 	if len(hits) == 1 {
-		return hits, nil
+		if len(c.Pars) == 0 {
+			return hits, nil
+		}
+		return l.resolveTitleParagraphs(ctx, citation, c, hits[0])
 	}
 	if len(hits) == 0 {
 		return nil, fmt.Errorf("%s was not found", citation)
 	}
 	return nil, fmt.Errorf("%s matches more than one article", citation)
+}
+
+func (l *Library) resolveTitleParagraphs(ctx context.Context, citation string, c cite.Citation, article Hit) ([]Hit, error) {
+	var hits []Hit
+	err := eachNumber(c.Pars, func(n int) error {
+		rows, err := l.db.QueryContext(ctx, `
+			SELECT paragraph_index, text, first_page
+			FROM paragraph
+			WHERE publication_id=? AND document_id=? AND paragraph_number=?
+			ORDER BY paragraph_index, ordinal`, article.PubID, article.DocumentID, n)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		found := false
+		for rows.Next() {
+			h := article
+			if err := rows.Scan(&h.ParagraphIndex, &h.Text, &h.Page); err != nil {
+				return err
+			}
+			h.Paragraph = n
+			hits = append(hits, h)
+			found = true
+		}
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		if !found {
+			return fmt.Errorf("%s: par. %d was not found", citation, n)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return hits, nil
 }
 
 func (l *Library) resolveVolumePage(ctx context.Context, citation string, c cite.Citation, pubs []pubRow, vol int) ([]Hit, error) {

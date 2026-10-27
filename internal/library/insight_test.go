@@ -54,6 +54,24 @@ func TestInsightCitationRules(t *testing.T) {
 		if _, err := lib.Resolve(ctx, "it-1 Sovereignty"); err == nil || !strings.Contains(err.Error(), "was not found") {
 			t.Fatalf("volume 1 must not open the volume 2 article: %v", err)
 		}
+		if hits[0].ParagraphIndex != 0 {
+			t.Fatalf("title opened at paragraph %d", hits[0].ParagraphIndex)
+		}
+	})
+
+	t.Run("title paragraph opens that paragraph", func(t *testing.T) {
+		execSQL(t, lib, `
+			INSERT INTO paragraph (
+				publication_id, document_id, paragraph_index, ordinal, paragraph_number,
+				first_page, last_page, text, markup
+			) VALUES (1, 20, 13, 0, 12, 1010, 1010, 'sovereignty paragraph twelve', '')`)
+		hits := mustResolve(t, lib, "it-2 “Sovereignty” par. 12")
+		if len(hits) != 1 || hits[0].DocumentID != 20 || hits[0].Paragraph != 12 || hits[0].ParagraphIndex != 13 || hits[0].Text != "sovereignty paragraph twelve" {
+			t.Fatalf("hits = %+v", hits)
+		}
+		if _, err := lib.Resolve(ctx, "it-2 “Sovereignty” par. 9"); err == nil || !strings.Contains(err.Error(), "par. 9 was not found") {
+			t.Fatalf("missing paragraph: %v", err)
+		}
 	})
 
 	t.Run("page stays in the named volume", func(t *testing.T) {

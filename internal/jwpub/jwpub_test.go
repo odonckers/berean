@@ -103,6 +103,30 @@ func TestLineBreak(t *testing.T) {
 	}
 }
 
+func TestInsightParagraphNumbers(t *testing.T) {
+	const src = `
+<h1 data-pid="1">Sovereignty</h1>
+<p data-pid="2" class="sb">First body.</p>
+<p data-pid="3" class="sn">A subheading</p>
+<p data-pid="4" class="sc">Caption</p>
+<p data-pid="5" class="sb">Second body.</p>
+<p data-pid="6" class="sb"></p>`
+	paras, err := paragraphsFromHTML(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	numberInsightParagraphs(paras)
+	got := map[int]int{}
+	for _, p := range paras {
+		if p.Numbered {
+			got[p.Index] = p.Number
+		}
+	}
+	if len(got) != 2 || got[2] != 1 || got[5] != 2 {
+		t.Fatalf("numbered = %v", got)
+	}
+}
+
 func TestMarkup(t *testing.T) {
 	const src = `
 <p data-pid="8" class="sb"><span class="parNum" data-pnum="3"><strong><sup>3</sup></strong></span> How <em>can</em> we <a href="jwpub://b/NWTR/40:24:14-40:24:14"><strong>help</strong></a> others</p>

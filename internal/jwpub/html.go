@@ -20,6 +20,9 @@ type Paragraph struct {
 	LastPage  int
 	Text      string
 	Markup    string
+	// body is a class "sb" paragraph that has text. Insight prints no
+	// paragraph numbers; the Research Guide counts these in order.
+	body bool
 }
 
 func paragraphsFromHTML(src string) ([]Paragraph, error) {
@@ -47,12 +50,14 @@ func paragraphsFromHTML(src string) ([]Paragraph, error) {
 				end = start
 			}
 			page = end
+			text := plainText(n)
 			out = append(out, Paragraph{
 				Index:     pid,
 				FirstPage: start,
 				LastPage:  end,
-				Text:      plainText(n),
+				Text:      text,
 				Markup:    markupNode(n),
+				body:      hasClass(n, "sb") && text != "",
 			})
 			return
 		}
