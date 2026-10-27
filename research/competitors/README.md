@@ -71,12 +71,24 @@
 | [Bear](bear.md) | Apple writers | unverified | none | `[[`, heading links | n/a | n/a | not found | unverified |
 | [Typora](typora.md) | markdown writers | $14.99 one-time | none | md links | n/a | n/a | none | error dialog on click |
 | [iA Writer](ia-writer.md) | focused writers | Mac $49.99; iOS $29.99 | none | wikilinks (hidden on export) | n/a | n/a | none | not documented |
+| [ChatGPT (macOS)](chatgpt-macos.md) | design reference (native Mac feel), not a study tool | app price unverified; some features need paid plans | n/a (chat) | n/a | n/a | n/a | n/a | n/a |
 
 ## Owen's current workflow vs. the field
 Owen works through a study from the Research Guide, takes notes in SilverBullet, and draws on paper.
 - SilverBullet has the strongest broken-link handling in this scan, but no canvas.
 - JW Library has the Research Guide, but notes are plain text and can't be synced.
 - Only Logos (freehand on the passage canvas) and the Logseq whiteboards (Pencil next to live portals; now removed in DB) put drawing next to source text on one surface. That is the gap Berean's sketch cards would fill.
+
+## Native Mac feel (ChatGPT for macOS as a design reference)
+Owen likes how ChatGPT feels native on the Mac. Details are in [chatgpt-macos.md](chatgpt-macos.md).
+- **Which app:** the native app is now **ChatGPT Classic**, built with SwiftUI and AppKit ([AAPL Ch.](https://applech2.com/archives/20240514-chatgpt-for-mac.html)). The July 2026 Chat/Work/Codex app is Electron, and reviewers say it feels less native ([9to5Mac](https://9to5mac.com/2026/07/17/openai-fixes-chat-access-in-the-chatgpt-app-for-mac/)).
+- **What reviewers credit:** following Mac conventions, a Settings window that is a real window, the ⌥Space companion window, and a customizable toolbar ([MacStories](https://www.macstories.net/linked/why-is-chatgpt-for-mac-so-good/), [Daring Fireball](https://daringfireball.net/linked/2026/07/06/allen-pike-chatgpt), [release notes](https://help.openai.com/en/articles/9703738-chatgpt-macos-app-release-notes)). No source gives its padding, font or column width.
+- **For Berean:**
+  - Use a glass or vibrant sidebar over an opaque reading pane and canvas ([HIG Materials](https://developer.apple.com/design/human-interface-guidelines/materials)).
+  - Add a global-hotkey quick-capture window.
+  - Follow standard Mac menus and shortcuts.
+  - Never bury navigation.
+- **Vibrancy is possible in MyGo:** v0.6.4 has `WindowOptions.Vibrancy` (NSVisualEffectView materials, plus Liquid Glass on macOS 26) and an `examples/vibrancy` sidebar demo ([vibrancy.go](https://github.com/egoist/mygo/blob/main/vibrancy.go)). We have not tested it in Berean. Open questions for Hex are in the file.
 
 ## Takeaways for edges, sketch cards, and snapping
 1. **Edges: make dragging from a card side the creation gesture, and let a drop on empty space create a card.** Store side, ends, color, and label per edge (**Obsidian Canvas** [help](https://github.com/obsidianmd/obsidian-help/blob/master/en/Plugins/Canvas.md); [JSON Canvas spec](https://jsoncanvas.org/spec/1.0/)). Keep visual connectors board-local and separate from semantic `jwcite:` links (**Scrintal** [links vs connectors](https://scrintal.gitbook.io/scrintal-support-docs/working-with-links-and-connectors)).
@@ -103,6 +115,10 @@ These are screenshots of public pages, kept for internal research only. They sho
 | [`kinopio-auto-align.png`](screenshots/kinopio-auto-align.png) | Kinopio | Bulletin 36 (Auto Align Cards Below, Shift-snap) | 2026-10-26 | https://kinopio.club/blog/bulletin-36 |
 | [`heptabase-pdf-highlights.png`](screenshots/heptabase-pdf-highlights.png) | Heptabase | PDF annotation / highlight cards wiki page | 2026-10-26 | https://wiki.heptabase.com/pdf-annotation |
 | [`jw-library-features.png`](screenshots/jw-library-features.png) | JW Library | iOS "Start Using" features help (notes/tags sections collapsed) | 2026-10-26 | https://www.jw.org/en/online-help/jw-library/apple/features/ |
+| [`chatgpt-classic-window.png`](screenshots/chatgpt-classic-window.png) | ChatGPT Classic (macOS) | Launch image: unified title bar, bottom composer (press image) | 2026-10-26 | https://applech2.com/wp-content/uploads/2024/05/OpenAI-ChatGPT-for-Mac-Hero.jpg |
+| [`chatgpt-classic-app-info.png`](screenshots/chatgpt-classic-app-info.png) | ChatGPT Classic (macOS) | App info v1.2024.130, 134.4 MB (press image) | 2026-10-26 | https://applech2.com/wp-content/uploads/2024/05/OpenAI-ChatGPT-for-Mac-features-3.jpg |
+| [`chatgpt-new-app-sidebar.png`](screenshots/chatgpt-new-app-sidebar.png) | ChatGPT (new app, macOS) | Work view with translucent-looking sidebar (review screenshot) | 2026-10-26 | https://storage.ghost.io/c/af/ca/afcaa655-46e2-45b8-889a-2881de5cce69/content/images/2026/07/Screenshot-2026-07-10-at-1.25.04---PM.png |
+| [`chatgpt-new-app-settings.png`](screenshots/chatgpt-new-app-settings.png) | ChatGPT (new app, macOS) | Settings window (review screenshot) | 2026-10-26 | https://storage.ghost.io/c/af/ca/afcaa655-46e2-45b8-889a-2881de5cce69/content/images/2026/07/Screenshot-2026-07-10-at-1.04.32---PM.png |
 
 ## Unverified or not found (flagged)
 - **Prices not captured:** Logos (pricing 404; Bronze vs Premium conflict between official pages), Bear, Scrintal, Logseq, JW Library (no price on official pages).
@@ -113,3 +129,4 @@ These are screenshots of public pages, kept for internal research only. They sho
 - **Muse:** current ink status.
 - **JW Library:** official Mac help; the exact UI for links to missing publications.
 - **Reddit:** thread contents (blocked).
+- **ChatGPT (macOS):** spacing, font, column width and window sizes (no source); what the Liquid Glass update (1.2025.343) changed; whether MyGo vibrancy works with Berean's canvas.
