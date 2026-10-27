@@ -8,6 +8,7 @@ berean open
 berean import file.jwpub
 berean cite "w23.01 p. 2 par. 3"
 berean bench
+berean version
 ```
 
 The database file is `berean.db` in the current directory unless `-db` says otherwise.

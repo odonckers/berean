@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -12,10 +13,13 @@ import (
 
 const (
 	phasePrompt  = "prompt"
+	phaseBench   = "bench"
 	phaseSetup   = "setup"
 	phaseTask    = "task"
 	phaseDebrief = "debrief"
 	phaseDone    = "done"
+
+	benchMessage = "Measuring performance…"
 
 	studyPrompt = "Study the question: what is the issue of sovereignty, and where do Jehovah and you fit in it? Start from the Research Guide. Build a canvas you'd actually keep."
 
@@ -65,12 +69,39 @@ func (a *App) beginStudy() {
 		a.log.Error("study log", "err", err)
 	}
 	if len(lines) == 0 {
-		a.writeHeader(a.ensureBench())
-		a.writeStudy(map[string]any{"event": "study_start"})
-		a.phase = phasePrompt
+		if b, ok := a.recentBench(); ok {
+			a.finishBench(b, time.Time{}, time.Time{})
+			return
+		}
+		a.phase = phaseBench
 		return
 	}
 	a.phase = inferPhase(lines)
+}
+
+// recentBench is a saved result for this version and card count from the last day.
+func (a *App) recentBench() (benchResult, bool) {
+	path := a.benchPath()
+	if path == "" {
+		return benchResult{}, false
+	}
+	b, ok := readBench(path)
+	if !ok || !b.recent() {
+		return benchResult{}, false
+	}
+	return b, true
+}
+
+// finishBench writes the log header, then the bench phase when this session
+// measured one. A reused result has no bench phase: that time already passed.
+func (a *App) finishBench(b benchResult, started, ended time.Time) {
+	a.writeHeader(b)
+	if !started.IsZero() && !ended.IsZero() {
+		a.logPhaseAt(phaseBench, "start", started)
+		a.logPhaseAt(phaseBench, "end", ended)
+	}
+	a.writeStudy(map[string]any{"event": "study_start"})
+	a.phase = phasePrompt
 }
 
 func (a *App) studyGate(c *ui.Context) bool {
@@ -78,6 +109,25 @@ func (a *App) studyGate(c *ui.Context) bool {
 		return false
 	}
 	switch a.phase {
+	case phaseBench:
+		if a.benchReady {
+			started := a.now()
+			b := measureBench(a.log)
+			ended := a.now()
+			if path := a.benchPath(); path != "" {
+				if err := writeBench(path, b); err != nil {
+					a.log.Error("bench save", "err", err)
+				}
+			}
+			a.finishBench(b, started, ended)
+		} else {
+			a.benchReady = true
+		}
+		if a.phase == phaseBench {
+			a.benchView(c)
+			return true
+		}
+		fallthrough
 	case phasePrompt:
 		a.promptView(c)
 		return true
@@ -90,6 +140,14 @@ func (a *App) studyGate(c *ui.Context) bool {
 	default:
 		return false
 	}
+}
+
+func (a *App) benchView(c *ui.Context) {
+	t := c.Theme()
+	ui.Column(c).Fill().Padding(32).Gap(14).Background(t.Background).Children(func() {
+		ui.Text(c, "Berean").FontSize(22).Bold()
+		ui.Text(c, benchMessage).FontSize(16)
+	})
 }
 
 func (a *App) promptView(c *ui.Context) {
@@ -124,6 +182,7 @@ func (a *App) stepList(c *ui.Context) {
 		"5. Drag Jeremiah 10:23 onto the canvas, and one more passage.",
 		"6. Press New note. Write two or three sentences with one citation, then press Done.",
 		"7. Pan and zoom the canvas.",
+		"8. When your canvas is done, press Finish study.",
 	}
 	ui.Column(c).FillWidth().Gap(6).Children(func() {
 		for _, s := range steps {

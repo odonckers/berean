@@ -21,10 +21,12 @@ Usage:
   berean [-db berean.db] import <file.jwpub>
   berean [-db berean.db] cite <citation>
   berean [-db berean.db] bench
+  berean version
 
 With no command, berean opens the study window.
 The default database is berean.db in the current directory.
 bench prints p50, p95, and max frame time for pan and zoom with 200 cards.
+version prints the version linked in at build time.
 `
 
 func main() {
@@ -103,6 +105,12 @@ func run(args []string, logger *slog.Logger) error {
 			usage()
 		}
 		return read.CommandBench(os.Stdout, logger, dbPath)
+	case "version":
+		if len(rest) != 1 {
+			usage()
+		}
+		fmt.Println(read.Version)
+		return nil
 	default:
 		usage()
 	}

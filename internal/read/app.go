@@ -130,13 +130,13 @@ type App struct {
 	clock     func() time.Time
 	pickFiles func() ([]string, error)
 
-	studyOn   bool
-	phase     string
-	showSteps bool
-	setupNote string
-	hardest   string
-	comeBack  string
-	seenStudy map[string]bool
+	studyOn    bool
+	phase      string
+	showSteps  bool
+	setupNote  string
+	hardest    string
+	comeBack   string
+	benchReady bool
 
 	importMu     sync.Mutex
 	pendingPaths []string

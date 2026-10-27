@@ -131,18 +131,12 @@ func (a *App) logRSGOpened(docID int) {
 	a.writeStudy(map[string]any{"event": "rsg_opened", "document_id": docID})
 }
 
-// logShownError records an error the user can see, once per distinct line.
+// logShownError records an error the user can see. The same message is
+// recorded again each time it is shown.
 func (a *App) logShownError(citation, message string) {
 	if message == "" || !a.studyOn {
 		return
 	}
-	if a.seenStudy == nil {
-		a.seenStudy = map[string]bool{}
-	}
-	if a.seenStudy[message] {
-		return
-	}
-	a.seenStudy[message] = true
 	ev := map[string]any{"event": "error", "message": message}
 	if citation != "" {
 		ev["citation"] = citation
@@ -152,6 +146,15 @@ func (a *App) logShownError(citation, message string) {
 
 func (a *App) logPhase(phase, boundary string) {
 	a.writeStudy(map[string]any{"event": "phase", "phase": phase, "boundary": boundary})
+}
+
+func (a *App) logPhaseAt(phase, boundary string, at time.Time) {
+	a.writeStudy(map[string]any{
+		"event":    "phase",
+		"phase":    phase,
+		"boundary": boundary,
+		"time":     at.UTC().Format(time.RFC3339Nano),
+	})
 }
 
 // studyLines reads the log. A missing file is an empty session.

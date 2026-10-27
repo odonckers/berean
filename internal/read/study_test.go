@@ -129,6 +129,9 @@ func TestStudyHeaderAndReopen(t *testing.T) {
 	if !tt.HasText("Back button") || !tt.HasText("New note") {
 		t.Fatal("step list does not name the on-screen controls")
 	}
+	if !tt.HasText("8. When your canvas is done, press Finish study.") {
+		t.Fatal("step list does not tell Owen to press Finish study")
+	}
 	app.phase = phaseTask
 	app.logPhase(phaseTask, "start")
 	app2, err := New(lib, nil)
@@ -390,11 +393,24 @@ func TestBenchCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	app2.beginStudy()
+	if app2.phase != phaseBench {
+		t.Fatalf("phase %q before the bench frame", app2.phase)
+	}
+	tt := ui.NewTester(app2.View, 1440, 900)
+	if !tt.HasText(benchMessage) {
+		t.Fatal("the measuring message is not on screen")
+	}
+	if _, err := os.Stat(app2.benchPath()); !os.IsNotExist(err) {
+		t.Fatal("the bench ran before the measuring screen")
+	}
+	tt.SetPreferences(ui.Preferences{ReduceMotion: true, TextScale: 1})
 	fresh, ok := readBench(app2.benchPath())
 	if !ok || !fresh.At.After(b.At) {
 		t.Fatal("study start did not measure a bench when none was recent")
 	}
-	checkHeader(t, mustStudy(t, app2.studyPath())[0], false)
+	lines = mustStudy(t, app2.studyPath())
+	checkHeader(t, lines[0], false)
+	assertBenchPhase(t, lines)
 }
 
 func TestSampleStudyLog(t *testing.T) {
@@ -408,6 +424,7 @@ func TestSampleStudyLog(t *testing.T) {
 	}
 	lines := decodeLines(t, raw)
 	checkStudyLog(t, lines)
+	assertBenchOutside(t, lines)
 }
 
 func TestWriteSampleStudyLog(t *testing.T) {
@@ -439,6 +456,11 @@ func TestWriteSampleStudyLog(t *testing.T) {
 		return start.Add(time.Duration(n) * time.Second)
 	}
 	app.beginStudy()
+	tt := ui.NewTester(app.View, 1440, 900)
+	if !tt.HasText(benchMessage) {
+		t.Fatal("the measuring message is not on screen")
+	}
+	tt.SetPreferences(ui.Preferences{ReduceMotion: true, TextScale: 1})
 	app.logPhase(phaseSetup, "start")
 	app.logPhase(phaseSetup, "end")
 	app.phase = phaseTask
@@ -446,7 +468,7 @@ func TestWriteSampleStudyLog(t *testing.T) {
 	w, nwt, rsg := pubSymbol(t, app, "w23"), pubSymbol(t, app, "nwt"), pubSymbol(t, app, "rsg")
 	app.pubID = rsg.ID
 	app.docID = 2
-	tt := ui.NewTester(app.View, 1440, 900)
+	tt = ui.NewTester(app.View, 1440, 900)
 	tt.SetPreferences(ui.Preferences{ReduceMotion: true, TextScale: 1})
 	tt.Frame()
 	app.pubID = w.ID
@@ -507,6 +529,7 @@ func TestWriteSampleStudyLog(t *testing.T) {
 	}
 	lines := decodeLines(t, raw)
 	checkStudyLog(t, lines)
+	assertBenchOutside(t, lines)
 	out := filepath.Join("..", "..", "docs", "sample-study-log.jsonl")
 	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
 		t.Fatal(err)
@@ -515,6 +538,93 @@ func TestWriteSampleStudyLog(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("wrote %s", out)
+}
+
+func TestBenchTimeIsOutsideSetupAndTask(t *testing.T) {
+	dir := t.TempDir()
+	lib, err := library.Open(filepath.Join(dir, "berean.db"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { lib.Close() })
+	app, err := New(lib, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Date(2026, 10, 26, 15, 0, 0, 0, time.UTC)
+	n := 0
+	app.clock = func() time.Time {
+		n++
+		return start.Add(time.Duration(n) * time.Second)
+	}
+	app.beginStudy()
+	if app.phase != phaseBench {
+		t.Fatalf("phase %q", app.phase)
+	}
+	tt := ui.NewTester(app.View, 1440, 900)
+	if !tt.HasText(benchMessage) {
+		t.Fatal("the measuring message is not on screen")
+	}
+	saveShot(t, tt, "measuring-performance.png")
+	if _, err := os.Stat(app.studyPath()); !os.IsNotExist(err) {
+		t.Fatal("the study log was written before the bench finished")
+	}
+	tt.SetPreferences(ui.Preferences{ReduceMotion: true, TextScale: 1})
+	if !tt.HasText(studyPrompt) {
+		t.Fatal("the prompt did not follow the bench")
+	}
+	if err := tt.Click("Continue"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	app.logPhase(phaseSetup, "end")
+	app.phase = phaseTask
+	app.logPhase(phaseTask, "start")
+	app.logPhase(phaseTask, "end")
+	lines := mustStudy(t, app.studyPath())
+	if lines[0]["event"] != "header" {
+		t.Fatalf("first event %v", lines[0]["event"])
+	}
+	assertBenchOutside(t, lines)
+}
+
+func TestRepeatedErrorIsLoggedTwice(t *testing.T) {
+	dir := t.TempDir()
+	lib, err := library.Open(filepath.Join(dir, "berean.db"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { lib.Close() })
+	writeStubBench(t, lib.Path())
+	app, err := New(lib, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	app.beginStudy()
+	const broken = "See w23.13 p. 2 par. 1."
+	app.noteDraft = broken
+	first := app.draftErrors()
+	if len(first) != 1 {
+		t.Fatalf("first showing %#v", first)
+	}
+	app.noteDraft = "No citation in this draft."
+	if again := app.draftErrors(); len(again) != 0 {
+		t.Fatalf("clear draft %#v", again)
+	}
+	app.noteDraft = broken
+	second := app.draftErrors()
+	if len(second) != 1 || second[0] != first[0] {
+		t.Fatalf("second showing %#v, first %#v", second, first)
+	}
+	var messages []string
+	for _, ev := range mustStudy(t, app.studyPath()) {
+		if ev["event"] == "error" {
+			messages = append(messages, str(ev["message"]))
+		}
+	}
+	if len(messages) != 2 || messages[0] != first[0] || messages[1] != first[0] {
+		t.Fatalf("error events %#v", messages)
+	}
 }
 
 func writeStubBench(t *testing.T, db string) {
@@ -596,6 +706,42 @@ func checkHeader(t *testing.T, ev map[string]any, live bool) {
 	if ev["time"] == "" {
 		t.Fatal("header has no time")
 	}
+}
+
+func assertBenchPhase(t *testing.T, lines []map[string]any) {
+	t.Helper()
+	start, end := phaseTime(t, lines, "bench", "start"), phaseTime(t, lines, "bench", "end")
+	if !start.Before(end) {
+		t.Fatalf("bench %s .. %s", start, end)
+	}
+}
+
+func assertBenchOutside(t *testing.T, lines []map[string]any) {
+	t.Helper()
+	benchStart := phaseTime(t, lines, "bench", "start")
+	benchEnd := phaseTime(t, lines, "bench", "end")
+	setupStart := phaseTime(t, lines, "setup", "start")
+	setupEnd := phaseTime(t, lines, "setup", "end")
+	taskStart := phaseTime(t, lines, "task", "start")
+	taskEnd := phaseTime(t, lines, "task", "end")
+	if !benchStart.Before(benchEnd) || !benchEnd.Before(setupStart) || !setupStart.Before(setupEnd) || !setupEnd.Before(taskStart) || !taskStart.Before(taskEnd) {
+		t.Fatalf("bench %s..%s setup %s..%s task %s..%s", benchStart, benchEnd, setupStart, setupEnd, taskStart, taskEnd)
+	}
+}
+
+func phaseTime(t *testing.T, lines []map[string]any, phase, boundary string) time.Time {
+	t.Helper()
+	for _, ev := range lines {
+		if str(ev["event"]) == "phase" && str(ev["phase"]) == phase && str(ev["boundary"]) == boundary {
+			at, err := time.Parse(time.RFC3339Nano, str(ev["time"]))
+			if err != nil {
+				t.Fatal(err)
+			}
+			return at
+		}
+	}
+	t.Fatalf("log missing phase %s %s", phase, boundary)
+	return time.Time{}
 }
 
 func checkStudyLog(t *testing.T, lines []map[string]any) {

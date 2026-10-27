@@ -119,24 +119,6 @@ func writeBench(path string, b benchResult) error {
 	return writeAtomic(path, raw)
 }
 
-// ensureBench returns a bench result for this version and card count from
-// the last day, measuring one when the file is missing or stale.
-func (a *App) ensureBench() benchResult {
-	path := a.benchPath()
-	if path != "" {
-		if b, ok := readBench(path); ok && b.recent() {
-			return b
-		}
-	}
-	b := measureBench(a.log)
-	if path != "" {
-		if err := writeBench(path, b); err != nil {
-			a.log.Error("bench save", "err", err)
-		}
-	}
-	return b
-}
-
 // CommandBench prints the pan and zoom summary and stores the result beside
 // the database. It returns an error when a frame misses the budget.
 func CommandBench(w io.Writer, log *slog.Logger, dbPath string) error {
