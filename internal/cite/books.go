@@ -105,3 +105,26 @@ func BookName(n int) string {
 	}
 	return books[n-1].long
 }
+
+// BookTitle is the full book name, such as "Matthew".
+func BookTitle(n int) string {
+	if n < 1 || n > len(books) {
+		return "?"
+	}
+	return books[n-1].name
+}
+
+// BookTitles returns the 66 full book names, in book order.
+func BookTitles() []string {
+	out := make([]string, len(books))
+	for i, b := range books {
+		out[i] = b.name
+	}
+	return out
+}
+
+// BookByName reports the book number for a full name or an abbreviation.
+func BookByName(s string) (int, bool) {
+	n, ok := bookByKey[normKey(s)]
+	return n, ok
+}

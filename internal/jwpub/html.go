@@ -9,6 +9,9 @@ import (
 )
 
 // Paragraph is one data-pid block of a document, with the printed page span.
+// Text is the plain citation text, including the paragraph number when the
+// publication prints one. Markup is the readable form: headings, emphasis,
+// and links, without the paragraph-number span.
 type Paragraph struct {
 	Index     int
 	Number    int
@@ -16,6 +19,7 @@ type Paragraph struct {
 	FirstPage int
 	LastPage  int
 	Text      string
+	Markup    string
 }
 
 func paragraphsFromHTML(src string) ([]Paragraph, error) {
@@ -48,6 +52,7 @@ func paragraphsFromHTML(src string) ([]Paragraph, error) {
 				FirstPage: start,
 				LastPage:  end,
 				Text:      plainText(n),
+				Markup:    markupNode(n),
 			})
 			return
 		}

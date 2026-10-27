@@ -83,3 +83,52 @@ func TestParagraphPages(t *testing.T) {
 		t.Fatal("page marker leaked into the text")
 	}
 }
+
+func TestMarkup(t *testing.T) {
+	const src = `
+<p data-pid="8" class="sb"><span class="parNum" data-pnum="3"><strong><sup>3</sup></strong></span> How <em>can</em> we <a href="jwpub://b/NWTR/40:24:14-40:24:14"><strong>help</strong></a> others</p>
+<h2 data-pid="9"><strong>THE BIBLE’S MESSAGE</strong></h2>`
+	got, err := paragraphsFromHTML(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("paragraphs = %d", len(got))
+	}
+	if got[0].Text != "3 How can we help others" {
+		t.Fatalf("plain = %q", got[0].Text)
+	}
+	m, err := DecodeMark(got[0].Markup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Heading != 0 {
+		t.Fatalf("heading = %d", m.Heading)
+	}
+	var b strings.Builder
+	for _, r := range m.Runs {
+		b.WriteString(r.Text)
+	}
+	if b.String() != "How can we help others" {
+		t.Fatalf("markup text = %q, runs %+v", b.String(), m.Runs)
+	}
+	if !m.Runs[1].Italic || strings.TrimSpace(m.Runs[1].Text) != "can" {
+		t.Fatalf("italic run = %+v", m.Runs)
+	}
+	var link Run
+	for _, r := range m.Runs {
+		if r.Href != "" {
+			link = r
+		}
+	}
+	if !link.Bold || link.Href != "jwpub://b/NWTR/40:24:14-40:24:14" || strings.TrimSpace(link.Text) != "help" {
+		t.Fatalf("link run = %+v", link)
+	}
+	head, err := DecodeMark(got[1].Markup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if head.Heading != 2 || len(head.Runs) != 1 || !head.Runs[0].Bold || head.Runs[0].Text != "THE BIBLE’S MESSAGE" {
+		t.Fatalf("heading mark = %+v", head)
+	}
+}

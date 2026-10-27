@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -66,6 +67,7 @@ CREATE TABLE IF NOT EXISTS paragraph (
 	first_page INTEGER NOT NULL,
 	last_page INTEGER NOT NULL,
 	text TEXT NOT NULL,
+	markup TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (publication_id, document_id, paragraph_index, ordinal),
 	FOREIGN KEY (publication_id, document_id) REFERENCES document(publication_id, document_id) ON DELETE CASCADE
 );
@@ -79,6 +81,7 @@ CREATE TABLE IF NOT EXISTS verse (
 	chapter INTEGER NOT NULL,
 	verse INTEGER NOT NULL,
 	text TEXT NOT NULL,
+	markup TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (publication_id, book, chapter, verse)
 );
 
@@ -203,6 +206,15 @@ func (l *Library) init() error {
 	}
 	if _, err := l.db.Exec(schema); err != nil {
 		return fmt.Errorf("create schema: %w", err)
+	}
+	// Databases created before reading panes have no markup column.
+	for _, q := range []string{
+		`ALTER TABLE paragraph ADD COLUMN markup TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE verse ADD COLUMN markup TEXT NOT NULL DEFAULT ''`,
+	} {
+		if _, err := l.db.Exec(q); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return fmt.Errorf("migrate schema: %w", err)
+		}
 	}
 	return nil
 }
@@ -337,8 +349,8 @@ func insertContent(ctx context.Context, tx *sql.Tx, pub *jwpub.Publication, pubI
 	defer docStmt.Close()
 	parStmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO paragraph (
-			publication_id, document_id, paragraph_index, ordinal, paragraph_number, first_page, last_page, text
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+			publication_id, document_id, paragraph_index, ordinal, paragraph_number, first_page, last_page, text, markup
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return c, err
 	}
@@ -362,7 +374,7 @@ func insertContent(ctx context.Context, tx *sql.Tx, pub *jwpub.Publication, pubI
 			if para.Numbered {
 				num = para.Number
 			}
-			if _, err := parStmt.ExecContext(ctx, pubID, d.ID, para.Index, ord, num, para.FirstPage, para.LastPage, para.Text); err != nil {
+			if _, err := parStmt.ExecContext(ctx, pubID, d.ID, para.Index, ord, num, para.FirstPage, para.LastPage, para.Text, para.Markup); err != nil {
 				return fmt.Errorf("document %d paragraph %d: %w", d.ID, para.Index, err)
 			}
 			c.paras++
@@ -377,13 +389,13 @@ func insertContent(ctx context.Context, tx *sql.Tx, pub *jwpub.Publication, pubI
 		return c, nil
 	}
 	verseStmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO verse (publication_id, book, chapter, verse, text) VALUES (?, ?, ?, ?, ?)`)
+		INSERT INTO verse (publication_id, book, chapter, verse, text, markup) VALUES (?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return c, err
 	}
 	defer verseStmt.Close()
 	err = pub.ForEachVerse(ctx, func(v jwpub.Verse) error {
-		if _, err := verseStmt.ExecContext(ctx, pubID, v.Book, v.Chapter, v.Verse, v.Text); err != nil {
+		if _, err := verseStmt.ExecContext(ctx, pubID, v.Book, v.Chapter, v.Verse, v.Text, v.Markup); err != nil {
 			return fmt.Errorf("verse %d:%d:%d: %w", v.Book, v.Chapter, v.Verse, err)
 		}
 		c.verses++

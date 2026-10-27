@@ -10,6 +10,7 @@ import (
 
 	"github.com/odonckers/berean/internal/cite"
 	"github.com/odonckers/berean/internal/library"
+	"github.com/odonckers/berean/internal/read"
 )
 
 const usageText = `berean is a personal study library.
@@ -17,6 +18,7 @@ const usageText = `berean is a personal study library.
 Usage:
   berean [-db berean.db] import <file.jwpub>
   berean [-db berean.db] cite <citation>
+  berean [-db berean.db] open
 
 The default database is berean.db in the current directory.
 `
@@ -87,6 +89,16 @@ func run(args []string, logger *slog.Logger) error {
 		logger.Info("resolved", "citation", q, "hits", len(hits), "duration", time.Since(start))
 		printHits(os.Stdout, hits)
 		return nil
+	case "open":
+		if len(rest) != 1 {
+			usage()
+		}
+		lib, err := library.Open(dbPath, logger)
+		if err != nil {
+			return err
+		}
+		defer lib.Close()
+		return read.Run(lib, logger)
 	default:
 		usage()
 	}
