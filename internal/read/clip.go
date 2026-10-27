@@ -12,16 +12,19 @@ import (
 const (
 	kindPublication = "publication"
 	kindBible       = "bible"
+	kindNote        = "note"
 )
 
 // Clip is one passage sitting on the canvas. It is plain data, the shape a
 // later change can store: where it came from, the text, the citation, and
 // its place on the canvas. Nothing here is view state.
 type Clip struct {
-	ID       int64   `json:"id"`
-	Kind     string  `json:"kind"` // "publication" or "bible"
-	Citation string  `json:"citation"`
-	Text     string  `json:"text"`
+	ID       int64  `json:"id"`
+	Kind     string `json:"kind"` // "publication", "bible", or "note"
+	Citation string `json:"citation"`
+	Text     string `json:"text"`
+	// Markdown is the note, with citations stored as jwcite: links.
+	Markdown string  `json:"markdown,omitempty"`
 	X        float32 `json:"x"`
 	Y        float32 `json:"y"`
 
@@ -117,15 +120,15 @@ func (a *App) versePassage(cell verseCell, verse int) passage {
 			if c.pub.ID != cell.pub.ID || !c.present {
 				continue
 			}
-			if s := runText(c.runs); s != "" {
-				parts = append(parts, s)
+			if s := runsToClip(c.runs); s != "" {
+				parts = append(parts, fmt.Sprintf("%d %s", line.verse, s))
 			}
 		}
 	}
 	return passage{Clip: Clip{
 		Kind:     kindBible,
 		Citation: scriptureCitation(a.book, a.chapter, from, to),
-		Text:     strings.Join(parts, " "),
+		Text:     strings.Join(parts, "\n"),
 		BibleID:  cell.pub.ID,
 		Symbol:   cell.pub.Symbol,
 		Year:     cell.pub.Year,
@@ -152,10 +155,31 @@ func runText(runs []jwpub.Run) string {
 }
 
 func showRun(r jwpub.Run) string {
+	if r.Break {
+		return " "
+	}
 	if r.Sup {
 		return superscript(r.Text)
 	}
 	return r.Text
+}
+
+// runsToClip keeps poetry lines. The reading pane joins a break as a space
+// so a verse still reads as one sentence there.
+func runsToClip(runs []jwpub.Run) string {
+	var b strings.Builder
+	for _, r := range runs {
+		if r.Break {
+			b.WriteByte('\n')
+			continue
+		}
+		b.WriteString(showRun(r))
+	}
+	lines := strings.Split(b.String(), "\n")
+	for i := range lines {
+		lines[i] = strings.TrimSpace(lines[i])
+	}
+	return strings.Trim(strings.Join(lines, "\n"), "\n")
 }
 
 // superscript lifts a footnote marker. MyGo has no baseline shift, and these

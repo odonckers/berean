@@ -155,6 +155,12 @@ type Hit struct {
 	Book        int
 	Chapter     int
 	Verse       int
+
+	// Where the hit is stored, so a citation can open that place.
+	// ParagraphIndex is the document's paragraph index (data-pid).
+	PubID          int64
+	DocumentID     int
+	ParagraphIndex int
 }
 
 // Stats is a row count of the whole library.

@@ -3,23 +3,44 @@ package library
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/odonckers/berean/internal/cite"
 )
 
+// ResolveError is a citation that could not be resolved.
+// Result is ok's counterpart: wrong_page, missing_publication, or parse_error.
+type ResolveError struct {
+	Result string
+	msg    string
+	Err    error
+}
+
+func (e *ResolveError) Error() string { return e.msg }
+
+func (e *ResolveError) Unwrap() error { return e.Err }
+
 // Resolve parses citation and returns the stored text it points at.
+// It logs one structured result: ok, wrong_page, missing_publication,
+// parse_error, or error.
 func (l *Library) Resolve(ctx context.Context, citation string) ([]Hit, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	hits, err := l.resolve(ctx, citation)
+	l.logResolve(citation, hits, err)
+	return hits, err
+}
+
+func (l *Library) resolve(ctx context.Context, citation string) ([]Hit, error) {
 	c, err := cite.Parse(citation)
 	if err != nil {
-		return nil, err
+		return nil, &ResolveError{Result: "parse_error", Err: err, msg: fmt.Sprintf("Couldn't read the citation %q.", citation)}
 	}
 	switch c.Kind {
 	case cite.KindPub:
-		return l.resolvePub(ctx, c)
+		return l.resolvePub(ctx, citation, c)
 	case cite.KindBible:
 		return l.resolveBible(ctx, c, false)
 	case cite.KindStudyNote:
@@ -37,7 +58,7 @@ type pubRow struct {
 	Year, Month, Day int
 }
 
-func (l *Library) resolvePub(ctx context.Context, c cite.Citation) ([]Hit, error) {
+func (l *Library) resolvePub(ctx context.Context, citation string, c cite.Citation) ([]Hit, error) {
 	q := `SELECT id, symbol, title, issue_title, year, month, day
 		FROM publication WHERE meps_language=? AND cite_symbol=?`
 	args := []any{resolveLanguage, c.Symbol}
@@ -59,47 +80,51 @@ func (l *Library) resolvePub(ctx context.Context, c cite.Citation) ([]Hit, error
 		return nil, err
 	}
 	if len(pubs) == 0 {
-		return nil, fmt.Errorf("no publication for %s", pubLabel(c))
+		return nil, &ResolveError{Result: "missing_publication", msg: importHint(c)}
 	}
 	if len(c.Pages) == 0 || len(c.Pars) == 0 {
 		return nil, fmt.Errorf("%s needs a page and a paragraph", pubLabel(c))
 	}
 	var hits []Hit
-	var wrongPage error
 	err = eachNumber(c.Pars, func(n int) error {
 		found := false
-		sawParagraph := false
+		var spans []pageSpan
+		seen := map[[2]int]bool{}
 		for _, pub := range pubs {
 			rows, err := l.paragraphs(ctx, pub.ID, n)
 			if err != nil {
 				return err
 			}
-			if len(rows) > 0 {
-				sawParagraph = true
-			}
 			for _, row := range rows {
+				key := [2]int{row.first, row.last}
+				if !seen[key] {
+					seen[key] = true
+					spans = append(spans, pageSpan{row.first, row.last})
+				}
 				if !overlaps(row.first, row.last, c.Pages) {
 					continue
 				}
 				found = true
 				hits = append(hits, Hit{
-					Kind:        cite.KindPub,
-					Publication: displayTitle(pub.IssueTitle, pub.Title),
-					Symbol:      pub.Symbol,
-					Document:    row.title,
-					Text:        row.text,
-					Year:        pub.Year,
-					Month:       pub.Month,
-					Day:         pub.Day,
-					Page:        citedPage(row.first, row.last, c.Pages),
-					Paragraph:   n,
+					Kind:           cite.KindPub,
+					Publication:    displayTitle(pub.IssueTitle, pub.Title),
+					Symbol:         pub.Symbol,
+					Document:       row.title,
+					Text:           row.text,
+					Year:           pub.Year,
+					Month:          pub.Month,
+					Day:            pub.Day,
+					Page:           citedPage(row.first, row.last, c.Pages),
+					Paragraph:      n,
+					PubID:          pub.ID,
+					DocumentID:     row.docID,
+					ParagraphIndex: row.index,
 				})
 			}
 		}
 		if !found {
-			if sawParagraph {
-				wrongPage = fmt.Errorf("par. %d is not on p. %s", n, pagePhrase(c.Pages))
-				return wrongPage
+			if len(spans) > 0 {
+				return wrongPage(citation, n, spans, c.Pages)
 			}
 			return fmt.Errorf("par. %d was not found in %s", n, pubLabel(c))
 		}
@@ -112,14 +137,15 @@ func (l *Library) resolvePub(ctx context.Context, c cite.Citation) ([]Hit, error
 }
 
 type paraRow struct {
-	title       string
-	text        string
-	first, last int
+	docID, index int
+	title        string
+	text         string
+	first, last  int
 }
 
 func (l *Library) paragraphs(ctx context.Context, pubID int64, number int) ([]paraRow, error) {
 	rows, err := l.db.QueryContext(ctx, `
-		SELECT d.title, p.text, p.first_page, p.last_page
+		SELECT d.document_id, p.paragraph_index, d.title, p.text, p.first_page, p.last_page
 		FROM paragraph p
 		JOIN document d
 		  ON d.publication_id = p.publication_id AND d.document_id = p.document_id
@@ -132,7 +158,7 @@ func (l *Library) paragraphs(ctx context.Context, pubID int64, number int) ([]pa
 	var out []paraRow
 	for rows.Next() {
 		var r paraRow
-		if err := rows.Scan(&r.title, &r.text, &r.first, &r.last); err != nil {
+		if err := rows.Scan(&r.docID, &r.index, &r.title, &r.text, &r.first, &r.last); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -206,6 +232,7 @@ func (l *Library) bibleHits(ctx context.Context, pub pubRow, c cite.Citation, ki
 		hits[i].Symbol = pub.Symbol
 		hits[i].Year, hits[i].Month, hits[i].Day = pub.Year, pub.Month, pub.Day
 		hits[i].Kind = kind
+		hits[i].PubID = pub.ID
 	}
 	return hits, nil
 }
@@ -326,6 +353,71 @@ func pubLabel(c cite.Citation) string {
 		}
 	}
 	return s
+}
+
+type pageSpan struct{ first, last int }
+
+func wrongPage(citation string, n int, spans []pageSpan, cited []cite.Range) error {
+	return &ResolveError{
+		Result: "wrong_page",
+		msg:    fmt.Sprintf("%s: par. %d is on %s, not p. %s", citation, n, formatSpans(spans), pagePhrase(cited)),
+	}
+}
+
+// formatSpans lists every page span of a paragraph. One span stays "p. 2"
+// or "pp. 3-4". Several spans read "pp. 2, 8-9, and 14-15".
+func formatSpans(spans []pageSpan) string {
+	if len(spans) == 1 {
+		return oneSpan(spans[0], true)
+	}
+	parts := make([]string, len(spans))
+	for i, s := range spans {
+		parts[i] = oneSpan(s, false)
+	}
+	return "pp. " + joinAnd(parts)
+}
+
+func oneSpan(s pageSpan, label bool) string {
+	if s.last > s.first {
+		if label {
+			return fmt.Sprintf("pp. %d-%d", s.first, s.last)
+		}
+		return fmt.Sprintf("%d-%d", s.first, s.last)
+	}
+	if label {
+		return fmt.Sprintf("p. %d", s.first)
+	}
+	return fmt.Sprintf("%d", s.first)
+}
+
+func joinAnd(parts []string) string {
+	switch len(parts) {
+	case 0:
+		return ""
+	case 1:
+		return parts[0]
+	case 2:
+		return parts[0] + " and " + parts[1]
+	default:
+		return strings.Join(parts[:len(parts)-1], ", ") + ", and " + parts[len(parts)-1]
+	}
+}
+
+func (l *Library) logResolve(citation string, hits []Hit, err error) {
+	if err == nil {
+		l.log.Info("citation", "result", "ok", "citation", citation, "hits", len(hits))
+		return
+	}
+	result := "error"
+	var re *ResolveError
+	if errors.As(err, &re) {
+		result = re.Result
+	}
+	if re != nil && re.Err != nil {
+		l.log.Error("citation", "result", result, "citation", citation, "err", err, "detail", re.Err)
+		return
+	}
+	l.log.Error("citation", "result", result, "citation", citation, "err", err)
 }
 
 func scriptureLabel(c cite.Citation) string {

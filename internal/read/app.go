@@ -103,6 +103,8 @@ type App struct {
 	paneSplit float32
 
 	panX, panY, zoom float32
+	canvasView       ui.Handle
+	viewW, viewH     float32
 	panning          bool
 	panLX, panLY     float32
 	cards            []Clip
@@ -110,6 +112,17 @@ type App struct {
 	movingCard       int64
 	grabX, grabY     float32
 	laidOut          map[int64][2]float32
+	boxes            map[int64]cardBox
+
+	citeCache   map[string]citeMemo
+	noteCache   map[string][]notePara
+	openChip    map[string]bool
+	editingNote int64
+	noteDraft   string
+	armNote     bool
+	problemSrc  string
+	problemOK   bool
+	problems    []string
 
 	status string
 }
@@ -135,6 +148,10 @@ func New(lib *library.Library, log *slog.Logger) (*App, error) {
 		paneSplit:     50,
 		zoom:          1,
 		laidOut:       map[int64][2]float32{},
+		boxes:         map[int64]cardBox{},
+		citeCache:     map[string]citeMemo{},
+		noteCache:     map[string][]notePara{},
+		openChip:      map[string]bool{},
 	}
 	for _, p := range pubs {
 		if p.Type == "Bible" {
@@ -481,6 +498,10 @@ func (a *App) verseRow(c *ui.Context, line verseLine, scrollMark bool) {
 func (a *App) paintRuns(c *ui.Context, runs []jwpub.Run) {
 	t := c.Theme()
 	for _, r := range runs {
+		if r.Break {
+			ui.Text(c, " ")
+			continue
+		}
 		if r.Text == "" {
 			continue
 		}
