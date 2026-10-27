@@ -46,6 +46,8 @@ type Citation struct {
 	Pages, Pars []Range
 	UnitKind    string
 	Unit        int
+	// Title is an article name written after it-1 or it-2, as in "it-2 Sovereignty".
+	Title string
 
 	// Scripture or study note.
 	Book  int
@@ -81,6 +83,9 @@ func (c Citation) String() string {
 	}
 	if c.UnitKind != "" {
 		s += fmt.Sprintf(" %s %d", c.UnitKind, c.Unit)
+	}
+	if c.Title != "" {
+		s += " " + c.Title
 	}
 	if len(c.Pages) > 0 {
 		s += " p." + rangesStr(c.Pages)
@@ -292,7 +297,7 @@ func (p *parser) pub() (Citation, error) {
 			c.Pars = rs
 		case p.unit(&c):
 		default:
-			if len(c.Pages) == 0 && len(c.Pars) == 0 && p.startsNumber() {
+			if len(c.Pages) == 0 && len(c.Pars) == 0 && c.Unit == 0 && p.startsNumber() {
 				rs, err := p.rangeList()
 				if err != nil {
 					return Citation{}, err
@@ -300,11 +305,136 @@ func (p *parser) pub() (Citation, error) {
 				c.Pages = rs
 				continue
 			}
+			if c.Title == "" && insightCite(c.Symbol) && len(c.Pages) == 0 && len(c.Pars) == 0 && c.Unit == 0 {
+				if title, ok := p.articleTitle(); ok {
+					c.Title = title
+					continue
+				}
+			}
 			return c, nil
 		}
 		p.lit(",")
 	}
 	return c, nil
+}
+
+// insightCite is an Insight volume written the way the Research Guide cites it.
+// Both volumes live in the publication whose symbol is it.
+func insightCite(symbol string) bool {
+	return symbol == "it-1" || symbol == "it-2"
+}
+
+// articleTitle reads an Insight article name, such as "Sovereignty" or
+// "Guard, Gate of the". It stops before a following word that is not part
+// of a name. A name may end with a small word ("of the") when nothing follows.
+func (p *parser) articleTitle() (string, bool) {
+	start := p.pos
+	type piece struct {
+		end  int
+		word string
+	}
+	var pieces []piece
+	for {
+		save := p.pos
+		p.ws()
+		w, ok := p.titleToken()
+		if !ok {
+			p.pos = save
+			break
+		}
+		if !titleTokenOK(strings.TrimRight(w, ",")) {
+			p.pos = save
+			break
+		}
+		pieces = append(pieces, piece{p.pos, w})
+	}
+	if len(pieces) == 0 {
+		p.pos = start
+		return "", false
+	}
+	save := p.pos
+	p.ws()
+	more := p.pos < len(p.s)
+	p.pos = save
+	// A small word such as "and" joins a sentence. "of" and "the" can end an
+	// article name ("Guard, Gate of the"), so those stay when nothing follows.
+	for len(pieces) > 0 {
+		bare := strings.TrimRight(pieces[len(pieces)-1].word, ",")
+		if !titleConnector(bare) {
+			break
+		}
+		if !more && titleEndWord(bare) {
+			break
+		}
+		pieces = pieces[:len(pieces)-1]
+	}
+	if len(pieces) == 0 || !hasUpper(pieces[0].word) {
+		p.pos = start
+		return "", false
+	}
+	p.pos = pieces[len(pieces)-1].end
+	words := make([]string, len(pieces))
+	for i, pc := range pieces {
+		words[i] = pc.word
+	}
+	return strings.Join(words, " "), true
+}
+
+func (p *parser) titleToken() (string, bool) {
+	if p.pos >= len(p.s) || !unicode.IsLetter(p.s[p.pos]) {
+		return "", false
+	}
+	st := p.pos
+	for p.pos < len(p.s) {
+		r := p.s[p.pos]
+		if unicode.IsLetter(r) || r == '\'' || r == '’' || r == '‘' || r == 'ʼ' || r == '-' {
+			p.pos++
+			continue
+		}
+		break
+	}
+	if p.pos == st || p.s[p.pos-1] == '-' {
+		p.pos = st
+		return "", false
+	}
+	w := string(p.s[st:p.pos])
+	if p.pos < len(p.s) && p.s[p.pos] == ',' {
+		p.pos++
+		w += ","
+	}
+	return w, true
+}
+
+func titleTokenOK(word string) bool {
+	return titleConnector(word) || hasUpper(word)
+}
+
+func titleConnector(word string) bool {
+	switch strings.ToLower(word) {
+	case "a", "an", "and", "the", "of", "to", "in", "on", "for", "from", "also", "or":
+		return true
+	default:
+		return false
+	}
+}
+
+// titleEndWord is a small word an Insight article name can end with.
+func titleEndWord(word string) bool {
+	switch strings.ToLower(word) {
+	case "of", "the", "to", "in":
+		return true
+	default:
+		return false
+	}
+}
+
+func hasUpper(word string) bool {
+	for _, r := range word {
+		if unicode.IsUpper(r) {
+			return true
+		}
+	}
+	return false
 }
 
 func (p *parser) symbol() (string, bool) {

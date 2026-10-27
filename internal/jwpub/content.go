@@ -42,6 +42,131 @@ type CrossRef struct {
 	Block, Element                                  int
 }
 
+// DocumentVolumes reports which volume each document belongs to, for the
+// Insight publication that holds both volumes. The table of contents names
+// "Volume 1" and "Volume 2" and points those headings at the endsheets that
+// bracket each volume. Documents are stored in reading order, so a document
+// id between those ends belongs to that volume. The map is empty when this
+// file does not say, including every publication other than it.
+func (p *Publication) DocumentVolumes(ctx context.Context) (map[int]int, error) {
+	if p.meta.Symbol != "it" && p.meta.CiteSymbol != "it" {
+		return nil, nil
+	}
+	var n int
+	if err := p.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='PublicationViewItem'`).Scan(&n); err != nil {
+		return nil, err
+	}
+	if n == 0 {
+		return nil, nil
+	}
+	rows, err := p.db.QueryContext(ctx, `
+		SELECT PublicationViewItemId, ParentPublicationViewItemId, COALESCE(Title, ''), DefaultDocumentId
+		FROM PublicationViewItem`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	type item struct {
+		parent, doc int
+		title       string
+	}
+	items := map[int]item{}
+	children := map[int][]int{}
+	for rows.Next() {
+		var id, parent, doc int
+		var title string
+		if err := rows.Scan(&id, &parent, &title, &doc); err != nil {
+			return nil, err
+		}
+		items[id] = item{parent: parent, doc: doc, title: title}
+		children[parent] = append(children[parent], id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	byVol := map[int][]int{}
+	var walk func(int, *[]int)
+	walk = func(id int, out *[]int) {
+		it := items[id]
+		if it.doc >= 0 {
+			*out = append(*out, it.doc)
+		}
+		for _, child := range children[id] {
+			walk(child, out)
+		}
+	}
+	for id, it := range items {
+		vol, ok := insightVolumeTitle(it.title)
+		if !ok {
+			continue
+		}
+		var docs []int
+		walk(id, &docs)
+		byVol[vol] = append(byVol[vol], docs...)
+	}
+	type span struct{ vol, min, max int }
+	var spans []span
+	for vol, ids := range byVol {
+		if len(ids) == 0 {
+			continue
+		}
+		min, max := ids[0], ids[0]
+		for _, id := range ids {
+			if id < min {
+				min = id
+			}
+			if id > max {
+				max = id
+			}
+		}
+		spans = append(spans, span{vol, min, max})
+	}
+	for i := range spans {
+		for j := i + 1; j < len(spans); j++ {
+			if spans[i].min <= spans[j].max && spans[j].min <= spans[i].max {
+				return nil, nil
+			}
+		}
+	}
+	if len(spans) == 0 {
+		return nil, nil
+	}
+	idRows, err := p.db.QueryContext(ctx, `SELECT DocumentId FROM Document`)
+	if err != nil {
+		return nil, err
+	}
+	defer idRows.Close()
+	out := map[int]int{}
+	for idRows.Next() {
+		var id int
+		if err := idRows.Scan(&id); err != nil {
+			return nil, err
+		}
+		vol, n := 0, 0
+		for _, s := range spans {
+			if id >= s.min && id <= s.max {
+				vol = s.vol
+				n++
+			}
+		}
+		if n == 1 {
+			out[id] = vol
+		}
+	}
+	return out, idRows.Err()
+}
+
+func insightVolumeTitle(title string) (int, bool) {
+	switch strings.ToLower(strings.TrimSpace(title)) {
+	case "volume 1":
+		return 1, true
+	case "volume 2":
+		return 2, true
+	default:
+		return 0, false
+	}
+}
+
 // ForEachDocument decrypts every document and calls fn with its paragraphs.
 func (p *Publication) ForEachDocument(ctx context.Context, fn func(Document) error) error {
 	numbers, err := p.paragraphNumbers(ctx)

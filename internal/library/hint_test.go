@@ -24,6 +24,19 @@ func TestImportHint(t *testing.T) {
 	if got := importHint(missing); !strings.Contains(got, "It is not in the library.") || strings.Contains(got, "no publication") {
 		t.Fatalf("unknown publication %q", got)
 	}
+	for _, sym := range []string{"it-1", "it-2"} {
+		got := importHint(cite.Citation{Kind: cite.KindPub, Symbol: sym, Title: "Sovereignty"})
+		if got != "Import Insight on the Scriptures (it)." {
+			t.Fatalf("%s hint %q", sym, got)
+		}
+		if strings.Contains(got, "Volume") {
+			t.Fatalf("%s hint names a volume: %q", sym, got)
+		}
+	}
+	plain := importHint(cite.Citation{Kind: cite.KindPub, Symbol: "it"})
+	if plain != "Import the publication it. It is not in the library." {
+		t.Fatalf("plain it hint %q", plain)
+	}
 }
 
 func TestResolveLogsOnEmptyLibrary(t *testing.T) {

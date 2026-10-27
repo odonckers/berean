@@ -59,28 +59,28 @@ type pubRow struct {
 }
 
 func (l *Library) resolvePub(ctx context.Context, citation string, c cite.Citation) ([]Hit, error) {
-	q := `SELECT id, symbol, title, issue_title, year, month, day
-		FROM publication WHERE meps_language=? AND cite_symbol=?`
-	args := []any{resolveLanguage, c.Symbol}
-	if c.Year != 0 {
-		q += ` AND year=?`
-		args = append(args, c.Year)
-	}
-	if c.Month != 0 {
-		q += ` AND month=?`
-		args = append(args, c.Month)
-	}
-	if c.Day != 0 {
-		q += ` AND day=?`
-		args = append(args, c.Day)
-	}
-	q += ` ORDER BY year, issue_tag, symbol`
-	pubs, err := l.queryPubs(ctx, q, args...)
+	pubs, err := l.pubsForCite(ctx, c)
 	if err != nil {
 		return nil, err
 	}
 	if len(pubs) == 0 {
 		return nil, &ResolveError{Result: "missing_publication", msg: importHint(c)}
+	}
+	if c.Title != "" {
+		return l.resolveTitle(ctx, citation, c, pubs)
+	}
+	vol := insightVolume(c.Symbol)
+	if vol != 0 && len(c.Pages) > 0 {
+		known, err := l.volumesKnown(ctx, pubs)
+		if err != nil {
+			return nil, err
+		}
+		if !known {
+			return nil, fmt.Errorf("%s: the file does not say which volume this page is in", citation)
+		}
+		if len(c.Pars) == 0 {
+			return l.resolveVolumePage(ctx, citation, c, pubs, vol)
+		}
 	}
 	if len(c.Pages) == 0 || len(c.Pars) == 0 {
 		return nil, fmt.Errorf("%s needs a page and a paragraph", pubLabel(c))
@@ -91,7 +91,7 @@ func (l *Library) resolvePub(ctx context.Context, citation string, c cite.Citati
 		var spans []pageSpan
 		seen := map[[2]int]bool{}
 		for _, pub := range pubs {
-			rows, err := l.paragraphs(ctx, pub.ID, n)
+			rows, err := l.paragraphs(ctx, pub.ID, n, vol)
 			if err != nil {
 				return err
 			}
@@ -143,14 +143,20 @@ type paraRow struct {
 	first, last  int
 }
 
-func (l *Library) paragraphs(ctx context.Context, pubID int64, number int) ([]paraRow, error) {
-	rows, err := l.db.QueryContext(ctx, `
+func (l *Library) paragraphs(ctx context.Context, pubID int64, number, volume int) ([]paraRow, error) {
+	q := `
 		SELECT d.document_id, p.paragraph_index, d.title, p.text, p.first_page, p.last_page
 		FROM paragraph p
 		JOIN document d
 		  ON d.publication_id = p.publication_id AND d.document_id = p.document_id
-		WHERE p.publication_id=? AND p.paragraph_number=?
-		ORDER BY d.document_id, p.paragraph_index`, pubID, number)
+		WHERE p.publication_id=? AND p.paragraph_number=?`
+	args := []any{pubID, number}
+	if volume != 0 {
+		q += ` AND d.volume=?`
+		args = append(args, volume)
+	}
+	q += ` ORDER BY d.document_id, p.paragraph_index`
+	rows, err := l.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -164,6 +170,172 @@ func (l *Library) paragraphs(ctx context.Context, pubID int64, number int) ([]pa
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// pubsForCite matches cite_symbol. it-1 and it-2 fall back to the one Insight
+// file, whose citation symbol is it, when no volume file is stored.
+func (l *Library) pubsForCite(ctx context.Context, c cite.Citation) ([]pubRow, error) {
+	pubs, err := l.queryCitePubs(ctx, c, c.Symbol)
+	if err != nil || len(pubs) > 0 || insightVolume(c.Symbol) == 0 {
+		return pubs, err
+	}
+	return l.queryCitePubs(ctx, c, "it")
+}
+
+func (l *Library) queryCitePubs(ctx context.Context, c cite.Citation, symbol string) ([]pubRow, error) {
+	q := `SELECT id, symbol, title, issue_title, year, month, day
+		FROM publication WHERE meps_language=? AND cite_symbol=?`
+	args := []any{resolveLanguage, symbol}
+	if c.Year != 0 {
+		q += ` AND year=?`
+		args = append(args, c.Year)
+	}
+	if c.Month != 0 {
+		q += ` AND month=?`
+		args = append(args, c.Month)
+	}
+	if c.Day != 0 {
+		q += ` AND day=?`
+		args = append(args, c.Day)
+	}
+	q += ` ORDER BY year, issue_tag, symbol`
+	return l.queryPubs(ctx, q, args...)
+}
+
+func insightVolume(symbol string) int {
+	switch symbol {
+	case "it-1":
+		return 1
+	case "it-2":
+		return 2
+	default:
+		return 0
+	}
+}
+
+func (l *Library) volumesKnown(ctx context.Context, pubs []pubRow) (bool, error) {
+	for _, pub := range pubs {
+		var n int
+		if err := l.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM document WHERE publication_id=? AND volume!=0`, pub.ID).Scan(&n); err != nil {
+			return false, err
+		}
+		if n > 0 {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+type docVol struct {
+	id, volume, first, last int
+	title                   string
+	hasPages                bool
+}
+
+func (l *Library) docVolumes(ctx context.Context, pubID int64) ([]docVol, error) {
+	rows, err := l.db.QueryContext(ctx, `
+		SELECT document_id, title, volume, first_page, last_page
+		FROM document WHERE publication_id=? ORDER BY document_id`, pubID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []docVol
+	for rows.Next() {
+		var d docVol
+		var first, last sql.NullInt64
+		if err := rows.Scan(&d.id, &d.title, &d.volume, &first, &last); err != nil {
+			return nil, err
+		}
+		if first.Valid && last.Valid {
+			d.hasPages = true
+			d.first = int(first.Int64)
+			d.last = int(last.Int64)
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+func (l *Library) resolveTitle(ctx context.Context, citation string, c cite.Citation, pubs []pubRow) ([]Hit, error) {
+	vol := insightVolume(c.Symbol)
+	known, err := l.volumesKnown(ctx, pubs)
+	if err != nil {
+		return nil, err
+	}
+	want := normTitle(c.Title)
+	var hits []Hit
+	for _, pub := range pubs {
+		docs, err := l.docVolumes(ctx, pub.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, d := range docs {
+			if normTitle(d.title) != want {
+				continue
+			}
+			if known && d.volume != vol {
+				continue
+			}
+			hits = append(hits, docHit(pub, d, 0))
+		}
+	}
+	if len(hits) == 1 {
+		return hits, nil
+	}
+	if len(hits) == 0 {
+		return nil, fmt.Errorf("%s was not found", citation)
+	}
+	return nil, fmt.Errorf("%s matches more than one article", citation)
+}
+
+func (l *Library) resolveVolumePage(ctx context.Context, citation string, c cite.Citation, pubs []pubRow, vol int) ([]Hit, error) {
+	var hits []Hit
+	for _, pub := range pubs {
+		docs, err := l.docVolumes(ctx, pub.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, d := range docs {
+			if d.volume != vol || !d.hasPages || !overlaps(d.first, d.last, c.Pages) {
+				continue
+			}
+			hits = append(hits, docHit(pub, d, citedPage(d.first, d.last, c.Pages)))
+		}
+	}
+	if len(hits) == 0 {
+		return nil, fmt.Errorf("%s was not found in volume %d", citation, vol)
+	}
+	return hits, nil
+}
+
+func docHit(pub pubRow, d docVol, page int) Hit {
+	return Hit{
+		Kind:        cite.KindPub,
+		Publication: displayTitle(pub.IssueTitle, pub.Title),
+		Symbol:      pub.Symbol,
+		Document:    d.title,
+		Text:        d.title,
+		Year:        pub.Year,
+		Month:       pub.Month,
+		Day:         pub.Day,
+		Page:        page,
+		PubID:       pub.ID,
+		DocumentID:  d.id,
+	}
+}
+
+func normTitle(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.Map(func(r rune) rune {
+		switch r {
+		case '\'', '’', '‘', 'ʼ':
+			return '\''
+		default:
+			return r
+		}
+	}, s)
+	return strings.ToLower(s)
 }
 
 func (l *Library) resolveBible(ctx context.Context, c cite.Citation, studyNote bool) ([]Hit, error) {

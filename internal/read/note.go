@@ -628,7 +628,7 @@ func completeCite(c cite.Citation) bool {
 	case cite.KindBible, cite.KindStudyNote:
 		return len(c.Spans) > 0
 	case cite.KindPub:
-		return len(c.Pages) > 0 || len(c.Pars) > 0 || c.Unit != 0
+		return len(c.Pages) > 0 || len(c.Pars) > 0 || c.Unit != 0 || c.Title != ""
 	default:
 		return false
 	}
@@ -639,7 +639,7 @@ func substantial(c cite.Citation) bool {
 	case cite.KindBible, cite.KindStudyNote:
 		return c.Book != 0 && len(c.Spans) > 0
 	case cite.KindPub:
-		return c.Year != 0 || len(c.Pages) > 0 || len(c.Pars) > 0 || c.Unit != 0
+		return c.Year != 0 || len(c.Pages) > 0 || len(c.Pars) > 0 || c.Unit != 0 || c.Title != ""
 	default:
 		return false
 	}

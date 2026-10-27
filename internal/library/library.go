@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS document (
 	title TEXT NOT NULL,
 	first_page INTEGER,
 	last_page INTEGER,
+	volume INTEGER NOT NULL DEFAULT 0,
 	PRIMARY KEY (publication_id, document_id)
 );
 
@@ -218,6 +219,7 @@ func (l *Library) init() error {
 	for _, q := range []string{
 		`ALTER TABLE paragraph ADD COLUMN markup TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE verse ADD COLUMN markup TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE document ADD COLUMN volume INTEGER NOT NULL DEFAULT 0`,
 	} {
 		if _, err := l.db.Exec(q); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			return fmt.Errorf("migrate schema: %w", err)
@@ -266,6 +268,9 @@ func (l *Library) Import(ctx context.Context, path string) (ImportResult, error)
 		return ImportResult{}, err
 	}
 	if err == nil && existingHash == sum {
+		if err := l.fillVolumes(ctx, existingID, pub); err != nil {
+			return ImportResult{}, err
+		}
 		res, err := l.storedResult(ctx, existingID, meta, time.Since(start))
 		if err != nil {
 			return ImportResult{}, err
@@ -350,9 +355,13 @@ type counts struct {
 
 func insertContent(ctx context.Context, tx *sql.Tx, pub *jwpub.Publication, pubID int64) (counts, error) {
 	var c counts
+	vols, err := pub.DocumentVolumes(ctx)
+	if err != nil {
+		return c, err
+	}
 	docStmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO document (publication_id, document_id, meps_document_id, title, first_page, last_page)
-		VALUES (?, ?, ?, ?, ?, ?)`)
+		INSERT INTO document (publication_id, document_id, meps_document_id, title, first_page, last_page, volume)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return c, err
 	}
@@ -370,7 +379,7 @@ func insertContent(ctx context.Context, tx *sql.Tx, pub *jwpub.Publication, pubI
 		if d.HasPages {
 			first, last = d.FirstPage, d.LastPage
 		}
-		if _, err := docStmt.ExecContext(ctx, pubID, d.ID, d.MepsDocumentID, d.Title, first, last); err != nil {
+		if _, err := docStmt.ExecContext(ctx, pubID, d.ID, d.MepsDocumentID, d.Title, first, last, vols[d.ID]); err != nil {
 			return fmt.Errorf("document %d: %w", d.ID, err)
 		}
 		c.docs++
@@ -454,6 +463,41 @@ func insertContent(ctx context.Context, tx *sql.Tx, pub *jwpub.Publication, pubI
 		return nil
 	})
 	return c, err
+}
+
+// fillVolumes records Insight volume numbers on a publication imported
+// before those numbers were stored. A file that does not name volumes is left alone.
+func (l *Library) fillVolumes(ctx context.Context, pubID int64, pub *jwpub.Publication) error {
+	vols, err := pub.DocumentVolumes(ctx)
+	if err != nil || len(vols) == 0 {
+		return err
+	}
+	var known int
+	if err := l.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM document WHERE publication_id=? AND volume!=0`, pubID).Scan(&known); err != nil {
+		return err
+	}
+	if known > 0 {
+		return nil
+	}
+	tx, err := l.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	stmt, err := tx.PrepareContext(ctx, `UPDATE document SET volume=? WHERE publication_id=? AND document_id=?`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+	for id, vol := range vols {
+		if vol == 0 {
+			continue
+		}
+		if _, err := stmt.ExecContext(ctx, vol, pubID, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (l *Library) storedResult(ctx context.Context, id int64, meta jwpub.Meta, d time.Duration) (ImportResult, error) {

@@ -10,6 +10,10 @@ import (
 // importHint says which publication to import, in plain words.
 // w23.01 is the January 2023 study edition of The Watchtower.
 func importHint(c cite.Citation) string {
+	// it-1 and it-2 are the two volumes inside the one Insight file (it).
+	if c.Symbol == "it-1" || c.Symbol == "it-2" {
+		return "Import Insight on the Scriptures (it)."
+	}
 	tag := citeTag(c)
 	if c.Symbol == "w" && c.Year != 0 && c.Month != 0 && c.Day == 0 {
 		return fmt.Sprintf("Import the %s %d study edition of The Watchtower (%s).", monthName(c.Month), c.Year, tag)
@@ -39,8 +43,6 @@ func publicationName(symbol string) (string, bool) {
 	name, ok := map[string]string{
 		"w":      "The Watchtower",
 		"g":      "Awake!",
-		"it-1":   "Insight on the Scriptures, Volume 1",
-		"it-2":   "Insight on the Scriptures, Volume 2",
 		"nwt":    "New World Translation of the Holy Scriptures",
 		"nwtsty": "New World Translation of the Holy Scriptures (Study Edition)",
 		"rsg":    "Research Guide for Jehovah's Witnesses",

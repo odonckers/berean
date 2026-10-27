@@ -48,6 +48,33 @@ func TestParse(t *testing.T) {
 	}
 }
 
+func TestParseInsightTitle(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"it-2 Sovereignty", "pub[it-2 Sovereignty]"},
+		{"it-1 Guard", "pub[it-1 Guard]"},
+		{"it-1 Guard, Gate of the", "pub[it-1 Guard, Gate of the]"},
+		{"it-2 Jehovah's Day", "pub[it-2 Jehovah's Day]"},
+		{"it-2 p. 1011", "pub[it-2 p.1011]"},
+		{"it-1 450", "pub[it-1 p.450]"},
+	}
+	for _, c := range cases {
+		got, err := Parse(c.in)
+		if err != nil {
+			t.Errorf("Parse(%q) error: %v", c.in, err)
+			continue
+		}
+		if got.String() != c.want {
+			t.Errorf("Parse(%q) = %s, want %s", c.in, got, c.want)
+		}
+	}
+	if _, err := Parse("it Sovereignty"); err == nil {
+		t.Fatal("plain it with a title parsed")
+	}
+	if _, err := Parse("it-2 Sovereignty and"); err == nil {
+		t.Fatal("a trailing and was taken as the article name")
+	}
+}
+
 func TestParseErrors(t *testing.T) {
 	cases := []string{
 		"",
