@@ -132,3 +132,31 @@ func TestMarkup(t *testing.T) {
 		t.Fatalf("heading mark = %+v", head)
 	}
 }
+
+func TestFootnoteMarker(t *testing.T) {
+	const src = `<p data-pid="7">truth.”<span data-fnid="2" class="fn">b<span class="tt fn" data-rel-fnid="2"></span></span> <strong>(Read</strong> <a class="b" href="jwpub://b/NWTR/19:119:160-19:119:160"><strong>Psalm 119:160</strong></a><strong>.)</strong></p>`
+	got, err := paragraphsFromHTML(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := DecodeMark(got[0].Markup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var marker Run
+	var saw bool
+	for _, r := range m.Runs {
+		if r.Sup {
+			marker, saw = r, true
+		}
+		if strings.Contains(r.Text, "truth") && r.Sup {
+			t.Fatalf("footnote marker merged into the sentence: %+v", m.Runs)
+		}
+	}
+	if !saw || strings.TrimSpace(marker.Text) != "b" {
+		t.Fatalf("footnote marker = %+v, runs %+v", marker, m.Runs)
+	}
+	if plain := got[0].Text; !strings.Contains(plain, "truth") || !strings.Contains(plain, "Psalm 119:160") {
+		t.Fatalf("plain = %q", plain)
+	}
+}

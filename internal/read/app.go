@@ -1,5 +1,5 @@
-// Package read is the Berean window: a publication pane and a Bible pane.
-// The centre of the window is empty; the canvas comes later.
+// Package read is the Berean window: a publication pane, a Bible pane, and
+// a canvas between them where a dragged paragraph or verse becomes a clip.
 package read
 
 import (
@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -27,6 +28,7 @@ type block struct {
 	number         int
 	numbered       bool
 	heading        int
+	page           int
 	runs           []jwpub.Run
 }
 
@@ -72,22 +74,42 @@ type App struct {
 	pubHref                  string
 	focusPar                 bool
 	focusParFrom, focusParTo int
+	pubBack, pubFwd          []pubPlace
+	holdPubScroll            bool
+	heldPubScroll            float32
 
-	book, chapter int
-	bookChoice    string
-	chapterChoice string
-	trans         [2]int64
-	transChoice   [2]string
-	chapterLabels []string
-	chapterKey    string
-	lines         []verseLine
-	loadedBook    int
-	loadedChapter int
-	loadedTrans   [2]int64
-	bibleScroll   ui.ScrollState
-	bibleHref     string
-	focusVerse    int
-	focusVerseOn  bool
+	book, chapter       int
+	bookChoice          string
+	chapterChoice       string
+	trans               [2]int64
+	transChoice         [2]string
+	chapterLabels       []string
+	chapterKey          string
+	lines               []verseLine
+	loadedBook          int
+	loadedChapter       int
+	loadedTrans         [2]int64
+	bibleScroll         ui.ScrollState
+	bibleHref           string
+	focusVerse          int
+	focusVerseTo        int
+	focusVerseOn        bool
+	verseAnchor         int
+	bibleBack, bibleFwd []biblePlace
+	holdBibleScroll     bool
+	heldBibleScroll     float32
+
+	// paneSplit is the publication pane's share of the left column, 0 to 100.
+	paneSplit float32
+
+	panX, panY, zoom float32
+	panning          bool
+	panLX, panLY     float32
+	cards            []Clip
+	nextClip         int64
+	movingCard       int64
+	grabX, grabY     float32
+	laidOut          map[int64][2]float32
 
 	status string
 }
@@ -110,6 +132,9 @@ func New(lib *library.Library, log *slog.Logger) (*App, error) {
 		bookChoice:    cite.BookTitle(40),
 		chapterChoice: "24",
 		docsFor:       -1,
+		paneSplit:     50,
+		zoom:          1,
+		laidOut:       map[int64][2]float32{},
 	}
 	for _, p := range pubs {
 		if p.Type == "Bible" {
@@ -119,7 +144,7 @@ func New(lib *library.Library, log *slog.Logger) (*App, error) {
 		}
 	}
 	a.articleLabels = publicationLabels(a.articles)
-	a.bibleLabels = publicationLabels(a.bibles)
+	a.bibleLabels = biblePickerLabels(a.bibles)
 	if len(a.articles) > 0 {
 		a.pubID = a.articles[0].ID
 	}
@@ -152,23 +177,27 @@ func Run(lib *library.Library, log *slog.Logger) error {
 	return mygo.App.Run()
 }
 
-// View draws the two reading panes and an empty centre.
+// View draws the two reading panes and the canvas.
 func (a *App) View(c *ui.Context) {
 	t := c.Theme()
+	if a.paneSplit == 0 {
+		a.paneSplit = 50
+	}
 	ui.Row(c).Fill().Children(func() {
 		ui.Column(c).Width(leftWidth).Shrink(0).FillHeight().Background(t.Surface).Children(func() {
-			a.publicationPane(c)
-			ui.Box(c).Height(1).FillWidth().Background(t.Border)
-			a.biblePane(c)
+			ui.SplitVerticalPercent(c, &a.paneSplit, func() {
+				a.publicationPane(c)
+			}, func() {
+				a.biblePane(c)
+			}).Grow(1).FillWidth()
 		})
 		ui.Box(c).Width(1).FillHeight().Background(t.Border)
-		// The centre stays empty. The canvas is a later change.
-		ui.Box(c).Grow(1).FillHeight().Background(t.Background)
+		a.canvas(c)
 	})
 }
 
 func (a *App) publicationPane(c *ui.Context) {
-	ui.Column(c).Grow(1).FillWidth().Children(func() {
+	ui.Column(c).Fill().Children(func() {
 		a.publicationControls(c)
 		a.loadPublication()
 		a.publicationBody(c)
@@ -176,7 +205,7 @@ func (a *App) publicationPane(c *ui.Context) {
 }
 
 func (a *App) biblePane(c *ui.Context) {
-	ui.Column(c).Grow(1).FillWidth().Children(func() {
+	ui.Column(c).Fill().Children(func() {
 		a.bibleControls(c)
 		a.loadChapter()
 		a.bibleBody(c)
@@ -186,7 +215,10 @@ func (a *App) biblePane(c *ui.Context) {
 func (a *App) publicationControls(c *ui.Context) {
 	t := c.Theme()
 	ui.Column(c).FillWidth().Padding(12, 14, 8, 14).Gap(6).Children(func() {
-		ui.Text(c, "Publication").FontSize(13).Bold().TextColor(t.TextMuted)
+		ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
+			ui.Text(c, "Publication").FontSize(13).Bold().TextColor(t.TextMuted).Grow(1)
+			a.historyButtons(c, true)
+		})
 		if len(a.articles) == 0 {
 			ui.Text(c, "No publication in the library").TextColor(t.TextMuted)
 			return
@@ -201,9 +233,20 @@ func (a *App) publicationControls(c *ui.Context) {
 		prevPub := a.pubChoice
 		ui.Combobox(c, &a.pubChoice, a.articleLabels).Label("Publication").FillWidth()
 		if a.pubChoice != prevPub {
-			a.pubID = a.idFor(a.articleLabels, a.articles, a.pubChoice)
-			a.docID = 0
-			a.docsFor = -1
+			id := a.idFor(a.articleLabels, a.articles, a.pubChoice)
+			// A partial string while typing resolves to nothing. Record a
+			// step only when one real publication replaces another.
+			if id != 0 && a.pubID != 0 && id != a.pubID {
+				a.pubBack = pushHistory(a.pubBack, a.snapshotPub())
+				a.pubFwd = nil
+				a.focusParFrom, a.focusParTo = 0, 0
+				a.focusPar = false
+			}
+			if id != a.pubID {
+				a.pubID = id
+				a.docID = 0
+				a.docsFor = -1
+			}
 		}
 		a.ensureDocs()
 		if !a.hasDoc(a.docID) && len(a.docs) > 0 {
@@ -220,7 +263,9 @@ func (a *App) publicationControls(c *ui.Context) {
 		prevDoc := a.docChoice
 		ui.Combobox(c, &a.docChoice, a.docLabels).Label("Document").FillWidth()
 		if a.docChoice != prevDoc {
-			a.docID = a.docIDByLabel(a.docChoice)
+			if id := a.docIDByLabel(a.docChoice); id != 0 && id != a.docID {
+				a.goPublication(a.pubID, id, 0, 0, false, "open", "")
+			}
 		}
 		if a.status != "" {
 			ui.Text(c, a.status).FontSize(12).TextColor(t.Danger).SingleLine()
@@ -231,7 +276,10 @@ func (a *App) publicationControls(c *ui.Context) {
 func (a *App) bibleControls(c *ui.Context) {
 	t := c.Theme()
 	ui.Column(c).FillWidth().Padding(12, 14, 8, 14).Gap(6).Children(func() {
-		ui.Text(c, "Bible").FontSize(13).Bold().TextColor(t.TextMuted)
+		ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
+			ui.Text(c, "Bible").FontSize(13).Bold().TextColor(t.TextMuted).Grow(1)
+			a.historyButtons(c, false)
+		})
 		if len(a.bibles) == 0 {
 			ui.Text(c, "No Bible in the library").TextColor(t.TextMuted)
 			return
@@ -243,10 +291,8 @@ func (a *App) bibleControls(c *ui.Context) {
 			prevBook := a.bookChoice
 			ui.Combobox(c, &a.bookChoice, a.bookTitles).Label("Book").Grow(1)
 			if a.bookChoice != prevBook {
-				if n, ok := cite.BookByName(a.bookChoice); ok {
-					a.book = n
-					a.chapter = 1
-					a.chapterChoice = "1"
+				if n, ok := cite.BookByName(a.bookChoice); ok && n != a.book {
+					a.goBible(n, 1, 0, 0, 0, "open", "")
 				}
 			}
 			labels := a.ensureChapters()
@@ -256,8 +302,8 @@ func (a *App) bibleControls(c *ui.Context) {
 			prevCh := a.chapterChoice
 			ui.Select(c, &a.chapterChoice, labels).Label("Chapter").Width(108).Shrink(0)
 			if a.chapterChoice != prevCh {
-				if n, err := strconv.Atoi(a.chapterChoice); err == nil {
-					a.chapter = n
+				if n, err := strconv.Atoi(a.chapterChoice); err == nil && n != a.chapter {
+					a.goBible(a.book, n, 0, 0, 0, "open", "")
 				}
 			}
 		})
@@ -300,9 +346,14 @@ func (a *App) bibleControls(c *ui.Context) {
 func (a *App) publicationBody(c *ui.Context) {
 	t := c.Theme()
 	pub, ok := a.publication(a.pubID)
+	// scrollMark is decided before the body, so a link followed while the
+	// body is drawing — which changes the document — still scrolls next frame.
+	scrollMark := a.focusPar && a.loadedPub == a.pubID && a.loadedDoc == a.docID
 	ui.Scroll(c).Grow(1).FillWidth().TrackScroll(&a.pubScroll).Padding(4, 16, 20, 16).Children(func() {
 		ui.Column(c).FillWidth().Gap(12).Children(func() {
-			if a.title != "" {
+			// The document title and its first heading are often the same
+			// words ("Introduction"). Draw the heading, which can be clipped.
+			if a.title != "" && !duplicateTitle(a.title, a.blocks) {
 				ui.Text(c, a.title).FontSize(22).Bold().LineHeight(1.25)
 			}
 			if !ok || len(a.blocks) == 0 {
@@ -312,19 +363,29 @@ func (a *App) publicationBody(c *ui.Context) {
 				return
 			}
 			for _, b := range a.blocks {
-				a.paragraph(c, pub, b)
+				a.paragraph(c, pub, b, scrollMark)
 			}
 		})
 	})
+	if scrollMark {
+		a.focusPar = false
+	}
 }
 
-func (a *App) paragraph(c *ui.Context, pub library.PublicationInfo, b block) {
+func (a *App) paragraph(c *ui.Context, pub library.PublicationInfo, b block, scrollMark bool) {
 	t := c.Theme()
 	src := pubSource(pub, a.docID, b)
-	row := ui.Row(c.Key(src)).Label(src).Description(src).FillWidth().Gap(10).AlignItems(ui.Start)
-	if a.focusPar && b.index >= a.focusParFrom && (a.focusParTo == 0 || b.index <= a.focusParTo) {
+	marked := a.parMarked(b.index)
+	if marked {
+		src += " marked"
+	}
+	row := ui.Row(c.Key(src)).Label(src).Description(src).FillWidth().Gap(10).AlignItems(ui.Start).
+		Drag(a.paragraphPassage(pub, b))
+	if marked {
+		row.Background(t.Accent.Alpha(0.16)).Radius(6).Padding(2, 4)
+	}
+	if scrollMark && marked && b.index == a.focusParFrom {
 		row.ScrollIntoView()
-		a.focusPar = false
 	}
 	row.Children(func() {
 		if b.heading == 0 {
@@ -349,6 +410,7 @@ func (a *App) paragraph(c *ui.Context, pub library.PublicationInfo, b block) {
 func (a *App) bibleBody(c *ui.Context) {
 	t := c.Theme()
 	pubs := a.shownBibles()
+	scrollMark := a.focusVerseOn && a.loadedBook == a.book && a.loadedChapter == a.chapter
 	ui.Scroll(c).Grow(1).FillWidth().TrackScroll(&a.bibleScroll).Padding(4, 16, 20, 16).Children(func() {
 		ui.Column(c).FillWidth().Gap(10).Children(func() {
 			if a.book >= 1 {
@@ -368,18 +430,27 @@ func (a *App) bibleBody(c *ui.Context) {
 				return
 			}
 			for _, line := range a.lines {
-				a.verseRow(c, line)
+				a.verseRow(c, line, scrollMark)
 			}
 		})
 	})
+	if scrollMark {
+		a.focusVerseOn = false
+	}
 }
 
-func (a *App) verseRow(c *ui.Context, line verseLine) {
+func (a *App) verseRow(c *ui.Context, line verseLine, scrollMark bool) {
 	t := c.Theme()
+	marked := a.verseMarked(line.verse)
 	row := ui.Row(c).FillWidth().Gap(12).AlignItems(ui.Start)
-	if a.focusVerseOn && line.verse == a.focusVerse {
-		row.ScrollIntoView()
-		a.focusVerseOn = false
+	if marked {
+		row.Background(t.Accent.Alpha(0.16)).Radius(6).Padding(2, 4)
+	}
+	if scrollMark && marked {
+		lo, _, _ := a.markedVerseSpan()
+		if line.verse == lo {
+			row.ScrollIntoView()
+		}
 	}
 	row.Children(func() {
 		ui.Textf(c, "%d", line.verse).Width(36).Shrink(0).FontSize(13).Bold().TextColor(t.TextMuted)
@@ -389,7 +460,16 @@ func (a *App) verseRow(c *ui.Context, line verseLine) {
 				continue
 			}
 			src := bibleSource(cell.pub, a.book, a.chapter, line.verse)
-			ui.Column(c.Key(src)).Label(src).Description(src).Grow(1).Children(func() {
+			if marked {
+				src += " marked"
+			}
+			verse := line.verse
+			cell := cell
+			col := ui.Column(c.Key(src)).Label(src).Description(src).Grow(1).Drag(a.versePassage(cell, verse))
+			if col.Clicked() {
+				a.selectVerse(verse, col.ClickModifiers()&ui.Shift != 0)
+			}
+			col.Children(func() {
 				ui.RichText(c).FillWidth().FontSize(16.5).LineHeight(1.45).Children(func() {
 					a.paintRuns(c, cell.runs)
 				})
@@ -404,7 +484,7 @@ func (a *App) paintRuns(c *ui.Context, runs []jwpub.Run) {
 		if r.Text == "" {
 			continue
 		}
-		el := ui.Text(c, r.Text)
+		el := ui.Text(c, showRun(r))
 		if r.Bold {
 			el.Bold()
 		}
@@ -433,25 +513,18 @@ func (a *App) follow(href string) {
 	}
 	switch target.Kind {
 	case library.LinkVerse:
-		a.book = target.Book
-		a.chapter = target.Chapter
-		a.bookChoice = cite.BookTitle(target.Book)
-		a.chapterChoice = strconv.Itoa(target.Chapter)
-		a.focusVerse = target.Verse
-		a.focusVerseOn = true
 		a.bibleHref = href
 		a.status = ""
-	case library.LinkDocument:
-		a.pubID = target.PubID
-		a.docID = target.DocumentID
-		a.docsFor = -1
-		a.pubHref = href
-		if target.ParFrom > 0 {
-			a.focusPar = true
-			a.focusParFrom = target.ParFrom
-			a.focusParTo = target.ParTo
+		end := target.EndVerse
+		if end < target.Verse {
+			end = target.Verse
 		}
+		a.goBible(target.Book, target.Chapter, target.Verse, end, 0, "open", "")
+	case library.LinkDocument:
+		a.pubHref = href
 		a.status = ""
+		from, to := target.ParFrom, target.ParTo
+		a.goPublication(target.PubID, target.DocumentID, from, to, from > 0, "open", "")
 	case library.LinkMissing:
 		a.log.Error("link", "href", href, "meps_document_id", target.MepsDocumentID, "paragraphs", fmt.Sprintf("%d-%d", target.ParFrom, target.ParTo), "err", "not in the library")
 		a.status = "Not in the library"
@@ -497,7 +570,12 @@ func (a *App) loadPublication() {
 	a.blocks = decodeParas(paras)
 	a.title = title
 	a.loadedPub, a.loadedDoc = a.pubID, a.docID
-	a.pubScroll.Y = 0
+	if a.holdPubScroll {
+		a.pubScroll.Y = a.heldPubScroll
+		a.holdPubScroll = false
+	} else {
+		a.pubScroll.Y = 0
+	}
 }
 
 func (a *App) loadChapter() {
@@ -552,7 +630,12 @@ func (a *App) loadChapter() {
 	a.bibleHref = ""
 	a.lines = alignVerses(shown, columns)
 	a.loadedBook, a.loadedChapter, a.loadedTrans = a.book, a.chapter, key
-	a.bibleScroll.Y = 0
+	if a.holdBibleScroll {
+		a.bibleScroll.Y = a.heldBibleScroll
+		a.holdBibleScroll = false
+	} else {
+		a.bibleScroll.Y = 0
+	}
 }
 
 func (a *App) ensureDocs() {
@@ -706,6 +789,34 @@ func (a *App) idFor(labels []string, pubs []library.PublicationInfo, label strin
 	return 0
 }
 
+func biblePickerLabels(pubs []library.PublicationInfo) []string {
+	out := make([]string, len(pubs))
+	count := map[string]int{}
+	for i, p := range pubs {
+		out[i] = biblePickerLabel(p)
+		count[out[i]]++
+	}
+	for i, p := range pubs {
+		if count[out[i]] > 1 {
+			out[i] = fmt.Sprintf("%s (%d)", out[i], p.Year)
+		}
+	}
+	return out
+}
+
+// biblePickerLabel is short enough that the two translation menus don't
+// truncate to the same words. A long short-title falls back to the symbol.
+func biblePickerLabel(p library.PublicationInfo) string {
+	short := strings.TrimSpace(p.Short)
+	if short != "" && len([]rune(short)) <= 16 {
+		return short
+	}
+	if p.Symbol != "" {
+		return strings.ToUpper(p.Symbol)
+	}
+	return p.Display()
+}
+
 func publicationLabels(pubs []library.PublicationInfo) []string {
 	count := map[string]int{}
 	raw := make([]string, len(pubs))
@@ -763,7 +874,7 @@ func decodeParas(paras []library.Para) []block {
 		out = append(out, block{
 			index: p.Index, ordinal: p.Ordinal,
 			number: p.Number, numbered: p.Numbered,
-			heading: h, runs: runs,
+			heading: h, page: p.FirstPage, runs: runs,
 		})
 	}
 	return out

@@ -35,10 +35,11 @@ type DocInfo struct {
 
 // Para is one stored paragraph, plain text and readable markup.
 type Para struct {
-	Index, Ordinal int
-	Number         int
-	Numbered       bool
-	Text, Markup   string
+	Index, Ordinal      int
+	Number              int
+	Numbered            bool
+	FirstPage, LastPage int
+	Text, Markup        string
 }
 
 // VerseText is one stored verse.
@@ -106,7 +107,7 @@ func (l *Library) Paragraphs(ctx context.Context, pubID int64, docID int) ([]Par
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	rows, err := l.db.QueryContext(ctx, `
-		SELECT paragraph_index, ordinal, paragraph_number, text, markup
+		SELECT paragraph_index, ordinal, paragraph_number, first_page, last_page, text, markup
 		FROM paragraph
 		WHERE publication_id = ? AND document_id = ?
 		ORDER BY paragraph_index, ordinal`, pubID, docID)
@@ -118,7 +119,7 @@ func (l *Library) Paragraphs(ctx context.Context, pubID int64, docID int) ([]Par
 	for rows.Next() {
 		var p Para
 		var num sql.NullInt64
-		if err := rows.Scan(&p.Index, &p.Ordinal, &num, &p.Text, &p.Markup); err != nil {
+		if err := rows.Scan(&p.Index, &p.Ordinal, &num, &p.FirstPage, &p.LastPage, &p.Text, &p.Markup); err != nil {
 			return nil, err
 		}
 		if num.Valid {

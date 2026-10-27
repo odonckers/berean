@@ -10,11 +10,13 @@ import (
 
 // Run is one styled span of a paragraph or verse.
 // Href is set when the span is a link, usually a jwpub:// reference.
+// Sup is a footnote marker (class fn) or a superscript, drawn above the line.
 type Run struct {
 	Text   string `json:"t"`
 	Bold   bool   `json:"b,omitempty"`
 	Italic bool   `json:"i,omitempty"`
 	Href   string `json:"href,omitempty"`
+	Sup    bool   `json:"s,omitempty"`
 }
 
 // Mark is the readable form of a paragraph or verse: an optional heading
@@ -70,6 +72,7 @@ func markupFragment(src string) string {
 type runStyle struct {
 	bold, italic bool
 	href         string
+	sup          bool
 }
 
 type marker struct {
@@ -97,7 +100,7 @@ func (m *marker) walk(n *html.Node, st runStyle, root bool) {
 		}
 		return
 	}
-	if hasClass(n, "pageNum") || hasClass(n, "parNum") {
+	if hasClass(n, "pageNum") || hasClass(n, "parNum") || hasClass(n, "tt") {
 		return
 	}
 	if root {
@@ -118,6 +121,12 @@ func (m *marker) walk(n *html.Node, st runStyle, root bool) {
 	}
 	if hasClass(n, "em") {
 		st.italic = true
+	}
+	// class fn is a footnote marker ("b"); fn-symbol is that letter in the
+	// note itself. The paragraph number's sup lives inside parNum, already
+	// skipped, so a remaining sup is a real superscript.
+	if n.Data == "sup" || hasClass(n, "fn") || hasClass(n, "fn-symbol") {
+		st.sup = true
 	}
 	for c := n.FirstChild; c != nil; c = c.NextSibling {
 		m.walk(c, st, false)
@@ -195,12 +204,12 @@ func (m *marker) add(text string, st runStyle) {
 	}
 	if n := len(m.runs); n > 0 {
 		last := &m.runs[n-1]
-		if last.Bold == st.bold && last.Italic == st.italic && last.Href == st.href {
+		if last.Bold == st.bold && last.Italic == st.italic && last.Href == st.href && last.Sup == st.sup {
 			last.Text += text
 			return
 		}
 	}
-	m.runs = append(m.runs, Run{Text: text, Bold: st.bold, Italic: st.italic, Href: st.href})
+	m.runs = append(m.runs, Run{Text: text, Bold: st.bold, Italic: st.italic, Href: st.href, Sup: st.sup})
 }
 
 func (m *marker) trim() {
