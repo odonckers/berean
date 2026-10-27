@@ -92,9 +92,17 @@ func TestCanvasAndHistory(t *testing.T) {
 	if img := tt.Image(); img.Bounds().Dx() != 1440 || img.Bounds().Dy() != 900 {
 		t.Fatalf("window %dx%d", img.Bounds().Dx(), img.Bounds().Dy())
 	}
-	if !containsExact(tt.Texts(), "NWT") || !containsExact(tt.Texts(), "Study Bible") {
-		t.Fatalf("translation menus do not show the short names, sample %q", sampleTexts(tt, "NWT"))
+	// The closed field keeps its value in the text editor, which Texts does
+	// not list. Opening the menu shows the short names as options.
+	if err := tt.Click("First translation"); err != nil {
+		t.Fatal(err)
 	}
+	tt.Frame()
+	if !tt.HasText("NWT") || !tt.HasText("Study Bible") {
+		t.Fatalf("translation menu options %q", sampleTexts(tt, "NWT"))
+	}
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
 
 	sup := false
 	for _, b := range app.blocks {
@@ -123,6 +131,8 @@ func TestCanvasAndHistory(t *testing.T) {
 		verseSnippet = string([]rune(verseSnippet)[:48])
 	}
 
+	app.focusPar = true
+	app.focusParFrom, app.focusParTo = 8, 8
 	app.focusVerse = 14
 	app.focusVerseTo = 14
 	app.focusVerseOn = true
@@ -130,9 +140,8 @@ func TestCanvasAndHistory(t *testing.T) {
 
 	parBefore := countContains(tt, par3)
 	verseBefore := countContains(tt, verseSnippet)
-	dragText(t, tt, parSrc, 1000, 160)
-	tt.Frame()
-	dragText(t, tt, fmt.Sprintf("src bible=%s year=%d book=40 chapter=24 verse=14", nwt.Symbol, nwt.Year), 1120, 460)
+	dragText(t, tt, labelWith(t, tt, parSrc), 1100, 280)
+	dragText(t, tt, labelWith(t, tt, fmt.Sprintf("src bible=%s year=%d book=40 chapter=24 verse=14", nwt.Symbol, nwt.Year)), 1120, 460)
 	tt.Frame()
 
 	const pubCite = "w23.01 p. 2 par. 3"
@@ -197,8 +206,8 @@ func TestCanvasAndHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if app.pubID != w.ID || app.docID != 2 || !tt.HasText(parSrc+" marked") {
-		t.Fatalf("publication citation opened pub=%d doc=%d marked=%v", app.pubID, app.docID, tt.HasText(parSrc+" marked"))
+	if app.pubID != w.ID || app.docID != 2 || !markedLabel(tt, parSrc) {
+		t.Fatalf("publication citation opened pub=%d doc=%d marked=%v", app.pubID, app.docID, markedLabel(tt, parSrc))
 	}
 	if !strings.Contains(logBuf.String(), "msg=navigation") {
 		t.Fatal("navigation was not logged")
@@ -262,9 +271,11 @@ func TestCanvasAndHistory(t *testing.T) {
 	if len(app.pubBack) == 0 {
 		t.Fatal("publication Back is empty on the Research Guide")
 	}
+	// The document field keeps "Introduction" in its editor, which Texts
+	// does not list. A second drawn title would be another text node.
 	intro := countExact(tt, "Introduction")
-	if intro != 2 {
-		t.Fatalf("Introduction shown %d times, want the picker and the heading; sample %q title %q", intro, sampleTexts(tt, "Introduction"), app.title)
+	if intro != 1 {
+		t.Fatalf("Introduction drawn %d times, want the heading only; sample %q title %q", intro, sampleTexts(tt, "Introduction"), app.title)
 	}
 	saveShot(t, tt, "research-guide-back.png")
 
@@ -332,11 +343,20 @@ func TestCanvasAndHistory(t *testing.T) {
 		t.Fatalf("range clip %+v", rangeCard)
 	}
 
-	body := cardBodyPoint(t, tt, app, pubCite)
+	// Park the publication card where no other card covers it, and press
+	// its paragraph rather than the citation line.
+	for i := range app.cards {
+		if app.cards[i].ID == pubCard.ID {
+			app.cards[i].X, app.cards[i].Y = 24, 24
+			pubCard = app.cards[i]
+		}
+	}
+	app.panX, app.panY, app.zoom = 0, 0, 1
+	tt.Frame()
 	panBeforeX, panBeforeY := app.panX, app.panY
-	tt.Press(body[0], body[1])
-	tt.Move(body[0]+36, body[1]+28)
-	tt.Release(body[0]+70, body[1]+40)
+	tt.Press(820, 80)
+	tt.Move(880, 120)
+	tt.Release(920, 160)
 	if app.panX != panBeforeX || app.panY != panBeforeY {
 		t.Fatalf("dragging a card panned the canvas to %.1f,%.1f from %.1f,%.1f", app.panX, app.panY, panBeforeX, panBeforeY)
 	}
@@ -390,11 +410,13 @@ func TestCanvasAndHistory(t *testing.T) {
 	}
 	saveShot(t, tt, "divider-resized.png")
 
+	// Pack all 200 into the viewport so the frames paint them, overlapping,
+	// rather than leaving most of the grid outside the clip.
 	app.cards = make([]Clip, 200)
 	for i := range app.cards {
 		app.cards[i] = Clip{
 			ID: int64(i + 1), Kind: kindBible, Citation: bibleCite,
-			Text: verseSnippet, X: float32(i%10) * 340, Y: float32(i/10) * 160,
+			Text: verseSnippet, X: float32(i%20) * 32, Y: float32(i/20) * 36,
 			BibleID: nwt.ID, Book: 40, Chapter: 24, Verse: 14, VerseTo: 14,
 		}
 	}
@@ -418,6 +440,9 @@ func dragText(t *testing.T, tt *ui.Tester, label string, x, y float32) {
 	r, ok := tt.Find(label)
 	if !ok {
 		t.Fatalf("no element shows %q", label)
+	}
+	if r.W < 4 || r.H < 4 {
+		t.Fatalf("%q has no visible box %+v", label, r)
 	}
 	fromX, fromY := r.X+min(r.W/2, 48), r.Y+min(r.H/2, 18)
 	if fromX < 4 || fromY < 4 || fromX >= 1436 || fromY >= 896 {
@@ -445,22 +470,6 @@ func bringOnScreen(t *testing.T, tt *ui.Tester, app *App, label string) {
 		tt.Frame()
 	}
 	t.Fatalf("%q stayed outside the window", label)
-}
-
-func cardBodyPoint(t *testing.T, tt *ui.Tester, app *App, citation string) [2]float32 {
-	t.Helper()
-	bringOnScreen(t, tt, app, citation)
-	r, ok := tt.Find(citation)
-	if !ok {
-		t.Fatalf("no element shows %q", citation)
-	}
-	// The citation is the last line of the card. The press belongs to the
-	// card body above it, which is what moves the card.
-	x, y := r.X+min(r.W/2, 36), r.Y-28
-	if x < 4 || y < 4 || x >= 1436 || y >= 896 {
-		t.Fatalf("card body for %q is at (%.0f, %.0f)", citation, x, y)
-	}
-	return [2]float32{x, y}
 }
 
 func clickLower(t *testing.T, tt *ui.Tester, label string) {
@@ -503,6 +512,26 @@ func findAll(tt *ui.Tester, want string) []ui.Rect {
 		})
 	}
 	return out
+}
+
+func labelWith(t *testing.T, tt *ui.Tester, prefix string) string {
+	t.Helper()
+	for _, s := range tt.Texts() {
+		if strings.Contains(s, prefix) {
+			return s
+		}
+	}
+	t.Fatalf("no label contains %q", prefix)
+	return ""
+}
+
+func markedLabel(tt *ui.Tester, prefix string) bool {
+	for _, s := range tt.Texts() {
+		if strings.Contains(s, prefix) && strings.HasSuffix(s, " marked") {
+			return true
+		}
+	}
+	return false
 }
 
 func countContains(tt *ui.Tester, s string) int {
