@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -125,6 +126,24 @@ type App struct {
 	problems    []string
 
 	status string
+
+	clock     func() time.Time
+	pickFiles func() ([]string, error)
+
+	studyOn    bool
+	phase      string
+	showSteps  bool
+	setupNote  string
+	hardest    string
+	comeBack   string
+	benchReady bool
+
+	importMu     sync.Mutex
+	pendingPaths []string
+	pendingErr   error
+	havePending  bool
+
+	dragX0, dragY0 float32
 }
 
 // New reads the library catalog and selects the first publication and,
@@ -174,6 +193,7 @@ func New(lib *library.Library, log *slog.Logger) (*App, error) {
 	} else {
 		a.transChoice[1] = a.choiceFor(a.bibleLabels, a.bibles, a.trans[1])
 	}
+	a.loadCanvas()
 	return a, nil
 }
 
@@ -183,6 +203,7 @@ func Run(lib *library.Library, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	a.beginStudy()
 	mygo.App.WhenReady(func() {
 		mygo.NewWindow(mygo.WindowOptions{
 			Title:   "Berean",
@@ -196,6 +217,9 @@ func Run(lib *library.Library, log *slog.Logger) error {
 
 // View draws the two reading panes and the canvas.
 func (a *App) View(c *ui.Context) {
+	if a.studyGate(c) {
+		return
+	}
 	t := c.Theme()
 	if a.paneSplit == 0 {
 		a.paneSplit = 50
@@ -522,6 +546,23 @@ func (a *App) paintRuns(c *ui.Context, runs []jwpub.Run) {
 	}
 }
 
+func (a *App) setStatus(msg string) {
+	if msg == a.status {
+		return
+	}
+	a.status = msg
+	if msg != "" {
+		a.logShownError("", msg)
+	}
+}
+
+// showClickError records an error a click just showed. The status line
+// keeps its text when it already says msg. The log does not depend on that.
+func (a *App) showClickError(msg string) {
+	a.status = msg
+	a.logShownError("", msg)
+}
+
 func (a *App) follow(href string) {
 	target, err := a.lib.ResolveLink(context.Background(), href)
 	if err != nil || target.Kind == library.LinkBad {
@@ -529,13 +570,14 @@ func (a *App) follow(href string) {
 			err = fmt.Errorf("unrecognized link")
 		}
 		a.log.Error("link", "href", href, "err", err)
-		a.status = "Unrecognized link"
+		a.showClickError("Unrecognized link")
 		return
 	}
 	switch target.Kind {
 	case library.LinkVerse:
 		a.bibleHref = href
-		a.status = ""
+		a.setStatus("")
+		a.logLinkFollowed(href)
 		end := target.EndVerse
 		if end < target.Verse {
 			end = target.Verse
@@ -543,12 +585,13 @@ func (a *App) follow(href string) {
 		a.goBible(target.Book, target.Chapter, target.Verse, end, 0, "open", "")
 	case library.LinkDocument:
 		a.pubHref = href
-		a.status = ""
+		a.setStatus("")
+		a.logLinkFollowed(href)
 		from, to := target.ParFrom, target.ParTo
 		a.goPublication(target.PubID, target.DocumentID, from, to, from > 0, "open", "")
 	case library.LinkMissing:
 		a.log.Error("link", "href", href, "meps_document_id", target.MepsDocumentID, "paragraphs", fmt.Sprintf("%d-%d", target.ParFrom, target.ParTo), "err", "not in the library")
-		a.status = "Not in the library"
+		a.showClickError("Not in the library")
 	case library.LinkExternal:
 		a.log.Info("link skipped", "href", href, "reason", "outside the library")
 	}
@@ -566,7 +609,7 @@ func (a *App) loadPublication() {
 	paras, err := a.lib.Paragraphs(context.Background(), a.pubID, a.docID)
 	if err != nil {
 		a.log.Error("document load", "pane", "publication", "symbol", pub.Symbol, "document_id", a.docID, "err", err)
-		a.status = "Could not open the document"
+		a.setStatus("Could not open the document")
 		return
 	}
 	elapsed := time.Since(start)
@@ -591,6 +634,9 @@ func (a *App) loadPublication() {
 	a.blocks = decodeParas(paras)
 	a.title = title
 	a.loadedPub, a.loadedDoc = a.pubID, a.docID
+	if pub.Symbol == "rsg" || pub.CiteSymbol == "rsg" {
+		a.logRSGOpened(a.docID)
+	}
 	if a.holdPubScroll {
 		a.pubScroll.Y = a.heldPubScroll
 		a.holdPubScroll = false
@@ -622,7 +668,7 @@ func (a *App) loadChapter() {
 		verses, err := a.lib.ChapterVerses(context.Background(), p.ID, a.book, a.chapter)
 		if err != nil {
 			a.log.Error("document load", "pane", "bible", "symbol", p.Symbol, "book", a.book, "chapter", a.chapter, "err", err)
-			a.status = "Could not open the chapter"
+			a.setStatus("Could not open the chapter")
 			return
 		}
 		columns[i] = verses

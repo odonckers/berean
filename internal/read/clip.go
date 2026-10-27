@@ -75,6 +75,15 @@ func publicationCitation(p library.PublicationInfo, page, parFrom, parTo int) st
 	return fmt.Sprintf("%s p. %d par. %d", sym, page, parFrom)
 }
 
+// clipHeader is the card's citation line. A Bible clip names the
+// translation, as "Gen. 3:1-5 (nwtsty)" or "Gen. 3:1-5 (nwt)".
+func clipHeader(clip Clip) string {
+	if clip.Kind == kindBible && clip.Symbol != "" {
+		return clip.Citation + " (" + clip.Symbol + ")"
+	}
+	return clip.Citation
+}
+
 func scriptureCitation(book, chapter, from, to int) string {
 	name := cite.BookName(book)
 	if from <= 0 {

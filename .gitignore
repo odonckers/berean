@@ -6,3 +6,9 @@
 *.db-shm
 *.db-journal
 testdata/cache/
+*.canvas.json
+*.study.jsonl
+!docs/sample-study-log.jsonl
+*.debrief.json
+*.bench.json
+build/

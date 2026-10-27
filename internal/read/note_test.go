@@ -303,7 +303,11 @@ func assertCardHeaders(t *testing.T, tt *ui.Tester, app *App) []ui.Rect {
 	}
 	out := make([]ui.Rect, len(app.cards))
 	for i, card := range app.cards {
-		rects := findAll(tt, card.Citation)
+		label := clipHeader(card)
+		if card.Kind == kindNote {
+			label = "Note"
+		}
+		rects := findAll(tt, label)
 		wx := canvasLeft + app.panX + card.X*z
 		wy := app.panY + card.Y*z
 		var found ui.Rect

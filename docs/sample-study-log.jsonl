@@ -1,0 +1,19 @@
+{"arch":"amd64","bench":{"cards":200,"pan":{"max_ms":8.088742,"p50_ms":2.006244,"p95_ms":7.526144},"zoom":{"max_ms":9.921141,"p50_ms":0.468003,"p95_ms":0.926654}},"event":"header","os":"linux","renderer":"CPU software renderer","time":"2026-10-26T15:00:03Z","version":"dev"}
+{"boundary":"start","event":"phase","phase":"bench","time":"2026-10-26T15:00:01Z"}
+{"boundary":"end","event":"phase","phase":"bench","time":"2026-10-26T15:00:02Z"}
+{"event":"study_start","time":"2026-10-26T15:00:04Z"}
+{"boundary":"start","event":"phase","phase":"setup","time":"2026-10-26T15:00:05Z"}
+{"boundary":"end","event":"phase","phase":"setup","time":"2026-10-26T15:00:06Z"}
+{"boundary":"start","event":"phase","phase":"task","time":"2026-10-26T15:00:07Z"}
+{"document_id":2,"event":"rsg_opened","time":"2026-10-26T15:00:08Z"}
+{"card_id":1,"citation":"Gen. 3:1-5","event":"card_created","kind":"bible","time":"2026-10-26T15:00:09Z","translation":"nwt"}
+{"citation":"Gen. 3:1-5","event":"clip_created","source":"nwt","time":"2026-10-26T15:00:10Z"}
+{"card_id":1,"event":"card_drag","time":"2026-10-26T15:00:11Z","x0":311,"x1":339,"y0":302,"y1":320,"zoom":1}
+{"event":"back","pane":"bible","time":"2026-10-26T15:00:12Z"}
+{"card_id":1,"citation":"Gen. 3:1-5","event":"citation_opened","time":"2026-10-26T15:00:13Z"}
+{"card_id":2,"citation":"","event":"card_created","kind":"note","time":"2026-10-26T15:00:14Z","translation":""}
+{"citation":"w23.13 p. 2 par. 1","event":"error","message":"w23.13 p. 2 par. 1: Couldn't read the citation \"w23.13 p. 2 par. 1\".","time":"2026-10-26T15:00:15Z"}
+{"citation":"Jer. 10:23","event":"citation_inserted","time":"2026-10-26T15:00:16Z"}
+{"citation":"w23.13 p. 2 par. 1","event":"citation_inserted","time":"2026-10-26T15:00:17Z"}
+{"boundary":"end","event":"phase","phase":"task","time":"2026-10-26T15:00:18Z"}
+{"event":"study_end","time":"2026-10-26T15:00:19Z"}

@@ -58,6 +58,13 @@ func (a *App) canvas(c *ui.Context) {
 		if add.Clicked() {
 			a.addNote(c)
 		}
+		if a.studyOn && a.phase == phaseTask {
+			done := ui.Button(c, "Finish study").Absolute().Right(16).Top(48)
+			done.HandleInput(func(ui.InputEvent) bool { return false })
+			if done.Clicked() {
+				a.finishTask()
+			}
+		}
 		if p, ok := ui.Drop[passage](viewport); ok {
 			a.acceptClip(c, viewport, p)
 		}
@@ -77,7 +84,7 @@ func (a *App) cardView(c *ui.Context, i int) {
 		Cursor(ui.CursorMove).
 		HandleInput(func(ev ui.InputEvent) bool { return a.cardInput(id, ev) }).
 		Children(func() {
-			link := ui.Text(c, clip.Citation).FontSize(15).Bold().TextColor(t.Accent).Underline().Cursor(ui.CursorPointer)
+			link := ui.Text(c, clipHeader(clip)).FontSize(15).Bold().TextColor(t.Accent).Underline().Cursor(ui.CursorPointer)
 			link.HandleInput(func(ev ui.InputEvent) bool { return a.passClick(id, ev) })
 			if link.Clicked() {
 				a.openClip(a.cardByID(id))
@@ -118,13 +125,25 @@ func (a *App) acceptClip(c *ui.Context, viewport ui.Element, p passage) {
 	a.nudge(c, &clip)
 	a.cards = append(a.cards, clip)
 	a.log.Info("clip created", "kind", clip.Kind, "citation", clip.Citation)
+	a.logCardCreated(clip)
+	a.saveCanvas()
 }
 
-// nudge shifts a new card down and to the right until it does not cover
-// another card's header. The header stays inside the canvas; a tall
-// paragraph can hang below it.
+// nudge moves a new card until its rectangle does not cover another card.
+// A spot that keeps the header inside the measured viewport wins. When the
+// viewport cannot hold another full card, the card is placed clear of the
+// others even if its header sits below the viewport.
 func (a *App) nudge(c *ui.Context, clip *Clip) {
 	a.pullHeaderInside(clip)
+	if a.placeInView(c, clip) {
+		return
+	}
+	a.placeClear(c, clip)
+}
+
+// placeInView searches the drop point's diagonal, then a grid of the
+// measured viewport, for a free rectangle whose header stays on screen.
+func (a *App) placeInView(c *ui.Context, clip *Clip) bool {
 	ox, oy := clip.X, clip.Y
 	for n := 0; n <= nudgeLimit; n++ {
 		clip.X = ox + float32(n)*nudgeStepX
@@ -133,10 +152,68 @@ func (a *App) nudge(c *ui.Context, clip *Clip) {
 			clip.X = ox
 		}
 		if a.headerOnCanvas(clip) && !a.blocked(c, clip) {
-			return
+			return true
+		}
+	}
+	z := a.zoom
+	if z == 0 {
+		z = 1
+	}
+	if a.viewW < 1 || a.viewH < 1 {
+		clip.X, clip.Y = ox, oy
+		return false
+	}
+	const margin = float32(8)
+	header := a.headerBand(clip)
+	minX := (margin - a.panX) / z
+	minY := (margin - a.panY) / z
+	maxX := (a.viewW - margin - cardWidth*z - a.panX) / z
+	maxY := (a.viewH - margin - header*z - a.panY) / z
+	if maxX < minX {
+		maxX = minX
+	}
+	if maxY < minY {
+		maxY = minY
+	}
+	for y := minY; y <= maxY+0.5; y += nudgeStepY {
+		for x := minX; x <= maxX+0.5; x += nudgeStepX {
+			clip.X, clip.Y = x, y
+			if a.headerOnCanvas(clip) && !a.blocked(c, clip) {
+				return true
+			}
 		}
 	}
 	clip.X, clip.Y = ox, oy
+	return false
+}
+
+// placeClear sits the card under the lowest card, stepping across until
+// the rectangles no longer meet.
+func (a *App) placeClear(c *ui.Context, clip *Clip) {
+	var bottom float32
+	for i := range a.cards {
+		other := &a.cards[i]
+		if other.ID == clip.ID {
+			continue
+		}
+		box := a.cardBoxOf(c, other)
+		if other.Y+box.h > bottom {
+			bottom = other.Y + box.h
+		}
+	}
+	clip.X = 8
+	clip.Y = bottom + 8
+	mine := a.cardBoxOf(c, clip)
+	for n := 0; n < 80; n++ {
+		if !a.blocked(c, clip) {
+			return
+		}
+		clip.X += cardWidth + 8
+		if clip.X > canvasWorld-cardWidth {
+			clip.X = 8
+			clip.Y += mine.h + 8
+		}
+	}
 }
 
 // pullHeaderInside moves a drop that landed outside the viewport back
@@ -218,13 +295,7 @@ func (a *App) blocked(c *ui.Context, clip *Clip) bool {
 		}
 		box := a.cardBoxOf(c, other)
 		them := frect{other.X, other.Y, box.w, box.h}
-		head := frect{other.X, other.Y, box.w, box.header}
-		// Covering a header hides the citation. A card dropped on a tall
-		// paragraph only has to clear that band: its own header paints
-		// above the paragraph. Two cards of the same size still separate,
-		// so one does not sit entirely on the other.
-		sameSize := containsRect(them, me) && box.h <= mine.h+nudgeStepY
-		if intersects(me, head) || containsRect(me, them) || sameSize {
+		if intersects(me, them) {
 			return true
 		}
 	}
@@ -241,8 +312,8 @@ func (a *App) cardBoxOf(c *ui.Context, clip *Clip) cardBox {
 }
 
 func (a *App) estimateBox(c *ui.Context, clip *Clip) cardBox {
-	headerText := clip.Citation
-	if clip.Kind == kindNote {
+	headerText := clipHeader(*clip)
+	if clip.Kind == kindNote || headerText == "" {
 		headerText = "Note"
 	}
 	hh := float32(20)
@@ -303,6 +374,7 @@ func (a *App) bringToFront(id int64) {
 }
 
 func (a *App) openClip(clip Clip) {
+	a.logCitationOpened(clip.Citation, clip.ID)
 	switch clip.Kind {
 	case kindBible:
 		to := clip.VerseTo
@@ -354,6 +426,12 @@ func (a *App) cardInput(id int64, ev ui.InputEvent) bool {
 		a.bringToFront(id)
 		a.movingCard = id
 		a.grabX, a.grabY = ev.X, ev.Y
+		a.dragX0, a.dragY0 = 0, 0
+		for i := range a.cards {
+			if a.cards[i].ID == id {
+				a.dragX0, a.dragY0 = a.cards[i].X, a.cards[i].Y
+			}
+		}
 		return true
 	case ui.InputPointerMove:
 		if a.movingCard != id || ev.Button < 0 {
@@ -374,6 +452,16 @@ func (a *App) cardInput(id int64, ev ui.InputEvent) bool {
 	case ui.InputPointerUp:
 		if a.movingCard == id {
 			a.movingCard = 0
+			var x1, y1 float32
+			for i := range a.cards {
+				if a.cards[i].ID == id {
+					x1, y1 = a.cards[i].X, a.cards[i].Y
+				}
+			}
+			if x1 != a.dragX0 || y1 != a.dragY0 {
+				a.logCardDrag(id, a.dragX0, a.dragY0, x1, y1)
+			}
+			a.saveCanvas()
 		}
 		return true
 	case ui.InputScroll, ui.InputZoom:
