@@ -1,7 +1,7 @@
 # Berean competitor scan: canvas study and note tools
 
 - **Date checked:** 2026-10-26
-- **Method:** public pages only (official docs and pricing, public forums and GitHub). No sign-ups, no screenshots. Reddit blocked our fetches, so Reddit threads are cited by title only and not quoted.
+- **Method:** public pages only (official docs and pricing, public forums and GitHub). No sign-ups. Screenshots are of public pages only (see Screenshots below). Reddit blocked our fetches, so Reddit threads are cited by title only and not quoted.
 - Each product has its own file in this folder with full sources and screenshot candidates.
 
 ## Squad questions: direct answers
