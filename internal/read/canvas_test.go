@@ -342,6 +342,10 @@ func TestCanvasAndHistory(t *testing.T) {
 	if rangeCard.Verse != 1 || rangeCard.VerseTo != 5 || !strings.Contains(rangeCard.Text, firstWords(v1Text)) || !strings.Contains(rangeCard.Text, firstWords(v5Text)) {
 		t.Fatalf("range clip %+v", rangeCard)
 	}
+	if !strings.Contains(rangeCard.Text, "1 ") || !strings.Contains(rangeCard.Text, "\n5 ") {
+		t.Fatalf("range clip lost verse numbers or line breaks: %q", rangeCard.Text)
+	}
+	saveShot(t, tt, "bible-verse-numbers.png")
 
 	// Park the publication card where no other card covers it, and press
 	// its paragraph rather than the citation line.
@@ -411,18 +415,29 @@ func TestCanvasAndHistory(t *testing.T) {
 	saveShot(t, tt, "divider-resized.png")
 
 	// Pack all 200 into the viewport so the frames paint them, overlapping,
-	// rather than leaving most of the grid outside the clip.
+	// rather than leaving most of the grid outside the clip. Every fifth
+	// card is a note whose citation chip stays closed.
+	const noteMD = "A note on [Matt. 24:14](jwcite:Matt.%2024%3A14)."
 	app.cards = make([]Clip, 200)
+	app.editingNote = 0
 	for i := range app.cards {
 		app.cards[i] = Clip{
 			ID: int64(i + 1), Kind: kindBible, Citation: bibleCite,
 			Text: verseSnippet, X: float32(i%20) * 32, Y: float32(i/20) * 36,
 			BibleID: nwt.ID, Book: 40, Chapter: 24, Verse: 14, VerseTo: 14,
 		}
+		if i%5 == 0 {
+			app.cards[i].Kind = kindNote
+			app.cards[i].Citation = ""
+			app.cards[i].Text = ""
+			app.cards[i].Markdown = noteMD
+		}
 	}
 	app.nextClip = 200
 	app.panX, app.panY, app.zoom = 0, 0, 1
+	layoutStart := time.Now()
 	tt.Frame()
+	t.Logf("200 cards first layout: %s", time.Since(layoutStart))
 	measureFrames(t, "200 cards pan", 60, func() {
 		app.panX += 18
 		app.panY += 11
@@ -583,11 +598,7 @@ func measureFrames(t *testing.T, label string, n int, step func(), tt *ui.Tester
 	sort.Slice(d, func(i, j int) bool { return d[i] < d[j] })
 	p50, p95, maxd := d[n/2], d[(n*95)/100], d[n-1]
 	t.Logf("%s: %d frames (CPU software renderer, no GPU, 1440x900) p50=%s p95=%s max=%s", label, n, p50, p95, maxd)
-	over := 0
-	for _, f := range d {
-		if f > 33*time.Millisecond {
-			over++
-		}
+	if p95 > 167*time.Millisecond/10 || maxd > 33*time.Millisecond {
+		t.Fatalf("%s too slow: p95=%s max=%s (limits p95<=16.7ms and no frame over 33ms)", label, p95, maxd)
 	}
-	t.Logf("%s target on a GPU is p95<=16.7ms and no frame over 33ms; this CPU run has p95=%s max=%s frames_over_33ms=%d", label, p95, maxd, over)
 }

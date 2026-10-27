@@ -83,6 +83,9 @@ func TestImportAndResolve(t *testing.T) {
 		if hits[0].Page != 2 || hits[0].Paragraph != 3 || hits[0].Symbol != "w23" {
 			t.Fatalf("hit = %+v", hits[0])
 		}
+		if hits[0].PubID == 0 || hits[0].DocumentID == 0 || hits[0].ParagraphIndex == 0 {
+			t.Fatalf("hit location = %+v", hits[0])
+		}
 	})
 
 	t.Run("paragraph on the wrong page", func(t *testing.T) {
@@ -90,7 +93,7 @@ func TestImportAndResolve(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected par. 3 to be rejected on p. 5")
 		}
-		if err.Error() != "par. 3 is not on p. 5" {
+		if err.Error() != "par. 3 is on p. 2, not p. 5" {
 			t.Fatalf("error = %q", err.Error())
 		}
 	})
@@ -104,7 +107,7 @@ func TestImportAndResolve(t *testing.T) {
 			t.Fatalf("hits = %+v", hits)
 		}
 		_, err = lib.Resolve(ctx, "w23.01 p. 2 par. 8")
-		if err == nil || err.Error() != "par. 8 is not on p. 2" {
+		if err == nil || err.Error() != "par. 8 is on pp. 3-4, not p. 2" {
 			t.Fatalf("error = %v", err)
 		}
 	})

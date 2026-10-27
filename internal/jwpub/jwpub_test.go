@@ -84,6 +84,25 @@ func TestParagraphPages(t *testing.T) {
 	}
 }
 
+func TestLineBreak(t *testing.T) {
+	const src = `<p>Line one.<br>Line two.</p><p>Next line.</p>`
+	m, err := DecodeMark(markupFragment(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, r := range m.Runs {
+		if r.Break {
+			got = append(got, "\n")
+			continue
+		}
+		got = append(got, r.Text)
+	}
+	if strings.Join(got, "") != "Line one.\nLine two.\nNext line." {
+		t.Fatalf("runs = %#v", m.Runs)
+	}
+}
+
 func TestMarkup(t *testing.T) {
 	const src = `
 <p data-pid="8" class="sb"><span class="parNum" data-pnum="3"><strong><sup>3</sup></strong></span> How <em>can</em> we <a href="jwpub://b/NWTR/40:24:14-40:24:14"><strong>help</strong></a> others</p>

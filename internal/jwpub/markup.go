@@ -11,12 +11,14 @@ import (
 // Run is one styled span of a paragraph or verse.
 // Href is set when the span is a link, usually a jwpub:// reference.
 // Sup is a footnote marker (class fn) or a superscript, drawn above the line.
+// Break is a line break. Bible poetry uses one so a clip can keep the lines.
 type Run struct {
-	Text   string `json:"t"`
+	Text   string `json:"t,omitempty"`
 	Bold   bool   `json:"b,omitempty"`
 	Italic bool   `json:"i,omitempty"`
 	Href   string `json:"href,omitempty"`
 	Sup    bool   `json:"s,omitempty"`
+	Break  bool   `json:"br,omitempty"`
 }
 
 // Mark is the readable form of a paragraph or verse: an optional heading
@@ -106,6 +108,9 @@ func (m *marker) walk(n *html.Node, st runStyle, root bool) {
 	if root {
 		m.heading = headingLevel(n)
 	}
+	if blockTag(n.Data) && m.any {
+		m.addBreak()
+	}
 	switch n.Data {
 	case "em", "i":
 		st.italic = true
@@ -116,7 +121,7 @@ func (m *marker) walk(n *html.Node, st runStyle, root bool) {
 			st.href = href
 		}
 	case "br":
-		m.write(" ", st)
+		m.addBreak()
 		return
 	}
 	if hasClass(n, "em") {
@@ -198,13 +203,34 @@ func (m *marker) addSpace() {
 	m.gap = false
 }
 
+func (m *marker) addBreak() {
+	if !m.any {
+		return
+	}
+	if n := len(m.runs); n > 0 && m.runs[n-1].Break {
+		return
+	}
+	m.runs = append(m.runs, Run{Break: true})
+	m.gap = false
+	m.any = true
+}
+
+func blockTag(tag string) bool {
+	switch tag {
+	case "p", "div", "li", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6":
+		return true
+	default:
+		return false
+	}
+}
+
 func (m *marker) add(text string, st runStyle) {
 	if text == "" {
 		return
 	}
 	if n := len(m.runs); n > 0 {
 		last := &m.runs[n-1]
-		if last.Bold == st.bold && last.Italic == st.italic && last.Href == st.href && last.Sup == st.sup {
+		if !last.Break && last.Bold == st.bold && last.Italic == st.italic && last.Href == st.href && last.Sup == st.sup {
 			last.Text += text
 			return
 		}
@@ -213,6 +239,9 @@ func (m *marker) add(text string, st runStyle) {
 }
 
 func (m *marker) trim() {
+	for len(m.runs) > 0 && m.runs[len(m.runs)-1].Break {
+		m.runs = m.runs[:len(m.runs)-1]
+	}
 	if len(m.runs) == 0 {
 		return
 	}
