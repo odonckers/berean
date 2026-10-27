@@ -85,6 +85,7 @@ func (a *App) backPublication() {
 	a.pubFwd = pushHistory(a.pubFwd, a.snapshotPub())
 	a.applyPublication(place.pubID, place.docID, place.markFrom, place.markTo, false, true, place.scroll)
 	a.logNavPub("back", "")
+	a.logBack("publication")
 }
 
 func (a *App) forwardPublication() {
@@ -149,6 +150,7 @@ func (a *App) backBible() {
 	a.transChoice[0], a.transChoice[1] = "", ""
 	a.applyBible(place.book, place.chapter, place.markFrom, place.markTo, 0, true, place.scroll)
 	a.logNavBible("back", "")
+	a.logBack("bible")
 }
 
 func (a *App) forwardBible() {

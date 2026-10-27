@@ -8,6 +8,8 @@ require (
 	modernc.org/sqlite v1.34.5
 )
 
+tool github.com/egoist/mygo/cmd/mygo
+
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/ebitengine/purego v0.11.1 // indirect

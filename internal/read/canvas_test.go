@@ -40,6 +40,87 @@ func TestNudgeUsesMeasuredViewport(t *testing.T) {
 	}
 }
 
+func TestClipHeaderNamesTranslation(t *testing.T) {
+	nwt := Clip{Kind: kindBible, Citation: "Gen. 3:1-5", Symbol: "nwt"}
+	if got := clipHeader(nwt); got != "Gen. 3:1-5 (nwt)" {
+		t.Fatalf("nwt header %q", got)
+	}
+	sty := Clip{Kind: kindBible, Citation: "Gen. 3:1-5", Symbol: "nwtsty"}
+	if got := clipHeader(sty); got != "Gen. 3:1-5 (nwtsty)" {
+		t.Fatalf("nwtsty header %q", got)
+	}
+	pub := Clip{Kind: kindPublication, Citation: "w17.06 p. 22 par. 1", Symbol: "w17"}
+	if got := clipHeader(pub); got != "w17.06 p. 22 par. 1" {
+		t.Fatalf("publication header %q", got)
+	}
+}
+
+func TestNewCardsClearExistingText(t *testing.T) {
+	lib, err := library.Open(filepath.Join(t.TempDir(), "berean.db"), slog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { lib.Close() })
+	app, err := New(lib, slog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	tt := ui.NewTester(app.View, 1800, 1000)
+	tt.SetPreferences(ui.Preferences{ReduceMotion: true, TextScale: 1})
+	tt.SetSize(1800, 1000)
+	tt.Frame()
+	if app.viewW < 900 || app.viewH < 900 {
+		t.Fatalf("canvas viewport %.0fx%.0f, want the 1800x1000 window", app.viewW, app.viewH)
+	}
+	viewW, viewH := app.viewW, app.viewH
+	for _, zoom := range []float32{0.5, 1, 2.4} {
+		app.cards = nil
+		app.boxes = map[int64]cardBox{}
+		app.zoom = zoom
+		app.panX, app.panY = 0, 0
+		app.viewW, app.viewH = viewW, viewH
+		for n := 0; n < 5; n++ {
+			app.nextClip++
+			clip := Clip{
+				ID: app.nextClip, Kind: kindBible, Symbol: "nwt",
+				Citation: fmt.Sprintf("Gen. 3:%d", n+1), Text: "A verse line for placement.",
+			}
+			clip.X, clip.Y = 24, 24
+			app.nudge(nil, &clip)
+			app.cards = append(app.cards, clip)
+		}
+		if overlap := overlappingCards(app); overlap != "" {
+			t.Fatalf("zoom %v: %s", zoom, overlap)
+		}
+		if zoom <= 1 {
+			for i := range app.cards {
+				if !app.headerOnCanvas(&app.cards[i]) {
+					t.Fatalf("zoom %v card %d header is outside the measured viewport", zoom, app.cards[i].ID)
+				}
+			}
+		}
+		if zoom == 1 {
+			tt.Frame()
+			saveShot(t, tt, "five-clips-clear.png")
+		}
+	}
+}
+
+func overlappingCards(app *App) string {
+	for i := range app.cards {
+		bi := app.cardBoxOf(nil, &app.cards[i])
+		ri := frect{app.cards[i].X, app.cards[i].Y, bi.w, bi.h}
+		for j := i + 1; j < len(app.cards); j++ {
+			bj := app.cardBoxOf(nil, &app.cards[j])
+			rj := frect{app.cards[j].X, app.cards[j].Y, bj.w, bj.h}
+			if intersects(ri, rj) {
+				return fmt.Sprintf("card %d %+v meets card %d %+v", app.cards[i].ID, ri, app.cards[j].ID, rj)
+			}
+		}
+	}
+	return ""
+}
+
 func TestCanvasViewportFollowsWindow(t *testing.T) {
 	lib, err := library.Open(filepath.Join(t.TempDir(), "berean.db"), slog.Default())
 	if err != nil {
@@ -217,6 +298,10 @@ func TestCanvasAndHistory(t *testing.T) {
 	if bibleCard.Kind != kindBible || bibleCard.Book != 40 || bibleCard.Chapter != 24 || bibleCard.Verse != 14 || bibleCard.BibleID != nwt.ID {
 		t.Fatalf("bible clip %+v", bibleCard)
 	}
+	if clipHeader(bibleCard) != "Matt. 24:14 (nwt)" || !tt.HasText("Matt. 24:14 (nwt)") {
+		t.Fatalf("bible header %q", clipHeader(bibleCard))
+	}
+	saveShot(t, tt, "clip-header-translation.png")
 	if !strings.Contains(bibleCard.Text, verseSnippet) {
 		t.Fatalf("bible clip text %q", bibleCard.Text)
 	}
@@ -226,8 +311,9 @@ func TestCanvasAndHistory(t *testing.T) {
 	if app.chapter == 24 {
 		t.Fatal("bible pane stayed on Matthew 24")
 	}
-	bringOnScreen(t, tt, app, bibleCite)
-	if err := tt.Click(bibleCite); err != nil {
+	bibleHeader := clipHeader(bibleCard)
+	bringOnScreen(t, tt, app, bibleHeader)
+	if err := tt.Click(bibleHeader); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()

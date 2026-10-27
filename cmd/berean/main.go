@@ -16,11 +16,15 @@ import (
 const usageText = `berean is a personal study library.
 
 Usage:
+  berean [-db berean.db]
+  berean [-db berean.db] open
   berean [-db berean.db] import <file.jwpub>
   berean [-db berean.db] cite <citation>
-  berean [-db berean.db] open
+  berean [-db berean.db] bench
 
+With no command, berean opens the study window.
 The default database is berean.db in the current directory.
+bench prints p50, p95, and max frame time for pan and zoom with 200 cards.
 `
 
 func main() {
@@ -57,7 +61,7 @@ func run(args []string, logger *slog.Logger) error {
 		}
 	}
 	if len(rest) == 0 {
-		usage()
+		return openStudy(dbPath, logger)
 	}
 	switch rest[0] {
 	case "import":
@@ -93,16 +97,25 @@ func run(args []string, logger *slog.Logger) error {
 		if len(rest) != 1 {
 			usage()
 		}
-		lib, err := library.Open(dbPath, logger)
-		if err != nil {
-			return err
+		return openStudy(dbPath, logger)
+	case "bench":
+		if len(rest) != 1 {
+			usage()
 		}
-		defer lib.Close()
-		return read.Run(lib, logger)
+		return read.CommandBench(os.Stdout, logger, dbPath)
 	default:
 		usage()
 	}
 	return nil
+}
+
+func openStudy(dbPath string, logger *slog.Logger) error {
+	lib, err := library.Open(dbPath, logger)
+	if err != nil {
+		return err
+	}
+	defer lib.Close()
+	return read.Run(lib, logger)
 }
 
 func printHits(w *os.File, hits []library.Hit) {

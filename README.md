@@ -3,9 +3,11 @@
 Personal study library. Publications stay on this machine; nothing in this repository is for redistribution.
 
 ```
+berean
+berean open
 berean import file.jwpub
 berean cite "w23.01 p. 2 par. 3"
-berean open
+berean bench
 ```
 
 The database file is `berean.db` in the current directory unless `-db` says otherwise.

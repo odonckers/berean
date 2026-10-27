@@ -1,0 +1,7 @@
+{
+  "name": "Berean",
+  "identifier": "dev.odonckers.berean",
+  "version": "0.5.0-test",
+  "main": "./cmd/berean",
+  "out": "build"
+}

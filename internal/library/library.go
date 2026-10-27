@@ -118,9 +118,10 @@ CREATE INDEX IF NOT EXISTS cross_reference_src
 
 // Library is Berean's local store.
 type Library struct {
-	db  *sql.DB
-	log *slog.Logger
-	mu  sync.Mutex
+	db   *sql.DB
+	log  *slog.Logger
+	path string
+	mu   sync.Mutex
 }
 
 // ImportResult counts what an import wrote, or what was already stored.
@@ -191,7 +192,7 @@ func Open(path string, logger *slog.Logger) (*Library, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	l := &Library{db: db, log: logger}
+	l := &Library{db: db, log: logger, path: path}
 	if err := l.init(); err != nil {
 		db.Close()
 		return nil, err
@@ -224,6 +225,9 @@ func (l *Library) init() error {
 	}
 	return nil
 }
+
+// Path is the database file Open was given.
+func (l *Library) Path() string { return l.path }
 
 // Close closes the database.
 func (l *Library) Close() error {

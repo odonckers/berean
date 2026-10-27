@@ -57,6 +57,8 @@ func (a *App) addNote(c *ui.Context) {
 	a.armNote = true
 	a.problemOK = false
 	a.log.Info("note created", "id", clip.ID)
+	a.logCardCreated(clip)
+	a.saveCanvas()
 }
 
 func (a *App) finishNote() {
@@ -73,6 +75,10 @@ func (a *App) finishNote() {
 	a.editingNote = 0
 	a.armNote = false
 	a.problemOK = false
+	for _, citation := range citationsInMarkdown(md) {
+		a.logCitationInserted(citation)
+	}
+	a.saveCanvas()
 }
 
 func (a *App) editNote(id int64) {
@@ -154,9 +160,12 @@ func (a *App) draftErrors() []string {
 	a.problemOK = true
 	a.problems = a.problems[:0]
 	for _, sp := range findCites(a.noteDraft) {
-		_, err := a.lookup(a.noteDraft[sp.start:sp.end])
+		citation := a.noteDraft[sp.start:sp.end]
+		_, err := a.lookup(citation)
 		if err != nil {
-			a.problems = append(a.problems, err.Error())
+			line := errorLine(citation, err.Error())
+			a.problems = append(a.problems, line)
+			a.logShownError(citation, line)
 		}
 	}
 	return a.problems
@@ -189,7 +198,13 @@ func (a *App) noteBody(c *ui.Context, id int64, md string) {
 				case segBreak:
 					ui.Text(c, "\n")
 				case segChip:
-					el := ui.Text(c, seg.text).Bold().TextColor(t.Accent).Background(t.Accent.Alpha(0.18)).Cursor(ui.CursorPointer)
+					el := ui.Text(c, seg.text).Cursor(ui.CursorPointer)
+					if _, err := a.lookup(seg.cite); err != nil {
+						missing := ui.Hex("#9e4705")
+						el.TextColor(missing).Background(missing.Alpha(0.16)).WavyUnderline()
+					} else {
+						el.Bold().TextColor(t.Accent).Background(t.Accent.Alpha(0.18))
+					}
 					el.HandleInput(func(ev ui.InputEvent) bool { return a.passClick(id, ev) })
 					citeStr := seg.cite
 					if el.Clicked() {
@@ -271,6 +286,7 @@ func (a *App) openHits(citation string, hits []library.Hit) {
 	if len(hits) == 0 {
 		return
 	}
+	a.logCitationOpened(citation, 0)
 	h := hits[0]
 	switch h.Kind {
 	case cite.KindBible, cite.KindStudyNote:
@@ -372,6 +388,20 @@ func segFor(text string, bold, italic bool, link string) noteSeg {
 		return noteSeg{kind: segChip, text: label, cite: citeStr, bold: bold, italic: italic}
 	}
 	return noteSeg{text: text, bold: bold, italic: italic}
+}
+
+func citationsInMarkdown(md string) []string {
+	var out []string
+	for i := 0; i < len(md); {
+		end, label, ok := jwLink(md, i)
+		if !ok {
+			i++
+			continue
+		}
+		out = append(out, label)
+		i = end
+	}
+	return out
 }
 
 func jwCite(dest string) (string, bool) {
