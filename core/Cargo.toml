@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+members = ["berean-core", "berean-ffi", "uniffi-bindgen"]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.95"
+publish = false
+
+[workspace.dependencies]
+# Pinned together: rusqlite_migration 2.6 depends on rusqlite ^0.40, so both
+# resolve to the same rusqlite 0.40.x and the error types line up for mapping.
+rusqlite = { version = "0.40", features = ["bundled"] }
+rusqlite_migration = "2.6"
+thiserror = "2"
+uniffi = "0.32"
