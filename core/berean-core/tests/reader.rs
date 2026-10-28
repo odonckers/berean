@@ -6,7 +6,7 @@ mod common;
 
 use std::sync::OnceLock;
 
-use berean_core::reader::{Location, Reader, TocEntry};
+use berean_core::reader::{Location, LocationSpan, Reader, TocEntry};
 use berean_core::{CancelToken, Core, CoreError};
 use common::{fixture, raw_db};
 
@@ -21,6 +21,7 @@ const NWT_S: &str = "nwt:1:0";
 const JOHN_DOC: i64 = 1001061147;
 const WIN_THE_BATTLE_DOC: i64 = 2026521;
 const W_CONTENTS_DOC: i64 = 2026527;
+const LL_TITLE_PAGE_DOC: i64 = 1102011094;
 
 /// A core with every reader fixture installed, shared by all tests (the
 /// Bibles are large). It lives under Cargo's per-target temp dir and is
@@ -100,6 +101,26 @@ fn document_location(pub_key: &str, doc_id: i64, paragraph: Option<u32>) -> Loca
         verse: None,
         paragraph,
     }
+}
+
+/// A span of one location.
+fn point(location: Location) -> LocationSpan {
+    LocationSpan {
+        start: location.clone(),
+        end: location,
+    }
+}
+
+fn span(start: Location, end: Location) -> LocationSpan {
+    LocationSpan { start, end }
+}
+
+/// Resolve a reference that names a single location.
+#[track_caller]
+fn resolve_one(reference: &str) -> Location {
+    let span = reader().resolve(reference).unwrap();
+    assert_eq!(span.start, span.end, "{reference:?}");
+    span.start
 }
 
 #[track_caller]
@@ -293,16 +314,17 @@ fn paragraph_anchors_match_the_database_and_the_html() {
                 let pid = format!("data-pid=\"{}\"", p.paragraph);
                 match (p.begin, p.end) {
                     (Some(b), Some(e)) => {
-                        let (b, e) = (b as usize, e as usize);
-                        // The range holds the paragraph's element, or (ll)
-                        // starts just after the element's opening tag.
-                        let before = &doc.html[..b];
-                        let after_tag = before.ends_with('>')
-                            && before
-                                .rfind('<')
-                                .is_some_and(|t| before[t..].contains(&pid));
+                        // The range is the paragraph's whole element.
+                        let slice = &doc.html[b as usize..e as usize];
+                        let open = &slice[..slice.find('>').unwrap() + 1];
+                        let name: String = open[1..]
+                            .chars()
+                            .take_while(|c| c.is_ascii_alphanumeric())
+                            .collect();
+                        assert!(!name.is_empty(), "{pub_key} {doc_id} {p:?}");
+                        assert!(open.contains(&pid), "{pub_key} {doc_id} {p:?}");
                         assert!(
-                            doc.html[b..e].contains(&pid) || after_tag,
+                            slice.ends_with(&format!("</{name}>")),
                             "{pub_key} {doc_id} {p:?}"
                         );
                     }
@@ -314,6 +336,47 @@ fn paragraph_anchors_match_the_database_and_the_html() {
             }
         }
     }
+}
+
+#[track_caller]
+fn assert_paragraph(pub_key: &str, doc_id: i64, paragraph: u32, html: &str) {
+    let doc = reader().document(pub_key, doc_id).unwrap();
+    let p = doc
+        .paragraphs
+        .iter()
+        .find(|p| p.paragraph == paragraph)
+        .unwrap();
+    assert_eq!(
+        &doc.html[p.begin.unwrap() as usize..p.end.unwrap() as usize],
+        html
+    );
+}
+
+#[test]
+fn brochure_paragraphs_include_their_tags() {
+    // ll records only the element's content; the anchor covers the element.
+    assert_paragraph(
+        LL_E,
+        LL_TITLE_PAGE_DOC,
+        2,
+        "<h1 id=\"p2\" data-pid=\"2\"><strong>Listen to God and Live Forever</strong></h1>",
+    );
+    assert_paragraph(
+        LL_E,
+        LL_TITLE_PAGE_DOC,
+        6,
+        "<p id=\"p6\" data-pid=\"6\" class=\"si\">January 2016 Printing</p>",
+    );
+}
+
+#[test]
+fn watchtower_paragraphs_include_their_tags() {
+    assert_paragraph(
+        W_E,
+        W_CONTENTS_DOC,
+        3,
+        "<h3 id=\"p3\" data-pid=\"3\">Study article for October\u{a0}5-11, 2026</h3>",
+    );
 }
 
 #[test]
@@ -396,61 +459,102 @@ fn unknown_publications_and_documents_are_not_found() {
 
 #[test]
 fn resolve_citations() {
-    let r = reader();
     let john_3_16 = verse_location(NWT_E, 43, 3, Some(16));
     assert_eq!(john_3_16.doc_id, Some(JOHN_DOC));
-    assert_eq!(r.resolve("John 3:16").unwrap(), john_3_16);
+    assert_eq!(resolve_one("John 3:16"), john_3_16);
     for s in ["john 3:16", " JOHN\u{a0}3:16. ", "John 3:16;"] {
-        assert_eq!(r.resolve(s).unwrap(), john_3_16, "{s:?}");
+        assert_eq!(resolve_one(s), john_3_16, "{s:?}");
     }
     assert_eq!(
-        r.resolve("Juan 3:16").unwrap(),
+        resolve_one("Juan 3:16"),
         verse_location(NWT_S, 43, 3, Some(16))
     );
+    assert_eq!(resolve_one("Psalm 23"), verse_location(NWT_E, 19, 23, None));
     assert_eq!(
-        r.resolve("Psalm 23").unwrap(),
-        verse_location(NWT_E, 19, 23, None)
-    );
-    assert_eq!(
-        r.resolve("psalms 23:1").unwrap(),
+        resolve_one("psalms 23:1"),
         verse_location(NWT_E, 19, 23, Some(1))
     );
     assert_eq!(
-        r.resolve("Salmos 23:1").unwrap(),
+        resolve_one("Salmos 23:1"),
         verse_location(NWT_S, 19, 23, Some(1))
     );
     assert_eq!(
-        r.resolve("1 John 4:8").unwrap(),
+        resolve_one("1 John 4:8"),
         verse_location(NWT_E, 62, 4, Some(8))
     );
     assert_eq!(
-        r.resolve("1\u{a0}Juan 4:8").unwrap(),
+        resolve_one("1\u{a0}Juan 4:8"),
         verse_location(NWT_S, 62, 4, Some(8))
     );
     for s in ["Éxodo 20:3", "exodo 20:3", "ÉXODO 20:3"] {
         assert_eq!(
-            r.resolve(s).unwrap(),
+            resolve_one(s),
             verse_location(NWT_S, 2, 20, Some(3)),
             "{s:?}"
         );
     }
     // A name both Bibles use resolves in the first, by key.
     assert_eq!(
-        r.resolve("Daniel 2:44").unwrap(),
+        resolve_one("Daniel 2:44"),
         verse_location(NWT_E, 27, 2, Some(44))
     );
     assert_eq!(
-        r.resolve("Song of Solomon 2:1").unwrap(),
+        resolve_one("Song of Solomon 2:1"),
         verse_location(NWT_E, 22, 2, Some(1))
     );
 }
 
 #[test]
-fn resolve_rejects_spans_and_malformed_citations() {
+fn resolve_verse_ranges() {
     let r = reader();
-    for s in ["John 3:16-18", "John 3:16, 17", "John 3:16–18"] {
-        assert_invalid(r.resolve(s), "spans are not supported yet");
+    let john = |c, v| verse_location(NWT_E, 43, c, Some(v));
+    for s in ["John 3:16-18", "john 3:16–18."] {
+        assert_eq!(
+            r.resolve(s).unwrap(),
+            span(john(3, 16), john(3, 18)),
+            "{s:?}"
+        );
     }
+    // Across chapters: John 3 ends at verse 36.
+    assert_eq!(
+        r.resolve("John 3:36-4:2").unwrap(),
+        span(john(3, 36), john(4, 2))
+    );
+    assert_eq!(
+        r.resolve("Juan 3:16-18").unwrap(),
+        span(
+            verse_location(NWT_S, 43, 3, Some(16)),
+            verse_location(NWT_S, 43, 3, Some(18))
+        )
+    );
+    assert_eq!(
+        r.resolve("Salmos 23:1-6").unwrap(),
+        span(
+            verse_location(NWT_S, 19, 23, Some(1)),
+            verse_location(NWT_S, 19, 23, Some(6))
+        )
+    );
+    // A chapter alone: start and end are the chapter, without a verse.
+    assert_eq!(
+        r.resolve("Psalm 23").unwrap(),
+        point(verse_location(NWT_E, 19, 23, None))
+    );
+    // Both ends must exist.
+    for s in ["John 3:16-37", "John 3:36-22:1", "John 21:25-22:1"] {
+        assert_not_found(r.resolve(s));
+    }
+    for s in ["John 3:18-16", "John 4:2-3:36"] {
+        assert_invalid(r.resolve(s), "range ends before it starts");
+    }
+    for s in ["John 3:16, 17", "Juan 3:16,17"] {
+        assert_invalid(r.resolve(s), "a list of references is not a single span");
+    }
+    assert_invalid(r.resolve("John 3-4"), "chapter ranges are not supported");
+}
+
+#[test]
+fn resolve_rejects_malformed_citations() {
+    let r = reader();
     for s in ["3:16", "", "John", "John 3:x", "John 3:16:1"] {
         assert_invalid(r.resolve(s), "not a citation");
     }
@@ -463,17 +567,49 @@ fn resolve_rejects_spans_and_malformed_citations() {
 fn resolve_bible_links() {
     let r = reader();
     assert_eq!(
-        r.resolve("jwpub://b/NWTR/43:3:16-43:3:16").unwrap(),
-        r.resolve("John 3:16").unwrap()
+        resolve_one("jwpub://b/NWTR/43:3:16-43:3:16"),
+        resolve_one("John 3:16")
     );
     assert_eq!(
-        r.resolve("jwpub://b/NWTR/19:72:0-19:72:0").unwrap(),
+        resolve_one("jwpub://b/NWTR/19:72:0-19:72:0"),
         verse_location(NWT_E, 19, 72, Some(0))
     );
-    assert_invalid(
-        r.resolve("jwpub://b/NWTR/1:3:1-1:3:5"),
-        "spans are not supported yet",
+    // Links from the watchtower: a range in a chapter, and one across
+    // chapters (Acts 7:57-8:1).
+    let w_links: String = (2026520..=2026526)
+        .map(|id| r.document(W_E, id).unwrap().html)
+        .collect();
+    for (link, start, end) in [
+        (
+            "jwpub://b/NWTR/49:6:11-49:6:12",
+            verse_location(NWT_E, 49, 6, Some(11)),
+            verse_location(NWT_E, 49, 6, Some(12)),
+        ),
+        (
+            "jwpub://b/NWTR/44:7:57-44:8:1",
+            verse_location(NWT_E, 44, 7, Some(57)),
+            verse_location(NWT_E, 44, 8, Some(1)),
+        ),
+    ] {
+        assert!(w_links.contains(&format!("href=\"{link}\"")), "{link}");
+        assert_eq!(r.resolve(link).unwrap(), span(start, end), "{link}");
+    }
+    // A psalm from its superscription.
+    assert_eq!(
+        r.resolve("jwpub://b/NWTR/19:72:0-19:72:20").unwrap(),
+        span(
+            verse_location(NWT_E, 19, 72, Some(0)),
+            verse_location(NWT_E, 19, 72, Some(20))
+        )
     );
+    for link in [
+        "jwpub://b/NWTR/43:3:18-43:3:16",
+        "jwpub://b/NWTR/43:4:1-43:3:36",
+        "jwpub://b/NWTR/44:1:1-43:1:1",
+    ] {
+        assert_invalid(r.resolve(link), "range ends before it starts");
+    }
+    assert_not_found(r.resolve("jwpub://b/NWTR/43:3:16-43:3:37"));
     for link in [
         "jwpub://b/NWTR/67:1:1-67:1:1",
         "jwpub://b/NWTR/43:22:1-43:22:1",
@@ -498,7 +634,7 @@ fn resolve_document_links() {
     let contents = r.document(W_E, W_CONTENTS_DOC).unwrap();
     let link = format!("jwpub://p/E:{WIN_THE_BATTLE_DOC}/");
     assert!(contents.html.contains(&format!("href=\"{link}\"")));
-    let location = r.resolve(&link).unwrap();
+    let location = resolve_one(&link);
     assert_eq!(location, document_location(W_E, WIN_THE_BATTLE_DOC, None));
     let doc = r
         .document(&location.pub_key, location.doc_id.unwrap())
@@ -507,20 +643,32 @@ fn resolve_document_links() {
 
     // MEPS ids are shared across languages; the code picks the edition.
     assert_eq!(
-        r.resolve(&format!("jwpub://p/S:{WIN_THE_BATTLE_DOC}/"))
-            .unwrap(),
+        resolve_one(&format!("jwpub://p/S:{WIN_THE_BATTLE_DOC}/")),
         document_location(W_S, WIN_THE_BATTLE_DOC, None)
     );
     assert_eq!(
-        r.resolve(&format!("jwpub://p/E:{WIN_THE_BATTLE_DOC}/8"))
-            .unwrap(),
+        resolve_one(&format!("jwpub://p/E:{WIN_THE_BATTLE_DOC}/8")),
         document_location(W_E, WIN_THE_BATTLE_DOC, Some(8))
     );
-    assert_invalid(
-        r.resolve(&format!("jwpub://p/E:{WIN_THE_BATTLE_DOC}/8-9")),
-        "spans are not supported yet",
+    assert_eq!(
+        resolve_one(&format!("jwpub://p/E:{WIN_THE_BATTLE_DOC}/8-8")),
+        document_location(W_E, WIN_THE_BATTLE_DOC, Some(8))
     );
     assert_not_found(r.resolve(&format!("jwpub://p/E:{WIN_THE_BATTLE_DOC}/999")));
+    // A paragraph range.
+    assert_eq!(
+        r.resolve(&format!("jwpub://p/E:{WIN_THE_BATTLE_DOC}/2-3"))
+            .unwrap(),
+        span(
+            document_location(W_E, WIN_THE_BATTLE_DOC, Some(2)),
+            document_location(W_E, WIN_THE_BATTLE_DOC, Some(3))
+        )
+    );
+    assert_not_found(r.resolve(&format!("jwpub://p/E:{WIN_THE_BATTLE_DOC}/8-999")));
+    assert_invalid(
+        r.resolve(&format!("jwpub://p/E:{WIN_THE_BATTLE_DOC}/3-2")),
+        "range ends before it starts",
+    );
 
     // An article links to this publication, which is not installed.
     let article = r.document(W_E, 2026520).unwrap();

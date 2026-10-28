@@ -1,6 +1,6 @@
 //! Reader: the table of contents, documents and Bible chapters of installed
 //! publications, and resolving citations and `jwpub://` links to a
-//! [`Location`].
+//! [`LocationSpan`].
 //!
 //! A document is named by its MEPS document id (`Document.MepsDocumentId`),
 //! never by the publication's local `DocumentId`: the MEPS id stays the same
@@ -9,36 +9,47 @@
 //! publication's key as well as the id.
 //!
 //! Anchors (`begin`, `end`) are byte offsets into the HTML they come with.
+//! A paragraph's anchor always covers its whole element, opening and closing
+//! tags included, however the publication records it.
 //!
 //! # Resolving
 //!
-//! [`Reader::resolve`] takes one of:
+//! [`Reader::resolve`] returns a [`LocationSpan`], from its `start` through
+//! its `end`; a single verse, chapter, document or paragraph gives
+//! `start == end`. It takes one of:
 //!
-//! - A citation, `<book> <chapter>:<verse>` or `<book> <chapter>`. Book names
-//!   come from each installed Bible's own tables: the title of the book's
-//!   document (`John`, `Psalms`, `1 Juan`), plus its `ChapterDisplayTitle`
-//!   when that is a single word (`Psalm`, `Salmos`). Names match ignoring
-//!   case, runs of whitespace (non-breaking spaces included) and the
-//!   diacritics of Latin letters. Installed Bibles are searched in key order;
-//!   the first with a matching book name is used. A trailing `.` or `;` is
-//!   ignored.
+//! - A citation: `<book> <chapter>`, `<book> <chapter>:<verse>`, a verse range
+//!   in one chapter `<book> <chapter>:<verse>-<verse>`, or one across
+//!   chapters `<book> <chapter>:<verse>-<chapter>:<verse>` (an en or em dash
+//!   works as well as `-`). A chapter alone (`Psalm 23`) gives a location
+//!   with `verse: None` as both start and end. Book names come from each
+//!   installed Bible's own tables: the title of the book's document (`John`,
+//!   `Psalms`, `1 Juan`), plus its `ChapterDisplayTitle` when that is a
+//!   single word (`Psalm`, `Salmos`). Names match ignoring case, runs of
+//!   whitespace (non-breaking spaces included) and the diacritics of Latin
+//!   letters. Installed Bibles are searched in key order; the first with a
+//!   matching book name is used. A trailing `.` or `;` is ignored.
 //! - `jwpub://b/<bible>/<book>:<chapter>:<verse>-<book>:<chapter>:<verse>`,
-//!   a link to a Bible verse. The link names no language, so it resolves
-//!   against the first installed Bible, in key order, with the link's symbol
-//!   (`NWTR` is the `nwt` New World Translation; no other is known).
-//! - `jwpub://p/<code>:<doc_id>/[<paragraph>]`, a link to a document, by JW
-//!   language code and MEPS document id. It resolves to the first installed
+//!   a link to a Bible verse or range of verses (possibly across chapters).
+//!   The link names no language, so it resolves against the first installed
+//!   Bible, in key order, with the link's symbol (`NWTR` is the `nwt` New
+//!   World Translation; no other is known).
+//! - `jwpub://p/<code>:<doc_id>/[<paragraph>[-<paragraph>]]`, a link to a
+//!   document, or a paragraph or range of paragraphs of it, by JW language
+//!   code and MEPS document id. It resolves to the first installed
 //!   publication, in key order, in that language holding the document.
 //!
-//! A [`Location`] is a single point, so a verse or paragraph span
-//! (`John 3:16-18`, `John 3:16, 17`, a link whose ends differ) is `Invalid`
-//! for now.
+//! Both ends of a range must exist, and the end may not come before the
+//! start (in Bible order: book, chapter, verse; or paragraph order). Not a
+//! single span, and so `Invalid`: a list (`John 3:16, 17`; resolve each part
+//! on its own) and a chapter range (`John 3-4`).
 //!
-//! Errors: a malformed key, citation or link => `Invalid`; a publication that
-//! is not installed, or an unknown document, book, chapter, verse or
-//! paragraph => `NotFound`; publication data that contradicts itself (an
-//! anchor out of range, a verse missing from its chapter, a table of
-//! contents that is not a tree) => `Corrupt`.
+//! Errors: a malformed key, citation or link, or a reversed range =>
+//! `Invalid`; a publication that is not installed, or an unknown document,
+//! book, chapter, verse or paragraph => `NotFound`; publication data that
+//! contradicts itself (an anchor out of range or not on its paragraph's
+//! element, a verse missing from its chapter, a table of contents that is not
+//! a tree) => `Corrupt`.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -53,7 +64,9 @@ use crate::{CoreError, Inner};
 /// The `PublicationView` whose items are the table of contents.
 const TOC_VIEW: &str = "jwpub";
 
-const SPANS: &str = "verse and paragraph spans are not supported yet";
+const LISTS: &str = "a list of references is not a single span; resolve each part on its own";
+const REVERSED: &str = "range ends before it starts";
+const CHAPTER_RANGES: &str = "chapter ranges are not supported";
 
 /// A point in a publication: a document, optionally a paragraph of it, or a
 /// Bible book, chapter and optionally verse.
@@ -67,6 +80,14 @@ pub struct Location {
     pub verse: Option<u32>,
     /// The paragraph's `data-pid` (`DocumentParagraph.ParagraphIndex`).
     pub paragraph: Option<u32>,
+}
+
+/// What a reference names: from `start` through `end`, both inclusive. A
+/// single verse, chapter, document or paragraph gives `start == end`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocationSpan {
+    pub start: Location,
+    pub end: Location,
 }
 
 /// One table-of-contents entry. The entries of a publication form a flat
@@ -98,11 +119,12 @@ pub struct ParagraphAnchor {
     pub paragraph: u32,
     /// The printed paragraph number, if it has one.
     pub label: Option<String>,
-    /// The paragraph's byte range in the HTML, as the publication records it
-    /// (`DocumentParagraph.BeginPosition`/`EndPosition`). Depending on the
-    /// publication it covers the paragraph's whole element, or starts just
-    /// after the element's opening tag. Both are `None` for a paragraph the
-    /// publication gives no position for (it does not appear in the HTML).
+    /// The paragraph's byte range in the HTML: its whole element, from the
+    /// `<` of the opening tag carrying `data-pid` through the `>` of the
+    /// matching closing tag, whichever way the publication records it
+    /// (`DocumentParagraph.BeginPosition`/`EndPosition`). Both are `None` for
+    /// a paragraph the publication gives no position for (it does not appear
+    /// in the HTML).
     pub begin: Option<u32>,
     pub end: Option<u32>,
 }
@@ -210,9 +232,9 @@ impl Reader {
         read_chapter(&publication, bible, book, chapter)
     }
 
-    /// Resolve a citation or `jwpub://` link to a location; see the module
-    /// docs for the forms accepted.
-    pub fn resolve(&self, reference: &str) -> Result<Location, CoreError> {
+    /// Resolve a citation or `jwpub://` link to the span of locations it
+    /// names; see the module docs for the forms accepted.
+    pub fn resolve(&self, reference: &str) -> Result<LocationSpan, CoreError> {
         let reference = reference.trim();
         match reference.strip_prefix("jwpub://") {
             Some(link) => {
@@ -230,7 +252,7 @@ impl Reader {
         }
     }
 
-    fn resolve_citation(&self, reference: &str) -> Result<Location, CoreError> {
+    fn resolve_citation(&self, reference: &str) -> Result<LocationSpan, CoreError> {
         let citation = parse_citation(reference)?;
         for summary in self.installed(|p| p.kind == PubKind::Bible)? {
             let publication = self.library().publication(&summary.pub_key)?;
@@ -247,13 +269,13 @@ impl Reader {
                     .chain(single_word)
                     .any(|name| fold(name) == citation.book);
                 if matches {
-                    return bible_location(
-                        &publication,
-                        &summary.pub_key,
-                        &book,
-                        doc,
-                        citation.chapter,
-                        citation.verse,
+                    let at = |(chapter, verse): (u32, Option<u32>)| {
+                        bible_location(&publication, &summary.pub_key, &book, doc, chapter, verse)
+                    };
+                    return span(
+                        at(citation.start)?,
+                        || at(citation.end),
+                        citation.start == citation.end,
                     );
                 }
             }
@@ -261,7 +283,7 @@ impl Reader {
         Err(CoreError::NotFound)
     }
 
-    fn resolve_bible_link(&self, link: &str, rest: &str) -> Result<Location, CoreError> {
+    fn resolve_bible_link(&self, link: &str, rest: &str) -> Result<LocationSpan, CoreError> {
         let invalid = || CoreError::Invalid(format!("malformed Bible link {link:?}"));
         let (symbol, range) = rest.split_once('/').ok_or_else(invalid)?;
         let (start, end) = range.split_once('-').unwrap_or((range, range));
@@ -274,9 +296,10 @@ impl Reader {
             );
             parts.next().is_none().then_some(r)
         };
-        let (book, chapter, verse) = verse_ref(start).ok_or_else(invalid)?;
-        if verse_ref(end).ok_or_else(invalid)? != (book, chapter, verse) {
-            return Err(CoreError::Invalid(SPANS.into()));
+        let start = verse_ref(start).ok_or_else(invalid)?;
+        let end = verse_ref(end).ok_or_else(invalid)?;
+        if end < start {
+            return Err(CoreError::Invalid(format!("{REVERSED}: {link:?}")));
         }
         let symbol = match symbol {
             "NWTR" => "nwt",
@@ -288,43 +311,47 @@ impl Reader {
             .next()
             .ok_or(CoreError::NotFound)?;
         let publication = self.library().publication(&summary.pub_key)?;
-        let book_row = publication
-            .bible_books()?
-            .into_iter()
-            .find(|b| b.bible_book_id == i64::from(book))
-            .ok_or(CoreError::NotFound)?;
+        let books = publication.bible_books()?;
         let documents = documents_by_id(&publication)?;
-        let doc = documents
-            .get(&book_row.book_document_id)
-            .ok_or(CoreError::Corrupt)?;
-        bible_location(
-            &publication,
-            &summary.pub_key,
-            &book_row,
-            doc,
-            chapter,
-            Some(verse),
-        )
+        let at = |(book, chapter, verse): (u32, u32, u32)| {
+            let book_row = books
+                .iter()
+                .find(|b| b.bible_book_id == i64::from(book))
+                .ok_or(CoreError::NotFound)?;
+            let doc = documents
+                .get(&book_row.book_document_id)
+                .ok_or(CoreError::Corrupt)?;
+            bible_location(
+                &publication,
+                &summary.pub_key,
+                book_row,
+                doc,
+                chapter,
+                Some(verse),
+            )
+        };
+        span(at(start)?, || at(end), start == end)
     }
 
-    fn resolve_document_link(&self, link: &str, rest: &str) -> Result<Location, CoreError> {
+    fn resolve_document_link(&self, link: &str, rest: &str) -> Result<LocationSpan, CoreError> {
         let invalid = || CoreError::Invalid(format!("malformed document link {link:?}"));
         let rest = rest.strip_suffix('/').unwrap_or(rest);
-        let (head, paragraph) = match rest.split_once('/') {
-            Some((head, paragraph)) => (head, Some(paragraph)),
+        let (head, paragraphs) = match rest.split_once('/') {
+            Some((head, paragraphs)) => (head, Some(paragraphs)),
             None => (rest, None),
         };
         let (code, doc_id) = head.split_once(':').ok_or_else(invalid)?;
         let doc_id: i64 = number(doc_id).ok_or_else(invalid)?;
-        let paragraph = match paragraph {
+        let paragraphs = match paragraphs {
             None => None,
             Some(p) => {
                 let (first, last) = p.split_once('-').unwrap_or((p, p));
                 let first: u32 = number(first).ok_or_else(invalid)?;
-                if number::<u32>(last).ok_or_else(invalid)? != first {
-                    return Err(CoreError::Invalid(SPANS.into()));
+                let last: u32 = number(last).ok_or_else(invalid)?;
+                if last < first {
+                    return Err(CoreError::Invalid(format!("{REVERSED}: {link:?}")));
                 }
-                Some(first)
+                Some((first, last))
             }
         };
         let language = languages::by_code(code).ok_or(CoreError::NotFound)?;
@@ -333,19 +360,24 @@ impl Reader {
             let Some(doc) = find_document(&publication, doc_id)? else {
                 continue;
             };
-            if let Some(p) = paragraph {
-                let paragraphs = publication.document_paragraphs(doc.document_id)?;
-                if !paragraphs.iter().any(|r| r.paragraph_index == i64::from(p)) {
+            if let Some((first, last)) = paragraphs {
+                let rows = publication.document_paragraphs(doc.document_id)?;
+                let exists = |p: u32| rows.iter().any(|r| r.paragraph_index == i64::from(p));
+                if !exists(first) || !exists(last) {
                     return Err(CoreError::NotFound);
                 }
             }
-            return Ok(Location {
-                pub_key: summary.pub_key,
+            let at = |paragraph| Location {
+                pub_key: summary.pub_key.clone(),
                 doc_id: Some(doc.meps_document_id),
                 book: None,
                 chapter: None,
                 verse: None,
                 paragraph,
+            };
+            return Ok(LocationSpan {
+                start: at(paragraphs.map(|p| p.0)),
+                end: at(paragraphs.map(|p| p.1)),
             });
         }
         Err(CoreError::NotFound)
@@ -429,20 +461,61 @@ fn find_document(
 }
 
 fn paragraph_anchor(html: &str, p: DocumentParagraph) -> Result<ParagraphAnchor, CoreError> {
+    let paragraph = u32::try_from(p.paragraph_index).map_err(|_| CoreError::Corrupt)?;
     let (begin, end) = match (p.begin_position, p.end_position) {
         (Some(begin), Some(end)) => {
-            let (begin, end) = byte_range(html, begin, end)?;
+            let (begin, end) = paragraph_range(html, paragraph, begin, end)?;
             (Some(begin), Some(end))
         }
         (None, None) => (None, None),
         _ => return Err(CoreError::Corrupt),
     };
     Ok(ParagraphAnchor {
-        paragraph: u32::try_from(p.paragraph_index).map_err(|_| CoreError::Corrupt)?,
+        paragraph,
         label: p.paragraph_number_label.map(|n| n.to_string()),
         begin,
         end,
     })
+}
+
+/// Normalize a paragraph's recorded range to its whole element, from the `<`
+/// of the opening tag carrying `data-pid="{paragraph}"` through the `>` of
+/// its matching closing tag. Publications record either that, or (ll) the
+/// element's content: from just after the opening tag to just before the
+/// closing tag. Any other range is `Corrupt`.
+fn paragraph_range(
+    html: &str,
+    paragraph: u32,
+    begin: i64,
+    end: i64,
+) -> Result<(u32, u32), CoreError> {
+    let (begin, end) = byte_range(html, begin, end)?;
+    let (begin, end) = (begin as usize, end as usize);
+    let attr = format!(" data-pid=\"{paragraph}\"");
+    // The paragraph's opening tag at `at`: its end and element name.
+    let opening = |at: usize| -> Option<(usize, &str)> {
+        let tag = &html[at..at + html[at..].find('>')? + 1];
+        let name = tag.strip_prefix('<')?;
+        let name = &name[..name.find(|c: char| !c.is_ascii_alphanumeric())?];
+        (!name.is_empty() && tag.contains(&attr)).then_some((at + tag.len(), name))
+    };
+    let (start, name) = match opening(begin) {
+        Some((_, name)) => (begin, name),
+        None => {
+            let at = html[..begin].rfind('<').ok_or(CoreError::Corrupt)?;
+            match opening(at) {
+                Some((tag_end, name)) if tag_end == begin => (at, name),
+                _ => return Err(CoreError::Corrupt),
+            }
+        }
+    };
+    let stop = element_end(html, start, name).ok_or(CoreError::Corrupt)?;
+    let close_start = stop - name.len() - "</>".len();
+    if end != stop && end != close_start {
+        return Err(CoreError::Corrupt);
+    }
+    let ok = |n: usize| u32::try_from(n).map_err(|_| CoreError::Corrupt);
+    Ok((ok(start)?, ok(stop)?))
 }
 
 /// Check `begin..end` is a range of whole characters of `html`.
@@ -457,6 +530,17 @@ fn byte_range(html: &str, begin: i64, end: i64) -> Result<(u32, u32), CoreError>
         (Some(b), Some(e)) if b <= e => Ok((b, e)),
         _ => Err(CoreError::Corrupt),
     }
+}
+
+/// The span from `start` to `end()`; `end` is only looked up when `single`
+/// is false.
+fn span(
+    start: Location,
+    end: impl FnOnce() -> Result<Location, CoreError>,
+    single: bool,
+) -> Result<LocationSpan, CoreError> {
+    let end = if single { start.clone() } else { end()? };
+    Ok(LocationSpan { start, end })
 }
 
 /// A Bible location, once its chapter (and verse, if given) is known to
@@ -545,35 +629,40 @@ fn verse_parts(html: &str, book: u32, chapter: u32) -> Result<Vec<(u32, usize, u
         let (verse, part) = id.split_once('-').ok_or(CoreError::Corrupt)?;
         number::<u32>(part).ok_or(CoreError::Corrupt)?;
         let verse = number(verse).ok_or(CoreError::Corrupt)?;
-        let end = span_end(html, begin).ok_or(CoreError::Corrupt)?;
+        let end = element_end(html, begin, "span").ok_or(CoreError::Corrupt)?;
         parts.push((verse, begin, end));
         from = begin + prefix.len();
     }
     Ok(parts)
 }
 
-/// The end of the `<span>` element starting at `begin`, just past its
-/// matching `</span>`.
-fn span_end(html: &str, begin: usize) -> Option<usize> {
-    const OPEN: &str = "<span";
-    const CLOSE: &str = "</span>";
+/// The end of the `<{name}>` element starting at `begin`, just past its
+/// matching `</{name}>`.
+fn element_end(html: &str, begin: usize, name: &str) -> Option<usize> {
+    let open = format!("<{name}");
+    let close = format!("</{name}>");
     let mut depth = 0usize;
     let mut i = begin;
     loop {
         let rest = &html[i..];
-        match (rest.find(OPEN), rest.find(CLOSE)) {
-            (Some(o), Some(c)) if o < c => {
+        let c = rest.find(&close)?;
+        // The next opening tag of the same element before that close.
+        let o = rest[..c].match_indices(&open).map(|(o, _)| o).find(|&o| {
+            rest[o + open.len()..]
+                .starts_with(|ch: char| ch.is_ascii_whitespace() || ch == '>' || ch == '/')
+        });
+        match o {
+            Some(o) => {
                 depth += 1;
-                i += o + OPEN.len();
+                i += o + open.len();
             }
-            (_, Some(c)) => {
+            None => {
                 depth = depth.checked_sub(1)?;
-                i += c + CLOSE.len();
+                i += c + close.len();
                 if depth == 0 {
                     return Some(i);
                 }
             }
-            _ => return None,
         }
     }
 }
@@ -638,17 +727,20 @@ fn decode_references(text: &str) -> String {
     out
 }
 
-/// A parsed citation; `book` is folded with [`fold`].
+/// A parsed citation; `book` is folded with [`fold`]. `start` and `end` are
+/// `(chapter, verse)`, equal for a single verse or chapter.
 #[derive(Debug, PartialEq, Eq)]
 struct Citation {
     book: String,
-    chapter: u32,
-    verse: Option<u32>,
+    start: (u32, Option<u32>),
+    end: (u32, Option<u32>),
 }
 
-/// Parse `<book> <chapter>[:<verse>]`. The book is every word before the
-/// first word that starts with a digit and from which on only digits and
-/// verse punctuation follow, so `1 John 3:16` has the book `1 John`.
+/// Parse `<book> <chapter>[:<verse>]`, `<book> <chapter>:<verse>-<verse>` or
+/// `<book> <chapter>:<verse>-<chapter>:<verse>` (an en or em dash also
+/// separates a range). The book is every word before the first word that
+/// starts with a digit and from which on only digits and verse punctuation
+/// follow, so `1 John 3:16` has the book `1 John`.
 fn parse_citation(reference: &str) -> Result<Citation, CoreError> {
     let invalid = || CoreError::Invalid(format!("not a citation: {reference:?}"));
     let trimmed = reference.trim_end_matches(|c: char| c == '.' || c == ';' || c.is_whitespace());
@@ -662,17 +754,44 @@ fn parse_citation(reference: &str) -> Result<Citation, CoreError> {
         })
         .ok_or_else(invalid)?;
     let numbers = words[at..].join(" ");
-    if numbers.contains([',', '-', '–', '—']) {
-        return Err(CoreError::Invalid(SPANS.into()));
+    if numbers.contains(',') {
+        return Err(CoreError::Invalid(format!("{LISTS}: {reference:?}")));
     }
-    let (chapter, verse) = match numbers.split_once(':') {
-        Some((chapter, verse)) => (chapter, Some(verse)),
-        None => (numbers.as_str(), None),
+    let point = |s: &str| -> Result<(u32, Option<u32>), CoreError> {
+        Ok(match s.split_once(':') {
+            Some((chapter, verse)) => (
+                number(chapter).ok_or_else(invalid)?,
+                Some(number(verse).ok_or_else(invalid)?),
+            ),
+            None => (number(s).ok_or_else(invalid)?, None),
+        })
+    };
+    let (start, end) = match numbers.split_once(['-', '–', '—']) {
+        None => {
+            let p = point(&numbers)?;
+            (p, p)
+        }
+        Some((first, last)) => {
+            let start = point(first)?;
+            let end = match (start, last.contains(':')) {
+                ((_, None), _) => {
+                    return Err(CoreError::Invalid(format!(
+                        "{CHAPTER_RANGES}: {reference:?}"
+                    )))
+                }
+                (_, true) => point(last)?,
+                ((chapter, Some(_)), false) => (chapter, Some(number(last).ok_or_else(invalid)?)),
+            };
+            if end < start {
+                return Err(CoreError::Invalid(format!("{REVERSED}: {reference:?}")));
+            }
+            (start, end)
+        }
     };
     Ok(Citation {
         book: fold(&words[..at].join(" ")),
-        chapter: number(chapter).ok_or_else(invalid)?,
-        verse: verse.map(|v| number(v).ok_or_else(invalid)).transpose()?,
+        start,
+        end,
     })
 }
 
@@ -721,10 +840,14 @@ mod tests {
     use super::*;
 
     fn citation(book: &str, chapter: u32, verse: Option<u32>) -> Citation {
+        range(book, (chapter, verse), (chapter, verse))
+    }
+
+    fn range(book: &str, start: (u32, Option<u32>), end: (u32, Option<u32>)) -> Citation {
         Citation {
             book: book.into(),
-            chapter,
-            verse,
+            start,
+            end,
         }
     }
 
@@ -753,6 +876,29 @@ mod tests {
     }
 
     #[test]
+    fn ranges_parse() {
+        for s in ["John 3:16-18", "John 3:16–18", "John 3:16—18"] {
+            assert_eq!(
+                parse_citation(s).unwrap(),
+                range("john", (3, Some(16)), (3, Some(18))),
+                "{s:?}"
+            );
+        }
+        assert_eq!(
+            parse_citation("John 3:36-4:2").unwrap(),
+            range("john", (3, Some(36)), (4, Some(2)))
+        );
+        assert_eq!(
+            parse_citation("John 3:16-3:16").unwrap(),
+            citation("john", 3, Some(16))
+        );
+        assert_eq!(
+            parse_citation("Psalm 72:0-20").unwrap(),
+            range("psalm", (72, Some(0)), (72, Some(20)))
+        );
+    }
+
+    #[test]
     fn bad_citations_are_invalid() {
         for s in [
             "",
@@ -764,15 +910,28 @@ mod tests {
             "John 3 16",
             "John x:1",
             "John 3:16a",
+            "John 3:16-",
+            "John 3:16-18-20",
+            "John 3:16-4:",
+            "John 3:16 - 18",
         ] {
-            assert!(
-                matches!(parse_citation(s), Err(CoreError::Invalid(_))),
-                "{s:?}"
-            );
-        }
-        for s in ["John 3:16-18", "John 3:16, 17", "John 3:16–18", "John 3-4"] {
             match parse_citation(s) {
-                Err(CoreError::Invalid(msg)) => assert_eq!(msg, SPANS, "{s:?}"),
+                Err(CoreError::Invalid(msg)) => {
+                    assert!(msg.starts_with("not a citation"), "{s:?}: {msg}")
+                }
+                other => panic!("{s:?}: {other:?}"),
+            }
+        }
+        for (s, why) in [
+            ("John 3:16, 17", LISTS),
+            ("John 3:16,17", LISTS),
+            ("John 3-4", CHAPTER_RANGES),
+            ("John 3-4:2", CHAPTER_RANGES),
+            ("John 3:18-16", REVERSED),
+            ("John 4:2-3:36", REVERSED),
+        ] {
+            match parse_citation(s) {
+                Err(CoreError::Invalid(msg)) => assert!(msg.starts_with(why), "{s:?}: {msg}"),
                 other => panic!("{s:?}: {other:?}"),
             }
         }
@@ -789,9 +948,49 @@ mod tests {
     fn spans_end_at_their_matching_close() {
         let html = r#"<p><span id="a">x<span>y</span>z</span> tail</span>"#;
         let begin = html.find("<span").unwrap();
-        let end = span_end(html, begin).unwrap();
+        let end = element_end(html, begin, "span").unwrap();
         assert_eq!(&html[begin..end], r#"<span id="a">x<span>y</span>z</span>"#);
-        assert_eq!(span_end("<span>open", 0), None);
+        assert_eq!(element_end("<span>open", 0, "span"), None);
+        // `<spanner>` is not a `<span>`.
+        let html = "<span><spanner></span>";
+        assert_eq!(element_end(html, 0, "span"), Some(html.len()));
+    }
+
+    #[test]
+    fn paragraph_ranges_cover_the_whole_element() {
+        let html =
+            r#"<div><p id="p1" data-pid="1"><span>a</span><p>b</p></p><p data-pid="2"></p></div>"#;
+        let p1 = html.find("<p id").unwrap();
+        let p1_end = html.find("<p data-pid").unwrap();
+        let inner = html.find("<span").unwrap();
+        let close = p1_end - "</p>".len();
+        let p2 = p1_end;
+        let p2_inner = p2 + r#"<p data-pid="2">"#.len();
+        let r = |pid, b: usize, e: usize| paragraph_range(html, pid, b as i64, e as i64);
+        let whole = Some((p1 as u32, p1_end as u32));
+        // Whole element, content only, and either mix.
+        assert_eq!(r(1, p1, p1_end).ok(), whole);
+        assert_eq!(r(1, inner, close).ok(), whole);
+        assert_eq!(r(1, p1, close).ok(), whole);
+        assert_eq!(r(1, inner, p1_end).ok(), whole);
+        // An empty element.
+        assert_eq!(
+            r(2, p2_inner, p2_inner).ok(),
+            Some((p2 as u32, (p2_inner + 4) as u32))
+        );
+        for (pid, b, e) in [
+            (2, p1, p1_end),       // another paragraph's element
+            (1, p1 + 1, p1_end),   // inside the opening tag
+            (1, inner + 1, close), // inside the content
+            (1, p1, close - 1),    // not at the close
+            (1, p1, p1_end + 1),   // past the close
+            (1, 0, p1_end),        // the parent element
+        ] {
+            assert!(
+                matches!(r(pid, b, e), Err(CoreError::Corrupt)),
+                "{pid} {b}..{e}"
+            );
+        }
     }
 
     #[test]
