@@ -717,6 +717,21 @@ fn download_requests() {
 }
 
 #[test]
+fn day_level_issue_sends_the_whole_tag() {
+    // The English Watchtower of 15 December 2015 has a day-level issue tag;
+    // pub-media lists its `w_E_20151215.jwpub` only for `issue=20151215`.
+    let key = "w15:0:20151215";
+    let env = Env::new();
+    let core = env.core();
+    ingest(&core.catalog(), fixture(trimmed_catalog::FULL)).unwrap();
+    assert_eq!(core.catalog().asset(key).unwrap().size, 6612985);
+    assert_eq!(
+        core.library().download_request(key).unwrap().url,
+        format!("{PUB_MEDIA}?output=json&fileformat=JWPUB&pub=w&langwritten=E&issue=20151215")
+    );
+}
+
+#[test]
 fn unmapped_language_has_no_download_request() {
     // Move the English watchtower to a MEPS id the table doesn't map.
     let unmapped = (0..u32::MAX)

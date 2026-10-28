@@ -257,9 +257,14 @@ impl Library {
 
     /// The pub-media request that lists `pub_key`'s `.jwpub`:
     /// `GETPUBMEDIALINKS?output=json&fileformat=JWPUB&pub=<KeySymbol>`
-    /// `&langwritten=<code>`, plus `&issue=<IssueTagNumber / 100>` for a dated
-    /// issue. Malformed key => `Invalid`; not in the catalog (or no catalog),
-    /// or a language the language table does not map => `NotFound`.
+    /// `&langwritten=<code>`, plus an `&issue=` for a dated issue. pub-media
+    /// matches the issue at the tag's own precision: a month-level tag
+    /// (`IssueTagNumber` ending in `00`, e.g. `20260800`) is sent as `YYYYMM`
+    /// (`202608`); a day-level tag (e.g. `20151215`) is sent whole, as
+    /// `YYYYMMDD` (`issue=201512` lists nothing for it). An `IssueTagNumber`
+    /// of 0 sends no issue. Malformed key => `Invalid`; not in the catalog
+    /// (or no catalog), or a language the language table does not map =>
+    /// `NotFound`.
     pub fn download_request(&self, pub_key: &str) -> Result<HttpRequest, CoreError> {
         let entry = self.catalog().entry(pub_key)?;
         let code = language_code(&entry)?;
@@ -268,8 +273,10 @@ impl Library {
             query_value(&entry.key_symbol),
             query_value(code)
         );
-        if entry.issue_tag != 0 {
-            url.push_str(&format!("&issue={}", entry.issue_tag / 100));
+        match entry.issue_tag {
+            0 => {}
+            tag if tag % 100 == 0 => url.push_str(&format!("&issue={}", tag / 100)),
+            tag => url.push_str(&format!("&issue={tag}")),
         }
         Ok(HttpRequest { url })
     }
