@@ -18,38 +18,45 @@
 //! its `end`; a single verse, chapter, document or paragraph gives
 //! `start == end`. It takes one of:
 //!
-//! - A citation: `<book> <chapter>`, `<book> <chapter>:<verse>`, a verse range
-//!   in one chapter `<book> <chapter>:<verse>-<verse>`, or one across
-//!   chapters `<book> <chapter>:<verse>-<chapter>:<verse>` (an en or em dash
-//!   works as well as `-`). A chapter alone (`Psalm 23`) gives a location
-//!   with `verse: None` as both start and end. Book names come from each
-//!   installed Bible's own tables: the title of the book's document (`John`,
-//!   `Psalms`, `1 Juan`), plus its `ChapterDisplayTitle` when that is a
-//!   single word (`Psalm`, `Salmos`). Names match ignoring case, runs of
+//! - A citation: `<book> <chapter>`, `<book> <chapter>:<verse>`, a verse
+//!   range in one chapter `<book> <chapter>:<verse>-<verse>`, one across
+//!   chapters `<book> <chapter>:<verse>-<chapter>:<verse>`, or a chapter
+//!   range `<book> <chapter>-<chapter>` (an en or em dash works as well as
+//!   `-`). A chapter alone (`Psalm 23`) gives a location with `verse: None`
+//!   as both start and end. A chapter range gives the span from the first
+//!   verse the Bible has in its first chapter (verse 0 for a psalm with a
+//!   superscription) through the last verse of its last chapter. In a book of
+//!   one chapter (one the Bible has no chapter 2 of: Obadiah, Philemon, 2
+//!   John, 3 John, Jude) a lone number is a verse, so `Jude 3` is Jude 1:3
+//!   and `Jude 3-5` is Jude 1:3-1:5; `Jude 1:3` works too. Book names come
+//!   from each installed Bible's own tables: the title of the book's document
+//!   (`John`, `Psalms`, `1 Juan`), plus its `ChapterDisplayTitle` when that
+//!   is a single word (`Psalm`, `Salmos`). Names match ignoring case, runs of
 //!   whitespace (non-breaking spaces included) and the diacritics of Latin
 //!   letters. Installed Bibles are searched in key order; the first with a
 //!   matching book name is used. A trailing `.` or `;` is ignored.
-//! - `jwpub://b/<bible>/<book>:<chapter>:<verse>-<book>:<chapter>:<verse>`,
-//!   a link to a Bible verse or range of verses (possibly across chapters).
-//!   The link names no language, so it resolves against the first installed
-//!   Bible, in key order, with the link's symbol (`NWTR` is the `nwt` New
-//!   World Translation; no other is known).
+//! - `jwpub://b/<bible>/<book>:<chapter>:<verse>-<book>:<chapter>:<verse>`, a
+//!   link to a Bible verse or range of verses (possibly across chapters,
+//!   never across books). The link names no language, so it resolves against
+//!   the first installed Bible, in key order, with the link's symbol (`NWTR`
+//!   is the `nwt` New World Translation; no other is known).
 //! - `jwpub://p/<code>:<doc_id>/[<paragraph>[-<paragraph>]]`, a link to a
 //!   document, or a paragraph or range of paragraphs of it, by JW language
 //!   code and MEPS document id. It resolves to the first installed
 //!   publication, in key order, in that language holding the document.
 //!
-//! Both ends of a range must exist, and the end may not come before the
-//! start (in Bible order: book, chapter, verse; or paragraph order). Not a
-//! single span, and so `Invalid`: a list (`John 3:16, 17`; resolve each part
-//! on its own) and a chapter range (`John 3-4`).
+//! Both ends of a range must exist, and the end may not come before the start
+//! (in Bible order: book, chapter, verse; or paragraph order). A span stays
+//! within one book. Not a single span, and so `Invalid`: a list (`John 3:16,
+//! 17`; resolve each part on its own) and a range from a chapter to a verse
+//! (`John 3-4:2`).
 //!
-//! Errors: a malformed key, citation or link, or a reversed range =>
-//! `Invalid`; a publication that is not installed, or an unknown document,
-//! book, chapter, verse or paragraph => `NotFound`; publication data that
-//! contradicts itself (an anchor out of range or not on its paragraph's
-//! element, a verse missing from its chapter, a table of contents that is not
-//! a tree) => `Corrupt`.
+//! Errors: a malformed key, citation or link, a reversed range, or a Bible
+//! link from one book to another => `Invalid`; a publication that is not
+//! installed, or an unknown document, book, chapter, verse or paragraph =>
+//! `NotFound`; publication data that contradicts itself (an anchor out of
+//! range or not on its paragraph's element, a verse missing from its chapter,
+//! a table of contents that is not a tree) => `Corrupt`.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -66,7 +73,8 @@ const TOC_VIEW: &str = "jwpub";
 
 const LISTS: &str = "a list of references is not a single span; resolve each part on its own";
 const REVERSED: &str = "range ends before it starts";
-const CHAPTER_RANGES: &str = "chapter ranges are not supported";
+const MIXED_RANGE: &str = "a chapter range cannot end at a verse";
+const ONE_BOOK: &str = "a span must stay within one book";
 
 /// A point in a publication: a document, optionally a paragraph of it, or a
 /// Bible book, chapter and optionally verse.
@@ -268,16 +276,44 @@ impl Reader {
                 let matches = std::iter::once(doc.title.as_str())
                     .chain(single_word)
                     .any(|name| fold(name) == citation.book);
-                if matches {
-                    let at = |(chapter, verse): (u32, Option<u32>)| {
-                        bible_location(&publication, &summary.pub_key, &book, doc, chapter, verse)
-                    };
-                    return span(
-                        at(citation.start)?,
-                        || at(citation.end),
-                        citation.start == citation.end,
-                    );
+                if !matches {
+                    continue;
                 }
+                let number = u32::try_from(book.bible_book_id).map_err(|_| CoreError::Corrupt)?;
+                let (mut start, mut end) = (citation.start, citation.end);
+                // In a book of one chapter a lone number is a verse.
+                if start.1.is_none() && publication.bible_chapter(number, 2)?.is_none() {
+                    start = (1, Some(start.0));
+                    end = (1, Some(end.0));
+                }
+                if start.1.is_none() && start != end {
+                    // A chapter range: the first verse of the first chapter
+                    // through the last verse of the last.
+                    let edge = |chapter, last: bool| -> Result<Location, CoreError> {
+                        let read = read_chapter(&publication, &summary.pub_key, number, chapter)?;
+                        let verse = if last {
+                            read.verses.last()
+                        } else {
+                            read.verses.first()
+                        };
+                        let verse = verse.ok_or(CoreError::Corrupt)?.verse;
+                        Ok(bible_point(
+                            &summary.pub_key,
+                            doc,
+                            number,
+                            chapter,
+                            Some(verse),
+                        ))
+                    };
+                    return Ok(LocationSpan {
+                        start: edge(start.0, false)?,
+                        end: edge(end.0, true)?,
+                    });
+                }
+                let at = |(chapter, verse): (u32, Option<u32>)| {
+                    bible_location(&publication, &summary.pub_key, &book, doc, chapter, verse)
+                };
+                return span(at(start)?, || at(end), start == end);
             }
         }
         Err(CoreError::NotFound)
@@ -300,6 +336,9 @@ impl Reader {
         let end = verse_ref(end).ok_or_else(invalid)?;
         if end < start {
             return Err(CoreError::Invalid(format!("{REVERSED}: {link:?}")));
+        }
+        if end.0 != start.0 {
+            return Err(CoreError::Invalid(format!("{ONE_BOOK}: {link:?}")));
         }
         let symbol = match symbol {
             "NWTR" => "nwt",
@@ -560,14 +599,25 @@ fn bible_location(
             return Err(CoreError::NotFound);
         }
     }
-    Ok(Location {
+    Ok(bible_point(pub_key, doc, book, chapter, verse))
+}
+
+/// The location of a Bible chapter or verse, unchecked.
+fn bible_point(
+    pub_key: &str,
+    doc: &DocumentSummary,
+    book: u32,
+    chapter: u32,
+    verse: Option<u32>,
+) -> Location {
+    Location {
         pub_key: pub_key.to_string(),
         doc_id: Some(doc.meps_document_id),
         book: Some(book),
         chapter: Some(chapter),
         verse,
         paragraph: None,
-    })
+    }
 }
 
 fn read_chapter(
@@ -728,7 +778,8 @@ fn decode_references(text: &str) -> String {
 }
 
 /// A parsed citation; `book` is folded with [`fold`]. `start` and `end` are
-/// `(chapter, verse)`, equal for a single verse or chapter.
+/// `(chapter, verse)`, equal for a single verse or chapter; both have no
+/// verse for a chapter range.
 #[derive(Debug, PartialEq, Eq)]
 struct Citation {
     book: String,
@@ -736,9 +787,10 @@ struct Citation {
     end: (u32, Option<u32>),
 }
 
-/// Parse `<book> <chapter>[:<verse>]`, `<book> <chapter>:<verse>-<verse>` or
-/// `<book> <chapter>:<verse>-<chapter>:<verse>` (an en or em dash also
-/// separates a range). The book is every word before the first word that
+/// Parse `<book> <chapter>[:<verse>]`, `<book> <chapter>:<verse>-<verse>`,
+/// `<book> <chapter>:<verse>-<chapter>:<verse>` or `<book> <chapter>-<chapter>`
+/// (an en or em dash also separates a range). Whether a lone number is a
+/// chapter or, in a book of one chapter, a verse is for the caller to decide. The book is every word before the first word that
 /// starts with a digit and from which on only digits and verse punctuation
 /// follow, so `1 John 3:16` has the book `1 John`.
 fn parse_citation(reference: &str) -> Result<Citation, CoreError> {
@@ -774,10 +826,9 @@ fn parse_citation(reference: &str) -> Result<Citation, CoreError> {
         Some((first, last)) => {
             let start = point(first)?;
             let end = match (start, last.contains(':')) {
-                ((_, None), _) => {
-                    return Err(CoreError::Invalid(format!(
-                        "{CHAPTER_RANGES}: {reference:?}"
-                    )))
+                ((_, None), false) => (number(last).ok_or_else(invalid)?, None),
+                ((_, None), true) => {
+                    return Err(CoreError::Invalid(format!("{MIXED_RANGE}: {reference:?}")))
                 }
                 (_, true) => point(last)?,
                 ((chapter, Some(_)), false) => (chapter, Some(number(last).ok_or_else(invalid)?)),
@@ -896,6 +947,14 @@ mod tests {
             parse_citation("Psalm 72:0-20").unwrap(),
             range("psalm", (72, Some(0)), (72, Some(20)))
         );
+        assert_eq!(
+            parse_citation("John 3–4").unwrap(),
+            range("john", (3, None), (4, None))
+        );
+        assert_eq!(
+            parse_citation("John 3-3").unwrap(),
+            citation("john", 3, None)
+        );
     }
 
     #[test]
@@ -925,8 +984,8 @@ mod tests {
         for (s, why) in [
             ("John 3:16, 17", LISTS),
             ("John 3:16,17", LISTS),
-            ("John 3-4", CHAPTER_RANGES),
-            ("John 3-4:2", CHAPTER_RANGES),
+            ("John 3-4:2", MIXED_RANGE),
+            ("John 4-3", REVERSED),
             ("John 3:18-16", REVERSED),
             ("John 4:2-3:36", REVERSED),
         ] {
