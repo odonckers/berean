@@ -272,8 +272,8 @@ impl Catalog {
     pub fn ingest_file(
         &self,
         path: String,
-        cancel: Arc<CancelToken>,
         progress: Arc<dyn ProgressSink>,
+        cancel: Arc<CancelToken>,
     ) -> Result<(), CoreError> {
         Ok(self
             .inner
@@ -471,7 +471,7 @@ mod tests {
         let cancelled = CancelToken::new();
         cancelled.cancel();
         let err = catalog
-            .ingest_file(path.clone(), cancelled, recorder.clone())
+            .ingest_file(path.clone(), recorder.clone(), cancelled)
             .unwrap_err();
         assert!(matches!(err, CoreError::Cancelled), "{err:?}");
         assert!(catalog.languages().unwrap().is_empty());
@@ -481,7 +481,7 @@ mod tests {
         ));
 
         catalog
-            .ingest_file(path, CancelToken::new(), recorder.clone())
+            .ingest_file(path, recorder.clone(), CancelToken::new())
             .unwrap();
         let calls = recorder.calls.lock().unwrap().clone();
         let (done, total) = *calls.last().unwrap();
