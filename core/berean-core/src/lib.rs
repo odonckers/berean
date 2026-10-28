@@ -9,6 +9,7 @@ pub mod catalog;
 pub mod jwpub;
 pub mod languages;
 pub mod library;
+pub mod reader;
 pub mod search;
 pub mod userdata;
 
@@ -200,6 +201,11 @@ impl Core {
         catalog::Catalog::new(self.inner.clone())
     }
 
+    /// The reader.
+    pub fn reader(&self) -> reader::Reader {
+        reader::Reader::new(self.inner.clone())
+    }
+
     /// The user DB's actual schema version, read from `PRAGMA user_version`.
     pub fn db_version(&self) -> Result<u32, CoreError> {
         let conn = self.inner.conn();
@@ -222,6 +228,7 @@ mod tests {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<Core>();
         assert_send_sync::<library::Library>();
+        assert_send_sync::<reader::Reader>();
     }
 
     #[test]
