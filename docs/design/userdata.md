@@ -149,7 +149,7 @@ locations. Each can get a row later.
 
 - **Public, verifiable, and enough for the schema:** `res/blank` from
   [erykjj/jwlManager](https://github.com/erykjj/jwlManager) (MIT, © 2026 Eryk J.).
-  - It's an empty v16 `userData.db`: 18 tables, 23 triggers, 15 indexes, and one Favorites tag.
+  - It's an empty v16 `userData.db`: 18 tables, 23 triggers, 14 indexes, and one Favorites tag (`Tag{1, Type 0, "Favorite"}`).
   - Pin: `3e415f1ef8831965c942bff327d00172179f02bbd41e9cf65cc66505e9459360  jwlmanager_blank_v16.zip
     https://raw.githubusercontent.com/erykjj/jwlManager/188977c59dabe78fa8a5466c7e3c4af57aee6077/res/blank`
   - It's fetched and never committed. Its provenance is the jwlManager author's empty database, apparently
