@@ -156,14 +156,32 @@ pub struct Core {
 }
 
 /// State shared by `Core` and the handles it gives out.
+///
+/// Lock order: a publication's lock, then `publications`, then `conn`. A
+/// thread holds at most one publication lock at a time, and never waits on
+/// one while holding `publications` or `conn`.
 pub(crate) struct Inner {
     conn: Mutex<Connection>,
+    /// Recently opened publications, least recently used first, keyed by
+    /// their store directory (a reinstall gets a new one). See
+    /// `Library::with_publication`.
+    publications: Mutex<Vec<(String, Arc<Mutex<jwpub::Publication>>)>>,
     pub(crate) data_dir: PathBuf,
 }
 
 impl Inner {
     pub(crate) fn conn(&self) -> MutexGuard<'_, Connection> {
         self.conn.lock().expect("core connection mutex poisoned")
+    }
+
+    pub(crate) fn publications(
+        &self,
+    ) -> MutexGuard<'_, Vec<(String, Arc<Mutex<jwpub::Publication>>)>> {
+        // The cache is only ever left consistent, so a panic elsewhere while
+        // it was held does not make it unusable.
+        self.publications
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 
@@ -184,6 +202,7 @@ impl Core {
 
         let inner = Arc::new(Inner {
             conn: Mutex::new(conn),
+            publications: Mutex::new(Vec::new()),
             data_dir: data_dir.to_path_buf(),
         });
         library::Library::new(inner.clone()).prepare_store()?;
