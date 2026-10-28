@@ -549,7 +549,115 @@ fn resolve_verse_ranges() {
     for s in ["John 3:16, 17", "Juan 3:16,17"] {
         assert_invalid(r.resolve(s), "a list of references is not a single span");
     }
-    assert_invalid(r.resolve("John 3-4"), "chapter ranges are not supported");
+    assert_invalid(
+        r.resolve("John 3-4:2"),
+        "a chapter range cannot end at a verse",
+    );
+}
+
+#[test]
+fn resolve_single_chapter_books() {
+    let r = reader();
+    // A lone number is a verse in a book of one chapter.
+    for (name, book) in [
+        ("Obadiah", 31),
+        ("Philemon", 57),
+        ("2 John", 63),
+        ("3 John", 64),
+        ("Jude", 65),
+    ] {
+        let verse = |v| verse_location(NWT_E, book, 1, Some(v));
+        assert_eq!(resolve_one(&format!("{name} 3")), verse(3), "{name}");
+        assert_eq!(resolve_one(&format!("{name} 1")), verse(1), "{name}");
+        assert_eq!(resolve_one(&format!("{name} 1:3")), verse(3), "{name}");
+        assert_eq!(
+            r.resolve(&format!("{name} 3-5")).unwrap(),
+            span(verse(3), verse(5)),
+            "{name}"
+        );
+        assert_not_found(r.resolve(&format!("{name} 30")));
+    }
+    let jude = |v| verse_location(NWT_E, 65, 1, Some(v));
+    assert_eq!(r.resolve("Jude 3").unwrap(), point(jude(3)));
+    assert_eq!(r.resolve("Jude 3–5").unwrap(), span(jude(3), jude(5)));
+    // Jude has 25 verses.
+    assert_eq!(r.resolve("Jude 24-25").unwrap(), span(jude(24), jude(25)));
+    assert_not_found(r.resolve("Jude 25-26"));
+    assert_invalid(r.resolve("Jude 5-3"), "range ends before it starts");
+    for (name, book) in [
+        ("Abdías", 31),
+        ("Filemón", 57),
+        ("2 Juan", 63),
+        ("3 Juan", 64),
+        ("Judas", 65),
+    ] {
+        assert_eq!(
+            resolve_one(&format!("{name} 3")),
+            verse_location(NWT_S, book, 1, Some(3)),
+            "{name}"
+        );
+    }
+    assert_eq!(
+        r.resolve("Judas 3-5").unwrap(),
+        span(
+            verse_location(NWT_S, 65, 1, Some(3)),
+            verse_location(NWT_S, 65, 1, Some(5))
+        )
+    );
+    assert_not_found(r.resolve("Judas 30"));
+}
+
+#[test]
+fn resolve_chapter_ranges() {
+    let r = reader();
+    // From the first verse of the first chapter through the last verse of
+    // the last, as the Bible has them.
+    assert_eq!(
+        r.resolve("John 3-4").unwrap(),
+        span(
+            verse_location(NWT_E, 43, 3, Some(1)),
+            verse_location(NWT_E, 43, 4, Some(54))
+        )
+    );
+    assert_eq!(
+        r.resolve("John 3–4").unwrap(),
+        r.resolve("John 3-4").unwrap()
+    );
+    assert_eq!(
+        r.resolve("Juan 3-4").unwrap(),
+        span(
+            verse_location(NWT_S, 43, 3, Some(1)),
+            verse_location(NWT_S, 43, 4, Some(54))
+        )
+    );
+    // Psalms 3 and 4 open with a superscription, verse 0.
+    assert_eq!(
+        r.resolve("Psalm 3-4").unwrap(),
+        span(
+            verse_location(NWT_E, 19, 3, Some(0)),
+            verse_location(NWT_E, 19, 4, Some(8))
+        )
+    );
+    assert_eq!(
+        r.resolve("John 20-21").unwrap(),
+        span(
+            verse_location(NWT_E, 43, 20, Some(1)),
+            verse_location(NWT_E, 43, 21, Some(25))
+        )
+    );
+    // A range of one chapter is the chapter.
+    assert_eq!(
+        r.resolve("John 3-3").unwrap(),
+        point(verse_location(NWT_E, 43, 3, None))
+    );
+    assert_invalid(r.resolve("John 4-3"), "range ends before it starts");
+    for s in ["John 21-22", "John 0-1", "John 22-23"] {
+        assert_not_found(r.resolve(s));
+    }
+    assert_invalid(
+        r.resolve("John 3-4:2"),
+        "a chapter range cannot end at a verse",
+    );
 }
 
 #[test]
@@ -608,6 +716,13 @@ fn resolve_bible_links() {
         "jwpub://b/NWTR/44:1:1-43:1:1",
     ] {
         assert_invalid(r.resolve(link), "range ends before it starts");
+    }
+    // A span stays within one book.
+    for link in [
+        "jwpub://b/NWTR/40:28:20-41:1:1",
+        "jwpub://b/NWTR/43:21:25-44:1:1",
+    ] {
+        assert_invalid(r.resolve(link), "a span must stay within one book");
     }
     assert_not_found(r.resolve("jwpub://b/NWTR/43:3:16-43:3:37"));
     for link in [
