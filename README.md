@@ -22,6 +22,8 @@ binding to `core/` in its own way.
 
 ### Core
 
+Requires Rust 1.95 or newer (`rust-version` in `core/Cargo.toml`); `core/rust-toolchain.toml` selects the stable toolchain with rustfmt and clippy.
+
 ```sh
 cd core
 cargo test --workspace
