@@ -15,9 +15,10 @@ import (
 
 // TestInsightResearchGuideParagraphs checks every Research Guide it-1 / it-2
 // citation that carries a paragraph range. The paragraph before the citation
-// links to jwpub://p/E:<doc>/<start>-<end>. The resolved paragraph index has
-// to be that start. The link's end is sometimes shorter than the written
-// range; those stay matches on the start, which is where the reader scrolls.
+// links to jwpub://p/E:<doc>/<start>-<end>. A citation is correct when it
+// opens that document at that start paragraph, broken when Resolve returns
+// an error (the chip shows the error and does not open), and wrong when it
+// opens some other paragraph. Wrong must stay 0.
 func TestInsightResearchGuideParagraphs(t *testing.T) {
 	itPath := fetchFixture(t, fixture{pub: "it", file: "it_E.jwpub", sum: "b8d2145ef9ab7fff7c9ab3050ab4763f"})
 	rsgPath := fetchFixture(t, fixture{pub: "rsg", file: "rsg_E.jwpub", sum: "1620026ee09080eb2e33b383b6467d6b"})
@@ -45,49 +46,53 @@ func TestInsightResearchGuideParagraphs(t *testing.T) {
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	startMatch, endMatch, endEarly, endLate, ambiguous := 0, 0, 0, 0, 0
-	var startMiss, endNote []string
+	correct, broken, wrong := 0, 0, 0
+	endEarly, endLate := 0, 0
+	var wrongNote, endNote []string
 	for _, item := range items {
 		hits, err := lib.Resolve(context.Background(), item.citation)
-		got, gotEnd, gotMeps := 0, 0, 0
-		if err != nil {
-			if strings.Contains(err.Error(), "more than one") {
-				ambiguous++
-				if !strings.Contains(item.citation, "Tyre") {
-					t.Errorf("ambiguous citation %s", item.citation)
+		if err != nil || len(hits) == 0 {
+			broken++
+			if err == nil || !strings.Contains(err.Error(), "more than one") || !strings.Contains(item.citation, "Tyre") {
+				if len(wrongNote) < 8 {
+					msg := "no hits"
+					if err != nil {
+						msg = err.Error()
+					}
+					wrongNote = append(wrongNote, item.citation+": "+msg)
 				}
-				continue
 			}
-		} else if len(hits) > 0 {
-			got = hits[0].ParagraphIndex
-			gotEnd = hits[len(hits)-1].ParagraphIndex
-			gotMeps = mepsOf[hits[0].DocumentID]
+			continue
 		}
-		if got == item.start && gotMeps == item.meps {
-			startMatch++
-		} else if len(startMiss) < 12 {
-			startMiss = append(startMiss, item.citation+" link "+strconv.Itoa(item.meps)+":"+strconv.Itoa(item.start)+" got "+strconv.Itoa(gotMeps)+":"+strconv.Itoa(got))
+		got := hits[0].ParagraphIndex
+		gotEnd := hits[len(hits)-1].ParagraphIndex
+		gotMeps := mepsOf[hits[0].DocumentID]
+		if got != item.start || gotMeps != item.meps {
+			wrong++
+			if len(wrongNote) < 12 {
+				wrongNote = append(wrongNote, item.citation+" link "+strconv.Itoa(item.meps)+":"+strconv.Itoa(item.start)+" got "+strconv.Itoa(gotMeps)+":"+strconv.Itoa(got))
+			}
+			continue
 		}
-		if got == item.start && gotMeps == item.meps && gotEnd == item.end {
-			endMatch++
-		} else if got == item.start && gotMeps == item.meps && gotEnd > item.end {
+		correct++
+		if gotEnd == item.end {
+			continue
+		}
+		if gotEnd > item.end {
 			endEarly++
-		} else if got == item.start && gotMeps == item.meps && gotEnd != 0 && gotEnd < item.end {
+		} else {
 			endLate++
 			if len(endNote) < 4 {
 				endNote = append(endNote, item.citation+" link end "+strconv.Itoa(item.end)+" got "+strconv.Itoa(gotEnd))
 			}
 		}
 	}
-	t.Logf("start %d/%d ambiguous %d both %d link-ends-early %d link-ends-later %d", startMatch, len(items), ambiguous, endMatch, endEarly, endLate)
-	for _, s := range append(startMiss, endNote...) {
+	t.Logf("correct %d broken %d wrong %d (of %d); link ends early %d, link runs past the cited paragraph %d", correct, broken, wrong, len(items), endEarly, endLate)
+	for _, s := range append(wrongNote, endNote...) {
 		t.Log(s)
 	}
-	if ambiguous != 16 || startMatch != len(items)-ambiguous {
-		t.Fatalf("start pid matches %d of %d, ambiguous %d", startMatch, len(items), ambiguous)
-	}
-	if endEarly == 0 {
-		t.Fatal("expected some publisher links to end before the written range")
+	if correct+broken+wrong != len(items) || wrong != 0 || correct != 11286 || broken != 16 {
+		t.Fatalf("correct %d broken %d wrong %d", correct, broken, wrong)
 	}
 }
 
