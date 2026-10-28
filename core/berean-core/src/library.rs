@@ -128,7 +128,7 @@ impl Library {
 
         cancel.check()?;
         let meta = Publication::open_dir(&unpacked)?.meta().clone();
-        let key = pub_key_of(&meta);
+        let key = meta.pub_key();
         if key != pub_key {
             return Err(CoreError::Invalid(format!(
                 "file is publication {key}, not {pub_key}"
@@ -311,9 +311,34 @@ impl Library {
     }
 }
 
-/// The key of the publication `meta` describes.
-pub(crate) fn pub_key_of(meta: &PublicationMeta) -> String {
-    format!("{}:{}:{}", meta.symbol, meta.meps_language, meta.issue_tag)
+impl PublicationMeta {
+    /// This publication's key.
+    pub fn pub_key(&self) -> String {
+        format_pub_key(&self.symbol, self.meps_language, self.issue_tag)
+    }
+}
+
+/// Build a publication key, `{symbol}:{meps_language}:{issue_tag}`. The only
+/// place a key is formatted; [`parse_pub_key`] is the only place one is read.
+pub(crate) fn format_pub_key(symbol: &str, meps_language: u32, issue_tag: u32) -> String {
+    format!("{symbol}:{meps_language}:{issue_tag}")
+}
+
+/// Split a key into its symbol, MEPS language and issue tag. Both numbers
+/// must be canonical decimal `u32`s, so every key has one spelling. A
+/// malformed key => `Invalid`.
+pub(crate) fn parse_pub_key(pub_key: &str) -> Result<(&str, u32, u32), CoreError> {
+    let invalid = || CoreError::Invalid(format!("malformed publication key {pub_key:?}"));
+    // Numbers come off the right, so the symbol itself may contain `:`.
+    let mut parts = pub_key.rsplitn(3, ':');
+    let (Some(issue), Some(lang), Some(symbol)) = (parts.next(), parts.next(), parts.next()) else {
+        return Err(invalid());
+    };
+    let canonical_u32 = |s: &str| s.parse::<u32>().ok().filter(|n| n.to_string() == s);
+    match (canonical_u32(lang), canonical_u32(issue)) {
+        (Some(lang), Some(issue)) if !symbol.is_empty() => Ok((symbol, lang, issue)),
+        _ => Err(invalid()),
+    }
 }
 
 /// Validate a key and derive its store directory name: the symbol with every
@@ -322,16 +347,7 @@ pub(crate) fn pub_key_of(meta: &PublicationMeta) -> String {
 /// keys give names that differ even on case-insensitive file systems.
 /// A malformed key => `Invalid`.
 fn dir_name(pub_key: &str) -> Result<String, CoreError> {
-    let invalid = || CoreError::Invalid(format!("malformed publication key {pub_key:?}"));
-    // Numbers come off the right, so the symbol itself may contain `:`.
-    let mut parts = pub_key.rsplitn(3, ':');
-    let (Some(issue), Some(lang), Some(symbol)) = (parts.next(), parts.next(), parts.next()) else {
-        return Err(invalid());
-    };
-    let canonical_u32 = |s: &str| s.parse::<u32>().is_ok_and(|n| n.to_string() == s);
-    if symbol.is_empty() || !canonical_u32(lang) || !canonical_u32(issue) {
-        return Err(invalid());
-    }
+    let (symbol, lang, issue) = parse_pub_key(pub_key)?;
     let mut name = String::new();
     for b in symbol.bytes() {
         match b {
@@ -342,7 +358,7 @@ fn dir_name(pub_key: &str) -> Result<String, CoreError> {
     Ok(format!("{name}_{lang}_{issue}"))
 }
 
-fn remove_path(path: &Path) -> std::io::Result<()> {
+pub(crate) fn remove_path(path: &Path) -> std::io::Result<()> {
     if path.is_dir() {
         std::fs::remove_dir_all(path)
     } else {
@@ -363,6 +379,15 @@ mod tests {
         assert_eq!(dir_name("a:b:0:0").unwrap(), "a^3ab_0_0");
         assert_eq!(dir_name("..:0:0").unwrap(), "^2e^2e_0_0");
         assert_ne!(dir_name("W:0:0").unwrap(), dir_name("w:0:0").unwrap());
+    }
+
+    #[test]
+    fn pub_keys_round_trip() {
+        for (symbol, lang, issue) in [("w26", 0, 20260800), ("ll", 0, 0), ("a:b", 1, 2)] {
+            let key = format_pub_key(symbol, lang, issue);
+            assert_eq!(parse_pub_key(&key).unwrap(), (symbol, lang, issue));
+        }
+        assert_eq!(format_pub_key("w26", 0, 20260800), "w26:0:20260800");
     }
 
     #[test]

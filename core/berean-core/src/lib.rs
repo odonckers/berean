@@ -184,12 +184,18 @@ impl Core {
             data_dir: data_dir.to_path_buf(),
         });
         library::Library::new(inner.clone()).prepare_store()?;
+        catalog::Catalog::new(inner.clone()).prepare_dir()?;
         Ok(Core { inner })
     }
 
     /// The publication library.
     pub fn library(&self) -> library::Library {
         library::Library::new(self.inner.clone())
+    }
+
+    /// The publication catalog.
+    pub fn catalog(&self) -> catalog::Catalog {
+        catalog::Catalog::new(self.inner.clone())
     }
 
     /// The user DB's actual schema version, read from `PRAGMA user_version`.

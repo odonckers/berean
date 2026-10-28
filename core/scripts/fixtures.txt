@@ -1,3 +1,8 @@
 c210afb79382d6ed73067bc4a83b5ebb92a0f2bf1f06f32430f70f4f797a1c3b  w_E_202608.jwpub  https://cfp2.jw-cdn.org/a/d1b56ee/2/o/w_E_202608.jwpub
 c8253d47d03ccab3c8e44f38f9bd373c4b193682146f7b1b7b87e00775cbd514  w_S_202608.jwpub  https://cfp2.jw-cdn.org/a/1e7c39/4/o/w_S_202608.jwpub
 039b6b3b69d244f66ed4c47299222ba7139d467399ba667d400d9cf5c5fd1284  ll_E.jwpub  https://cfp2.jw-cdn.org/a/33502e/2/o/ll_E.jwpub
+# The publication catalog snapshot. Its GUID rotates with every new catalog
+# and the CDN may drop old snapshots, so this one survives only in the CI
+# fixtures cache. Re-pinning means updating this line and the expectations in
+# berean-core/tests/catalog.rs (revision level, titles, sizes, checksums).
+c55762f49cc53f8d6af06115a542d63021633161a974b23c163b8183ef00ee45  catalog-v5-ffa78686.db.gz  https://app.jw-cdn.org/catalogs/publications/v5/ffa78686-d029-4d91-8b72-c90d9f9526be/catalog.db.gz
