@@ -1,6 +1,6 @@
 # Inline study pane
 
-**Status:** Draft. The recommended direction is **pending Owen's decision**.
+**Status:** Direction decided. Owen chose **Direction B** (inline study pane on every device, plus a dockable, draggable side split when the reader is ≥ 1000 pt wide). Directions A and C are rejected.
 **Platforms:** iOS, iPadOS, macOS.
 **Owner:** Design (Lumen).
 
@@ -95,11 +95,11 @@ The breakpoints below are proposals, measured as the reader's own width (not the
 - **Verse selected from search.** The reader lands on the verse, highlights the search term, and opens the pane on the tab containing the match.
 - **State restoration.** Save the open verse or range, the tab, the pane height or split fraction, and the pane's scroll offset for each window or scene. On Mac, each window restores its own state.
 
-## 9. Directions compared
+## 9. Directions compared (decided: B)
 
-There is no direct Apple precedent for this interaction, so here are three concrete directions.
+There is no direct Apple precedent for this interaction, so three concrete directions were compared. Owen chose B; A and C are rejected and kept here only for the record.
 
-| | **A. Pure inline everywhere** | **B. Inline first, dockable side split on wide layouts** | **C. Inline peek card that expands to a split** |
+| | **A. Pure inline everywhere** (rejected) | **B. Inline first, dockable side split on wide layouts** (chosen) | **C. Inline peek card that expands to a split** (rejected) |
 | --- | --- | --- | --- |
 | How it works | The pane always splits the text column, at every width | Same as A, plus docking to a resizable side split when the reader is ≥ 1000 pt | A short card (2–3 lines) under the verse; tapping Expand opens the full pane or split |
 | Reading continuity | Strong | Strong | Strongest at first (small push), then weaker (two steps) |
@@ -108,11 +108,11 @@ There is no direct Apple precedent for this interaction, so here are three concr
 | Consistency across devices | Identical everywhere | One mental model (inline), with an extra on big screens | Different first step on each device |
 | Risk | Feels limited on Mac | Mode switching while resizing needs care | Extra tap for every deep study session |
 
-**Recommendation (pending Owen's decision): Direction B.** It keeps the signature inline split as the one model on every device and adds a draggable side split only where the screen is wide enough to earn it. C's peek is worth keeping as a future option for the Closed state (a hover preview on iPad and Mac), not as the main flow.
+**Decision: Direction B, chosen by Owen.** It keeps the signature inline split as the one model on every device and adds a draggable side split only where the screen is wide enough to earn it. C is rejected as the main flow; its peek may come back later only as a hover preview in the Closed state on iPad and Mac (see question 8).
 
 ## 10. Open questions for Owen
 
-1. Do you approve Direction B, or would you prefer A or C?
+1. ~~Do you approve Direction B, or would you prefer A or C?~~ Resolved: Direction B.
 2. On wide layouts, should the pane default to inline (as proposed) or to the side split?
 3. Should tapping verse text open the pane, or only tapping the verse number, so that tapping text can stay free for highlighting?
 4. Multi-verse selection: should content merge into one pane (as proposed) or show one pane per verse?
