@@ -162,6 +162,7 @@ type App struct {
 	loggedVibrancy   string
 
 	win *mygo.Window
+	ink textInk
 }
 
 // New reads the library catalog and selects the first publication and,
@@ -368,7 +369,7 @@ func (a *App) publicationControls(c *ui.Context) {
 			}
 		}
 		if a.status != "" {
-			ui.Text(c, a.status).FontSize(12).TextColor(t.Danger).SingleLine()
+			ui.Text(c, a.status).FontSize(12).TextColor(a.ink.danger).SingleLine()
 		}
 	})
 }
@@ -579,7 +580,6 @@ func (a *App) verseRow(c *ui.Context, line verseLine, scrollMark bool) {
 }
 
 func (a *App) paintRuns(c *ui.Context, runs []jwpub.Run) {
-	t := c.Theme()
 	for _, r := range runs {
 		if r.Break {
 			ui.Text(c, " ")
@@ -597,7 +597,7 @@ func (a *App) paintRuns(c *ui.Context, runs []jwpub.Run) {
 		}
 		if r.Href != "" {
 			href := r.Href
-			el.TextColor(t.Accent).Underline().Cursor(ui.CursorPointer)
+			el.TextColor(a.ink.link).Underline().Cursor(ui.CursorPointer)
 			if el.Clicked() {
 				a.follow(href)
 			}

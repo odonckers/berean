@@ -86,7 +86,7 @@ func (a *App) cardView(c *ui.Context, i int) {
 		Cursor(ui.CursorMove).
 		HandleInput(func(ev ui.InputEvent) bool { return a.cardInput(id, ev) }).
 		Children(func() {
-			link := ui.Text(c, clipHeader(clip)).FontSize(15).Bold().TextColor(t.Accent).Underline().Cursor(ui.CursorPointer)
+			link := ui.Text(c, clipHeader(clip)).FontSize(15).Bold().TextColor(a.ink.link).Underline().Cursor(ui.CursorPointer)
 			link.HandleInput(func(ev ui.InputEvent) bool { return a.passClick(id, ev) })
 			if link.Clicked() {
 				a.openClip(a.cardByID(id))

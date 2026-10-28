@@ -106,7 +106,7 @@ func (a *App) noteCard(c *ui.Context, i int) {
 		Cursor(ui.CursorMove).
 		HandleInput(func(ev ui.InputEvent) bool { return a.cardInput(id, ev) }).
 		Children(func() {
-			ui.Text(c, "Note").FontSize(15).Bold().TextColor(t.Accent)
+			ui.Text(c, "Note").FontSize(15).Bold().TextColor(a.ink.link)
 			if editing {
 				a.noteEditor(c, id)
 				return
@@ -126,7 +126,6 @@ func (a *App) noteCard(c *ui.Context, i int) {
 }
 
 func (a *App) noteEditor(c *ui.Context, id int64) {
-	t := c.Theme()
 	area := ui.TextArea(c, &a.noteDraft).Label("Note editor").Lines(4, 12).FillWidth()
 	if a.armNote {
 		area.AutoFocus()
@@ -134,7 +133,7 @@ func (a *App) noteEditor(c *ui.Context, id int64) {
 	}
 	area.HandleInput(func(ev ui.InputEvent) bool { return a.editorInput(id, ev) })
 	for _, msg := range a.draftErrors() {
-		ui.Text(c, msg).FontSize(12).TextColor(t.Danger)
+		ui.Text(c, msg).FontSize(12).TextColor(a.ink.danger)
 	}
 	done := ui.Button(c, "Done")
 	done.HandleInput(func(ev ui.InputEvent) bool { return a.editorInput(id, ev) })
@@ -201,10 +200,9 @@ func (a *App) noteBody(c *ui.Context, id int64, md string) {
 					el := ui.Text(c, seg.text).Cursor(ui.CursorPointer)
 					_, lookupErr := a.lookup(seg.cite)
 					if lookupErr != nil {
-						missing := ui.Hex("#9e4705")
-						el.TextColor(missing).Background(coverTint(missing, 0.16, t.Surface)).WavyUnderline()
+						el.TextColor(a.ink.danger).Background(coverTint(t.Danger, 0.16, t.Surface)).WavyUnderline()
 					} else {
-						el.Bold().TextColor(t.Accent).Background(coverTint(t.Accent, 0.18, t.Surface))
+						el.Bold().TextColor(a.ink.link).Background(coverTint(t.Accent, 0.18, t.Surface))
 					}
 					el.HandleInput(func(ev ui.InputEvent) bool { return a.passClick(id, ev) })
 					citeStr := seg.cite
@@ -267,7 +265,7 @@ func (a *App) expandedChip(c *ui.Context, citation string) {
 	hits, err := a.lookup(citation)
 	ui.Column(c).FillWidth().Gap(4).Padding(6).Background(t.Background).Radius(6).Children(func() {
 		if err != nil {
-			ui.Text(c, err.Error()).FontSize(12).TextColor(t.Danger)
+			ui.Text(c, err.Error()).FontSize(12).TextColor(a.ink.danger)
 			return
 		}
 		for _, h := range hits {

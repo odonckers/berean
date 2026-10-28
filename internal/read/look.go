@@ -44,23 +44,25 @@ func appleTheme(dark bool) *ui.Theme {
 			SurfacePressed: white.Mix(black, 0.1),
 			Border:         ui.RGBA(0, 0, 0, 0.1).Over(white), // separator over the content well
 			Text:           ui.RGBA(0, 0, 0, 0.85),            // labelColor
-			TextMuted:      ui.RGBA(0, 0, 0, 0.5),             // secondaryLabelColor
+			TextMuted:      ui.RGBA(0, 0, 0, 0.62),            // secondary text, dark enough for 4.5:1 on a marked row
 			Accent:         accent,
-			AccentHover:    accent.Mix(black, 0.12),
-			AccentPressed:  accent.Mix(black, 0.24),
-			AccentText:     white,
-			Danger:         ui.Hex("#FF383C"), // systemRed
-			Warning:        ui.Hex("#FF8D28"), // systemOrange
-			Success:        ui.Hex("#34C759"), // systemGreen
-			Selection:      ui.Hex("#B3D7FF"), // selectedTextBackground
-			Focus:          accent.Alpha(0.5),
-			Inverse:        ui.Hex("#1E1E1E"),
-			InverseText:    white,
-			Scrollbar:      ui.RGBA(0, 0, 0, 0.4),
-			Radius:         6,
-			Spacing:        4,
-			FontSize:       systemFontSize(),
-			Font:           systemFont,
+			// Pressed stays close to the system blue. Black label text
+			// drops under 4.5:1 if the fill is darkened much further.
+			AccentHover:   accent.Mix(black, 0.06),
+			AccentPressed: accent.Mix(black, 0.12),
+			AccentText:    black,
+			Danger:        ui.Hex("#FF383C"), // systemRed
+			Warning:       ui.Hex("#FF8D28"), // systemOrange
+			Success:       ui.Hex("#34C759"), // systemGreen
+			Selection:     ui.Hex("#B3D7FF"), // selectedTextBackground
+			Focus:         accent.Alpha(0.5),
+			Inverse:       ui.Hex("#1E1E1E"),
+			InverseText:   white,
+			Scrollbar:     ui.RGBA(0, 0, 0, 0.4),
+			Radius:        6,
+			Spacing:       4,
+			FontSize:      systemFontSize(),
+			Font:          systemFont,
 		}
 	}
 	content := ui.Hex("#1E1E1E") // windowBackground, dark
@@ -74,11 +76,11 @@ func appleTheme(dark bool) *ui.Theme {
 		SurfacePressed: surface.Mix(white, 0.14),
 		Border:         ui.RGBA(255, 255, 255, 0.1).Over(content),
 		Text:           ui.RGBA(255, 255, 255, 0.85),
-		TextMuted:      ui.RGBA(255, 255, 255, 0.55),
+		TextMuted:      ui.RGBA(255, 255, 255, 0.7),
 		Accent:         accent,
 		AccentHover:    accent.Mix(white, 0.16),
 		AccentPressed:  accent.Mix(white, 0.28),
-		AccentText:     white,
+		AccentText:     black,
 		Danger:         ui.Hex("#FF4245"),
 		Warning:        ui.Hex("#FF9230"),
 		Success:        ui.Hex("#30D158"),
@@ -174,6 +176,7 @@ func (a *App) applyLook(c *ui.Context) {
 		a.lookScale = scale
 	}
 	c.SetTheme(a.look)
+	a.ink = inkFor(dark)
 	a.logAppearance(dark)
 }
 

@@ -219,10 +219,10 @@ func (a *App) setupView(c *ui.Context) {
 			})
 		}
 		if len(missing) > 0 {
-			ui.Text(c, joinMissing(missing)).FontSize(14).TextColor(t.Danger).FillWidth()
+			ui.Text(c, joinMissing(missing)).FontSize(14).TextColor(a.ink.danger).FillWidth()
 		}
 		if a.setupNote != "" {
-			ui.Text(c, a.setupNote).FontSize(14).TextColor(t.Danger).FillWidth()
+			ui.Text(c, a.setupNote).FontSize(14).TextColor(a.ink.danger).FillWidth()
 		}
 		if files := col.DroppedFiles(); len(files) > 0 {
 			a.importFiles(files, nil)
@@ -363,7 +363,7 @@ func (a *App) debriefView(c *ui.Context) {
 		ui.Text(c, debriefComeBackQ).FontSize(15).FillWidth()
 		ui.TextArea(c, &a.comeBack).Label("Come back").Lines(4, 8).FillWidth()
 		if a.setupNote != "" {
-			ui.Text(c, a.setupNote).FontSize(14).TextColor(t.Danger)
+			ui.Text(c, a.setupNote).FontSize(14).TextColor(a.ink.danger)
 		}
 		if ui.Button(c, "Save").Clicked() {
 			a.saveDebrief()

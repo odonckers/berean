@@ -197,6 +197,26 @@ func TestWindowKeepsNativeControls(t *testing.T) {
 	}
 }
 
+func TestSyntheticStudySurface(t *testing.T) {
+	for _, dark := range []bool{false, true} {
+		app := newLookApp(t, &bytes.Buffer{})
+		app.reduceTransparency = true
+		paintSyntheticStudy(app)
+		tt := newLookTester(app, dark, true)
+		for _, s := range []string{
+			"The north path stays above the marsh",
+			"Mark the second bend",
+			"The clearing is wide enough",
+			"The walk works better when the gate",
+			"Gate turn",
+		} {
+			if !tt.HasText(s) {
+				t.Fatalf("dark=%v missing %q", dark, s)
+			}
+		}
+	}
+}
+
 func TestLookShots(t *testing.T) {
 	dir := os.Getenv("BEREAN_SHOTS")
 	if dir == "" {
@@ -229,6 +249,45 @@ func TestLookShots(t *testing.T) {
 	// one so the unpainted sidebar is visible in the picture.
 	save("light-material.png", compositeClear(render(false, false, true), color.RGBA{R: 186, G: 214, B: 232, A: 255}))
 	save("dark-material.png", compositeClear(render(true, false, true), color.RGBA{R: 70, G: 92, B: 110, A: 255}))
+	save("solid-fallback-light.png", renderStudy(t, false))
+	save("solid-fallback-dark.png", renderStudy(t, true))
+}
+
+// renderStudy draws the solid fallback with synthetic clips, a note, and
+// one citation the empty library cannot resolve.
+func renderStudy(t *testing.T, dark bool) *image.RGBA {
+	t.Helper()
+	app := newLookApp(t, &bytes.Buffer{})
+	app.reduceTransparency = true
+	paintSyntheticStudy(app)
+	return newLookTester(app, dark, true).Image()
+}
+
+func paintSyntheticStudy(app *App) {
+	app.cards = []Clip{
+		{
+			ID: 1, Kind: kindPublication, Citation: "Field 2:4",
+			Text: "The north path stays above the marsh until the stone gate.",
+			X:    16, Y: 24,
+		},
+		{
+			ID: 2, Kind: kindPublication, Citation: "Sketch 7",
+			Text: "Mark the second bend, then count three oaks before the clearing.",
+			X:    340, Y: 24,
+		},
+		{
+			ID: 3, Kind: kindPublication, Citation: "Margin 1",
+			Text: "The clearing is wide enough to lay the map flat.",
+			X:    340, Y: 200,
+		},
+		{
+			ID: 4, Kind: kindNote,
+			Markdown: "The walk works better when the gate is the landmark. Count the oaks after the second bend. The sketch calls that turn [Gate turn](jwcite:Gate%20turn).",
+			X:        16,
+			Y:        200,
+		},
+	}
+	app.nextClip = 4
 }
 
 // newLookTester paints app once, after dark and vibrancy are set. The
