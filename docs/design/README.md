@@ -6,7 +6,7 @@ A spec's recommended direction stays **pending** until Owen decides on it in the
 
 | Spec | Status |
 | --- | --- |
-| [Inline study pane](inline-study-pane.md) | Direction decided (B) |
+| [Inline study pane](inline-study-pane.md) | Decided: direction B, open questions resolved |
 | Studyspace infinite canvas | Planned |
 | Omnisearch | Planned |
 | Note hyperlinks with inline previews | Planned |

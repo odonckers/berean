@@ -1,6 +1,6 @@
 # Inline study pane
 
-**Status:** Direction decided. Owen chose **Direction B** (inline study pane on every device, plus a dockable, draggable side split when the reader is ≥ 1000 pt wide). Directions A and C are rejected.
+**Status:** Direction decided. Owen chose **Direction B** (inline study pane on every device, plus a dockable, draggable side split when the reader is ≥ 1000 pt wide). Directions A and C are rejected, and all open questions are resolved (§10).
 **Platforms:** iOS, iPadOS, macOS.
 **Owner:** Design (Lumen).
 
@@ -22,12 +22,12 @@ When you select a verse in the Bible reader, the chapter splits open at that ver
 | --- | --- | --- |
 | **Closed** | Continuous chapter text. Verses that have study content show a subtle marker; no marker means the verse has none. | The default state. |
 | **Opening** | The text splits below the selected verse and the pane grows to its starting height (about 40% of the viewport, at most). | You can interact during the animation. A second tap cancels the open. |
-| **Open** | A header with the verse reference, content tabs (Study notes, Cross refs, Research, Footnotes, My notes), a close control, and a scrollable body. | Tabs with no content are hidden, not disabled. The last tab you used is remembered for each publication. |
+| **Open** | A header with the verse reference, content tabs (Study notes, Cross refs, Research, Footnotes), a close control, a scrollable body, and My notes pinned at the bottom of the pane (not a tab), visible on every tab. | Tabs with no content are hidden, not disabled. The last tab you used is remembered for each publication. |
 | **Switching verse** | Selecting another verse moves the pane to the new verse. Above the pane this is a single re-anchor; below it, the pane collapses and re-opens at the new position. | The current tab carries over when the new verse has content for it. |
 | **Multi-verse** | Drag across verses or Shift-click to select a range (for example, 3–5). The pane opens below the last verse in the range and merges the content, grouped by verse. | My notes attaches to the whole range. |
 | **Collapsing** | Tap the selected verse again, use the close control, press Esc, or swipe down on the pane header. | Collapsing animates the pane to zero height while the verse holds still. |
 | **Empty** | The verse has no study content. The pane shows a single line, "No study notes for this verse", and the My notes composer. | The pane stays short. |
-| **Not downloaded** | The content lives in a publication that isn't on the device. The pane shows an inline row: "Study notes are in the Study Bible. Download (48 MB)". | A progress ring appears in place, and content fills in when the download finishes. The pane never blocks the reader. |
+| **Not downloaded** | The content lives in a publication that isn't on the device. The pane shows an inline row: "Study notes are in the Study Bible. Download (48 MB)". | A progress ring appears in place, and content fills in when the download finishes. The pane never blocks the reader. Auto-downloading study publications on Wi-Fi is deferred to a later release, as a setting. |
 | **Loading** | Skeleton lines appear in the body at the final height, so there's no second layout jump. | Show nothing for the first 150 ms to avoid flicker. |
 | **Error** | A one-line message ("Couldn't load study notes") with a Retry button. Other tabs still work. | Errors are per tab, not per pane. |
 
@@ -35,14 +35,15 @@ When you select a verse in the Bible reader, the chapter splits open at that ver
 
 | Input | iPhone | iPad | Mac |
 | --- | --- | --- | --- |
-| Tap / click a verse number or verse text | Opens or moves the pane | Same | Click opens or moves the pane |
+| Tap / click a verse number | Opens or moves the pane | Same | Click opens or moves the pane |
+| Tap / click / select verse text | Never opens the pane; stays free for highlighting and text selection | Same | Same |
 | Tap / click the selected verse | Closes the pane | Same | Same |
 | Long press / secondary click | Context menu: Highlight, Copy, Share, Add note, Open in Studyspace | Same; secondary click on trackpad | Right-click with the same menu |
 | Drag across verses | Selects a range (after a long press) | Same; drag with the pointer | Click-drag or Shift-click |
 | Pane header grabber, dragged vertically | Resizes the inline pane; a fast flick down dismisses it | Same | Drag the divider |
 | Divider dragged horizontally (side split) | n/a | Resizes the split; snaps at 1/3, 1/2, 2/3 | Same, with a resize cursor |
 | Pointer hover | n/a | Verses with content get a hover highlight; the divider shows a resize affordance | Same, plus tooltips on tab icons |
-| Keyboard | Hardware keyboard support matches iPad | **Esc** closes. **↑/↓** move the selected verse (the pane follows). **Return** opens the pane for the focused verse. **⌘1–⌘5** switch tabs. **Tab** moves between the text and the pane. **⌘\\** toggles inline/side. | Same |
+| Keyboard | Hardware keyboard support matches iPad | **Esc** closes. **↑/↓** move the selected verse (the pane follows). **Return** opens the pane for the focused verse. **⌘1–⌘4** switch tabs. **Tab** moves between the text and the pane. **⌘\\** toggles inline/side. | Same |
 | VoiceOver | Each verse is one element with a "Study content available" hint. A custom rotor, "Verses with notes", jumps between verses that have content. | Same | Same, plus VO-key navigation |
 
 ## 4. Layout per size class
@@ -53,7 +54,7 @@ The breakpoints below are proposals, measured as the reader's own width (not the
 | --- | --- | --- |
 | **< 600 pt** | iPhone (any orientation), narrow iPad Split View or Slide Over, narrow Mac window | **Inline only.** The pane is full column width, starts at 40% of the viewport, and can be dragged from 25% to 85%. |
 | **600–999 pt** | iPad portrait, half-screen Split View, medium Stage Manager or Mac windows | **Inline.** The pane matches the text measure (max ~680 pt reading column), centered. |
-| **≥ 1000 pt** | iPad landscape full screen, large Stage Manager windows, Mac | **Inline by default, with a side split available.** You can dock the pane to the trailing side (drag the header sideways or press ⌘\\). The divider is draggable, and each pane has a minimum width of 320 pt. The text column keeps the selected verse highlighted, and the side pane follows the selection. |
+| **≥ 1000 pt** | iPad landscape full screen, large Stage Manager windows, Mac | **Inline by default, with a side split available.** The pane always opens inline; it moves to the side split only when you drag its header to the trailing side (⌘\\ is the keyboard and accessibility equivalent of that drag). The divider is draggable, and each pane has a minimum width of 320 pt. The text column keeps the selected verse highlighted, and the side pane follows the selection unless you pin it: a pin control in the side pane's header keeps that verse's content in place while you select and read other verses; unpinning resumes following. |
 
 - **Side split rules.** The side split never hides the text. If the reader shrinks below 1000 pt while docked, the pane returns to inline below the selected verse, and it docks again when the reader grows back.
 - **The pane is part of the chapter's scroll content.** It is not an overlay, so it scrolls away with the text above it. Scrolling the pane's body until it hits an edge hands scrolling off to the chapter.
@@ -90,10 +91,10 @@ The breakpoints below are proposals, measured as the reader's own width (not the
 
 - **Last verse of a chapter.** The pane opens above the chapter footer. Moving to the next chapter closes the pane.
 - **Very long notes.** The pane caps at 85% of the viewport and its body scrolls. An "Expand" control docks the pane to the side split on wide layouts, or opens a full-height reading view on compact ones.
-- **Rotating or resizing while open.** The anchor verse and the tab are kept. The pane switches between inline and side split according to the §4 breakpoints, without moving the verse.
+- **Rotating or resizing while open.** The anchor verse and the tab are kept. If the reader drops below 1000 pt, a docked side split returns inline (pin is cleared); if it grows back, the pane stays inline until you drag it to the side again. The verse never moves.
 - **Deep links** (`berean://bible/nwtsty/43/3/16?pane=crossrefs`). The reader opens scrolled to the verse with the pane already open on that tab, without an opening animation.
 - **Verse selected from search.** The reader lands on the verse, highlights the search term, and opens the pane on the tab containing the match.
-- **State restoration.** Save the open verse or range, the tab, the pane height or split fraction, and the pane's scroll offset for each window or scene. On Mac, each window restores its own state.
+- **State restoration.** Save the open verse or range, the tab, the pane height or split fraction, whether the pane is docked and pinned, and the pane's scroll offset for each window or scene. On Mac, each window restores its own state.
 
 ## 9. Directions compared (decided: B)
 
@@ -108,18 +109,20 @@ There is no direct Apple precedent for this interaction, so three concrete direc
 | Consistency across devices | Identical everywhere | One mental model (inline), with an extra on big screens | Different first step on each device |
 | Risk | Feels limited on Mac | Mode switching while resizing needs care | Extra tap for every deep study session |
 
-**Decision: Direction B, chosen by Owen.** It keeps the signature inline split as the one model on every device and adds a draggable side split only where the screen is wide enough to earn it. C is rejected as the main flow; its peek may come back later only as a hover preview in the Closed state on iPad and Mac (see question 8).
+**Decision: Direction B, chosen by Owen.** It keeps the signature inline split as the one model on every device and adds a draggable side split only where the screen is wide enough to earn it. C is rejected as the main flow; its peek may come back after v1 only as a hover preview in the Closed state on iPad and Mac.
 
-## 10. Open questions for Owen
+## 10. Decisions (resolved open questions)
 
-1. ~~Do you approve Direction B, or would you prefer A or C?~~ Resolved: Direction B.
-2. On wide layouts, should the pane default to inline (as proposed) or to the side split?
-3. Should tapping verse text open the pane, or only tapping the verse number, so that tapping text can stay free for highlighting?
-4. Multi-verse selection: should content merge into one pane (as proposed) or show one pane per verse?
-5. Should My notes appear as a tab in the pane, or always be pinned at the bottom of the pane?
-6. Not downloaded: should Berean suggest the download inline (as proposed), offer to auto-download study publications on Wi-Fi, or both?
-7. Should the side split let you pin a verse, so its pane stays put while you read on?
-8. Do you want a hover preview (C's peek) on iPad and Mac in v1, or later?
+All open questions are resolved by Owen and reflected in the sections above.
+
+1. **Direction:** B.
+2. **Wide layouts:** the pane defaults to inline; it moves to the side split only when the user drags it there.
+3. **Opening:** tapping the verse number opens the pane; tapping or selecting verse text stays free for highlighting.
+4. **Multi-verse selection:** content merges into one pane, grouped by verse.
+5. **My notes:** pinned at the bottom of the pane, not a tab.
+6. **Not downloaded:** inline download suggestion in v1; auto-download of study publications on Wi-Fi comes later as a setting.
+7. **Pinning:** the side split can pin a verse so its pane stays put while you read on.
+8. **Hover preview:** later, not in v1.
 
 ## 11. References
 
