@@ -85,6 +85,13 @@ impl Core {
             inner: self.inner.catalog(),
         })
     }
+
+    /// The reader.
+    pub fn reader(&self) -> Arc<Reader> {
+        Arc::new(Reader {
+            inner: self.inner.reader(),
+        })
+    }
 }
 
 /// Lets a caller stop a long-running call; the core checks it between steps.
@@ -366,6 +373,188 @@ impl Library {
     }
 }
 
+/// The FFI mirror of [`berean_core::reader::TocEntry`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct TocEntry {
+    pub title: String,
+    pub doc_id: Option<i64>,
+    pub depth: u32,
+}
+
+impl From<berean_core::reader::TocEntry> for TocEntry {
+    fn from(e: berean_core::reader::TocEntry) -> Self {
+        TocEntry {
+            title: e.title,
+            doc_id: e.doc_id,
+            depth: e.depth,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::reader::ParagraphAnchor`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ParagraphAnchor {
+    pub paragraph: u32,
+    pub label: Option<String>,
+    pub begin: Option<u32>,
+    pub end: Option<u32>,
+}
+
+impl From<berean_core::reader::ParagraphAnchor> for ParagraphAnchor {
+    fn from(p: berean_core::reader::ParagraphAnchor) -> Self {
+        ParagraphAnchor {
+            paragraph: p.paragraph,
+            label: p.label,
+            begin: p.begin,
+            end: p.end,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::reader::Document`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct Document {
+    pub doc_id: i64,
+    pub title: String,
+    pub html: String,
+    pub paragraphs: Vec<ParagraphAnchor>,
+}
+
+impl From<berean_core::reader::Document> for Document {
+    fn from(d: berean_core::reader::Document) -> Self {
+        Document {
+            doc_id: d.doc_id,
+            title: d.title,
+            html: d.html,
+            paragraphs: d.paragraphs.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::reader::VerseAnchor`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct VerseAnchor {
+    pub verse: u32,
+    pub label: String,
+    pub text: String,
+    pub begin: u32,
+    pub end: u32,
+}
+
+impl From<berean_core::reader::VerseAnchor> for VerseAnchor {
+    fn from(v: berean_core::reader::VerseAnchor) -> Self {
+        VerseAnchor {
+            verse: v.verse,
+            label: v.label,
+            text: v.text,
+            begin: v.begin,
+            end: v.end,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::reader::BibleChapter`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct BibleChapter {
+    pub pub_key: String,
+    pub book: u32,
+    pub chapter: u32,
+    pub html: String,
+    pub verses: Vec<VerseAnchor>,
+}
+
+impl From<berean_core::reader::BibleChapter> for BibleChapter {
+    fn from(c: berean_core::reader::BibleChapter) -> Self {
+        BibleChapter {
+            pub_key: c.pub_key,
+            book: c.book,
+            chapter: c.chapter,
+            html: c.html,
+            verses: c.verses.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::reader::Location`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct Location {
+    pub pub_key: String,
+    pub doc_id: Option<i64>,
+    pub book: Option<u32>,
+    pub chapter: Option<u32>,
+    pub verse: Option<u32>,
+    pub paragraph: Option<u32>,
+}
+
+impl From<berean_core::reader::Location> for Location {
+    fn from(l: berean_core::reader::Location) -> Self {
+        Location {
+            pub_key: l.pub_key,
+            doc_id: l.doc_id,
+            book: l.book,
+            chapter: l.chapter,
+            verse: l.verse,
+            paragraph: l.paragraph,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::reader::LocationSpan`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct LocationSpan {
+    pub start: Location,
+    pub end: Location,
+}
+
+impl From<berean_core::reader::LocationSpan> for LocationSpan {
+    fn from(s: berean_core::reader::LocationSpan) -> Self {
+        LocationSpan {
+            start: s.start.into(),
+            end: s.end.into(),
+        }
+    }
+}
+
+/// The reader, exposed to callers as an object.
+#[derive(uniffi::Object)]
+pub struct Reader {
+    inner: berean_core::reader::Reader,
+}
+
+#[uniffi::export]
+impl Reader {
+    /// The table of contents of an installed publication, in display order.
+    pub fn toc(&self, pub_key: String) -> Result<Vec<TocEntry>, CoreError> {
+        Ok(self
+            .inner
+            .toc(&pub_key)?
+            .into_iter()
+            .map(Into::into)
+            .collect())
+    }
+
+    /// The document with MEPS id `doc_id` in the installed publication
+    /// `pub_key`.
+    pub fn document(&self, pub_key: String, doc_id: i64) -> Result<Document, CoreError> {
+        Ok(self.inner.document(&pub_key, doc_id)?.into())
+    }
+
+    /// Chapter `chapter` of book `book` (1-66) of the installed Bible `bible`.
+    pub fn bible_chapter(
+        &self,
+        bible: String,
+        book: u32,
+        chapter: u32,
+    ) -> Result<BibleChapter, CoreError> {
+        Ok(self.inner.bible_chapter(&bible, book, chapter)?.into())
+    }
+
+    /// Resolve a citation or `jwpub://` link to the span it names.
+    pub fn resolve(&self, reference: String) -> Result<LocationSpan, CoreError> {
+        Ok(self.inner.resolve(&reference)?.into())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -531,6 +720,74 @@ mod tests {
         assert!(matches!(
             library.plan_download("ll:0:0".into(), b"garbage".to_vec()),
             Err(CoreError::Corrupt)
+        ));
+    }
+
+    #[test]
+    fn reader_through_ffi() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = open_core(&dir);
+        let library = core.library();
+        let reader = core.reader();
+        for (key, file) in [("ll:0:0", "ll_E.jwpub"), ("nwt:0:0", "nwt_E.jwpub")] {
+            let progress = Arc::new(Recorder {
+                calls: Mutex::new(Vec::new()),
+            });
+            library
+                .install(
+                    key.into(),
+                    fixture(file).display().to_string(),
+                    progress,
+                    CancelToken::new(),
+                )
+                .unwrap();
+        }
+
+        let toc = reader.toc("ll:0:0".into()).unwrap();
+        assert_eq!(
+            toc[2],
+            TocEntry {
+                title: "Title Page/Publishers’ Page".into(),
+                doc_id: Some(1102011094),
+                depth: 1,
+            }
+        );
+
+        let doc = reader.document("ll:0:0".into(), 1102011094).unwrap();
+        assert_eq!(doc.doc_id, 1102011094);
+        let p6 = doc.paragraphs.iter().find(|p| p.paragraph == 6).unwrap();
+        assert_eq!(
+            &doc.html[p6.begin.unwrap() as usize..p6.end.unwrap() as usize],
+            "<p id=\"p6\" data-pid=\"6\" class=\"si\">January 2016 Printing</p>"
+        );
+
+        let chapter = reader.bible_chapter("nwt:0:0".into(), 43, 3).unwrap();
+        assert_eq!((chapter.book, chapter.chapter), (43, 3));
+        assert_eq!(chapter.verses.len(), 36);
+        assert_eq!(chapter.verses[15].label, "16");
+
+        let john = |verse| Location {
+            pub_key: "nwt:0:0".into(),
+            doc_id: Some(1001061147),
+            book: Some(43),
+            chapter: Some(3),
+            verse: Some(verse),
+            paragraph: None,
+        };
+        assert_eq!(
+            reader.resolve("John 3:16-18".into()).unwrap(),
+            LocationSpan {
+                start: john(16),
+                end: john(18),
+            }
+        );
+        assert!(matches!(
+            reader.resolve("John 3:18-16".into()),
+            Err(CoreError::Invalid(_))
+        ));
+        assert!(matches!(
+            reader.toc("zz:0:0".into()),
+            Err(CoreError::NotFound)
         ));
     }
 }
