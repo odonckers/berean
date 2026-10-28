@@ -39,7 +39,9 @@ func (a *App) canvas(c *ui.Context) {
 		viewport.Cursor(ui.CursorGrab)
 	}
 	if _, over := ui.DragOver[passage](viewport); over {
-		viewport.Background(t.Accent.Alpha(0.08))
+		// Opaque. The root is clear while a material shows, so a
+		// translucent highlight would let that blur cover the canvas.
+		viewport.Background(coverTint(t.Accent, 0.08, t.Background))
 	}
 	viewport.Children(func() {
 		ui.Box(c).Absolute().Left(0).Top(0).Width(canvasWorld).Height(canvasWorld).

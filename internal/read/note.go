@@ -202,9 +202,9 @@ func (a *App) noteBody(c *ui.Context, id int64, md string) {
 					_, lookupErr := a.lookup(seg.cite)
 					if lookupErr != nil {
 						missing := ui.Hex("#9e4705")
-						el.TextColor(missing).Background(missing.Alpha(0.16)).WavyUnderline()
+						el.TextColor(missing).Background(coverTint(missing, 0.16, t.Surface)).WavyUnderline()
 					} else {
-						el.Bold().TextColor(t.Accent).Background(t.Accent.Alpha(0.18))
+						el.Bold().TextColor(t.Accent).Background(coverTint(t.Accent, 0.18, t.Surface))
 					}
 					el.HandleInput(func(ev ui.InputEvent) bool { return a.passClick(id, ev) })
 					citeStr := seg.cite

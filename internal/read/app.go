@@ -482,7 +482,7 @@ func (a *App) paragraph(c *ui.Context, pub library.PublicationInfo, b block, scr
 	row := ui.Row(c.Key(src)).Label(src).Description(src).FillWidth().Gap(10).AlignItems(ui.Start).
 		Drag(a.paragraphPassage(pub, b))
 	if marked {
-		row.Background(t.Accent.Alpha(0.16)).Radius(6).Padding(2, 4)
+		row.Background(coverTint(t.Accent, 0.16, t.Background)).Radius(6).Padding(2, 4)
 	}
 	if scrollMark && marked && b.index == a.focusParFrom {
 		row.ScrollIntoView()
@@ -544,7 +544,7 @@ func (a *App) verseRow(c *ui.Context, line verseLine, scrollMark bool) {
 	marked := a.verseMarked(line.verse)
 	row := ui.Row(c).FillWidth().Gap(12).AlignItems(ui.Start)
 	if marked {
-		row.Background(t.Accent.Alpha(0.16)).Radius(6).Padding(2, 4)
+		row.Background(coverTint(t.Accent, 0.16, t.Background)).Radius(6).Padding(2, 4)
 	}
 	if scrollMark && marked {
 		lo, _, _ := a.markedVerseSpan()

@@ -13,6 +13,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+	"github.com/odonckers/berean/internal/jwpub"
 	"github.com/odonckers/berean/internal/library"
 )
 
@@ -144,6 +145,37 @@ func TestSidebarClearOnlyOverMaterial(t *testing.T) {
 	}
 	if strings.Contains(log, "material did not apply") {
 		t.Fatalf("applied material was logged as a failure:\n%s", log)
+	}
+}
+
+func TestCanvasDragOverStaysOpaque(t *testing.T) {
+	app := newLookApp(t, &bytes.Buffer{})
+	pub := library.PublicationInfo{ID: 1, Symbol: "nwt", Year: 2020}
+	app.articles = []library.PublicationInfo{pub}
+	app.articleLabels = publicationLabels(app.articles)
+	app.pubChoice = app.articleLabels[0]
+	app.pubID, app.docID = 1, 1
+	app.loadedPub, app.loadedDoc = 1, 1
+	app.docsFor = 1
+	b := block{index: 1, runs: []jwpub.Run{{Text: "A draggable sentence."}}}
+	app.blocks = []block{b}
+	tt := newLookTester(app, false, true)
+
+	row, ok := tt.Find(pubSource(pub, 1, b))
+	if !ok {
+		t.Fatal("the paragraph is not on screen")
+	}
+	// Press the row, move far enough to drag, then onto the canvas.
+	tt.Press(row.X+8, row.Y+row.H/2)
+	tt.Move(row.X+40, row.Y+row.H/2)
+	tt.Move(820, 240)
+
+	theme := appleTheme(false)
+	want := rgbaOf(coverTint(theme.Accent, 0.08, theme.Background))
+	// Away from the pointer, the drag image, and the canvas controls.
+	got := tt.Image().RGBAAt(1200, 700)
+	if got != want || got.A != 255 {
+		t.Fatalf("canvas during drag-over %v, want opaque %v", got, want)
 	}
 }
 

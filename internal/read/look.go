@@ -130,6 +130,13 @@ func sidebarClear(showsMaterial, reduceTransparency bool) bool {
 	return showsMaterial && !reduceTransparency
 }
 
+// coverTint lays tint, at strength, over an opaque surface. Fills outside
+// the sidebar use it. A translucent fill there would show the material
+// through the clear root.
+func coverTint(tint ui.Color, strength float32, surface ui.Color) ui.Color {
+	return tint.Alpha(strength).Over(surface)
+}
+
 // windowOptions is the study window: a hidden title bar with the
 // platform's own controls, and the sidebar material when it should show.
 func (a *App) windowOptions() mygo.WindowOptions {
