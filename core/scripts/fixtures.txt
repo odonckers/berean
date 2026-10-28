@@ -29,3 +29,7 @@ c55762f49cc53f8d6af06115a542d63021633161a974b23c163b8183ef00ee45  catalog-v5-ffa
 # The Research Guide (berean-core/tests/study.rs): study references for
 # Bible verses (112 MB).
 5ef3c5916f3ee7bae12101ef5aacc8ac301e42044f365df7e416c224b4c08593  rsg_E.jwpub  https://cfp2.jw-cdn.org/a/8e227c9/1/o/rsg_E.jwpub
+# Insight on the Scriptures (berean-core/tests/study.rs, search.rs): one
+# .jwpub holds both volumes; it installs as `it:0:0`, and the Research Guide
+# cites it most (352 MB).
+bbc02a7c8797430d67983ca5ac3a91ac124a1ca518572c24f54a924c1e364ba3  it_E.jwpub  https://cfp2.jw-cdn.org/a/d74b90/2/o/it_E.jwpub

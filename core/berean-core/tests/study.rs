@@ -6,6 +6,7 @@ mod common;
 #[path = "common/trimmed_catalog.rs"]
 mod trimmed_catalog;
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::OnceLock;
 
@@ -17,12 +18,20 @@ const NWT_E: &str = "nwt:0:0";
 const NWT_S: &str = "nwt:1:0";
 const RSG_E: &str = "rsg:0:0";
 const W_E: &str = "w26:0:20260800";
+const IT_E: &str = "it:0:0";
 
 /// The commentary rows, references and `$`-separated multi-target links in
 /// the pinned `rsg_E.jwpub`.
 const ENTRIES: usize = 14899;
 const REFERENCES: usize = 44546;
 const MULTI_TARGET: usize = 3037;
+/// The distinct Insight documents the guide's verse references target, and
+/// how many references target Insight. The guide's `Extract`s quote 2424
+/// Insight documents in all: the other 182 are quoted only by its own
+/// documents, not by a verse entry.
+const INSIGHT_DOCS: usize = 2242;
+const INSIGHT_REFERENCES: usize = 12404;
+const INSIGHT_EXTRACT_DOCS: usize = 2424;
 
 fn new_core(name: &str, fixtures: &[(&str, &str)]) -> Core {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
@@ -38,8 +47,8 @@ fn new_core(name: &str, fixtures: &[(&str, &str)]) -> Core {
     core
 }
 
-/// English and Spanish Bibles, the English guide, a Watchtower and the
-/// (trimmed) catalog; shared by most tests.
+/// English and Spanish Bibles, the English guide, a Watchtower, Insight and
+/// the (trimmed) catalog; shared by most tests.
 fn core() -> &'static Core {
     static CORE: OnceLock<Core> = OnceLock::new();
     CORE.get_or_init(|| {
@@ -50,6 +59,7 @@ fn core() -> &'static Core {
                 (NWT_S, "nwt_S.jwpub"),
                 (RSG_E, "rsg_E.jwpub"),
                 (W_E, "w_E_202608.jwpub"),
+                (IT_E, "it_E.jwpub"),
             ],
         );
         core.catalog()
@@ -116,27 +126,41 @@ fn john_3_16() {
     assert_eq!(second.target, Some(document("cl:0:0", 1102002048, Some(6))));
 }
 
+/// The study references of every verse the guide has an entry for, read
+/// once: `(book:chapter:verse, references)`.
+fn every_entry() -> &'static [(String, StudyReferences)] {
+    static ENTRIES: OnceLock<Vec<(String, StudyReferences)>> = OnceLock::new();
+    ENTRIES.get_or_init(|| {
+        let (_dir, db) = raw_db("rsg_E.jwpub");
+        let mut stmt = db.prepare("SELECT Label FROM VerseCommentary").unwrap();
+        let headers: Vec<String> = stmt
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        let reader = core().reader();
+        headers
+            .iter()
+            .map(|header| {
+                // `... href="jwpub://b/NWTR/43:3:16-43:3:16" ...`
+                let at = header.find("jwpub://b/NWTR/").unwrap() + "jwpub://b/NWTR/".len();
+                let (start, _) = header[at..].split_once('-').unwrap();
+                let n: Vec<u32> = start.split(':').map(|n| n.parse().unwrap()).collect();
+                let refs = reader
+                    .study_references(&verse(NWT_E, n[0], n[1], n[2]))
+                    .unwrap_or_else(|e| panic!("{start}: {e:?}"));
+                (start.to_string(), refs)
+            })
+            .collect()
+    })
+}
+
 #[test]
 fn every_entry_parses() {
-    let (_dir, db) = raw_db("rsg_E.jwpub");
-    let mut stmt = db.prepare("SELECT Label FROM VerseCommentary").unwrap();
-    let headers: Vec<String> = stmt
-        .query_map([], |r| r.get(0))
-        .unwrap()
-        .collect::<Result<_, _>>()
-        .unwrap();
-    assert_eq!(headers.len(), ENTRIES);
-
-    let reader = core().reader();
+    let entries = every_entry();
+    assert_eq!(entries.len(), ENTRIES);
     let (mut references, mut multi_target) = (0, 0);
-    for header in &headers {
-        // `... href="jwpub://b/NWTR/43:3:16-43:3:16" ...`
-        let at = header.find("jwpub://b/NWTR/").unwrap() + "jwpub://b/NWTR/".len();
-        let (start, _) = header[at..].split_once('-').unwrap();
-        let n: Vec<u32> = start.split(':').map(|n| n.parse().unwrap()).collect();
-        let refs = reader
-            .study_references(&verse(NWT_E, n[0], n[1], n[2]))
-            .unwrap_or_else(|e| panic!("{start}: {e:?}"));
+    for (start, refs) in entries {
         assert_eq!(refs.availability, StudyAvailability::Installed);
         assert!(!refs.items.is_empty(), "{start}");
         for item in &refs.items {
@@ -148,6 +172,58 @@ fn every_entry_parses() {
     }
     assert_eq!(references, REFERENCES);
     assert_eq!(multi_target, MULTI_TARGET);
+}
+
+#[test]
+fn insight_targets_resolve() {
+    let mut targets: HashMap<i64, Vec<u32>> = HashMap::new();
+    let mut references = 0;
+    for (_, refs) in every_entry() {
+        for target in refs.items.iter().filter_map(|i| i.target.as_ref()) {
+            if target.pub_key == IT_E {
+                let paragraph = target.paragraph.expect("a paragraph");
+                targets
+                    .entry(target.doc_id.unwrap())
+                    .or_default()
+                    .push(paragraph);
+                references += 1;
+            }
+        }
+    }
+    assert_eq!(targets.len(), INSIGHT_DOCS);
+    assert_eq!(references, INSIGHT_REFERENCES);
+
+    let reader = core().reader();
+    // Every Insight document any `Extract` of the guide quotes is there.
+    let (_dir, db) = raw_db("rsg_E.jwpub");
+    let mut stmt = db
+        .prepare(
+            "SELECT DISTINCT e.RefMepsDocumentId FROM Extract e \
+             JOIN RefPublication p ON p.RefPublicationId = e.RefPublicationId \
+             WHERE p.Symbol = 'it'",
+        )
+        .unwrap();
+    let quoted: Vec<i64> = stmt
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(quoted.len(), INSIGHT_EXTRACT_DOCS);
+    assert!(targets.keys().all(|d| quoted.contains(d)));
+    for doc_id in &quoted {
+        let document = reader
+            .document(IT_E, *doc_id)
+            .unwrap_or_else(|e| panic!("{doc_id}: {e:?}"));
+        for paragraph in targets.get(doc_id).into_iter().flatten() {
+            assert!(
+                document
+                    .paragraphs
+                    .iter()
+                    .any(|p| p.paragraph == *paragraph),
+                "{doc_id}/{paragraph}"
+            );
+        }
+    }
 }
 
 #[test]

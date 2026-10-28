@@ -20,6 +20,7 @@ const NWT_S: &str = "nwt:1:0";
 const W_E: &str = "w26:0:20260800";
 const W_S: &str = "w26:1:20260800";
 const LL_E: &str = "ll:0:0";
+const IT_E: &str = "it:0:0";
 
 /// Index rows of the pinned fixtures: verses, and paragraphs of the Bible's
 /// other documents (in how many documents).
@@ -531,4 +532,25 @@ fn cancelled_install_leaves_the_index_unchanged() {
             .unwrap(),
         before
     );
+}
+
+#[test]
+fn insight() {
+    let (core, _) = new_core("search-insight", &[(IT_E, "it_E.jwpub")]);
+    let hits = core
+        .search()
+        .query("Melchizedek", &in_pubs(&[IT_E]), 20)
+        .unwrap();
+    assert_eq!(hits.len(), 20);
+    let reader = core.reader();
+    for hit in &hits {
+        let location = &hit.location;
+        assert_eq!(location.pub_key, IT_E);
+        assert_safe_snippet(&hit.snippet);
+        let paragraph = location.paragraph.unwrap();
+        let document = reader.document(IT_E, location.doc_id.unwrap()).unwrap();
+        assert_eq!(hit.title, document.title);
+        assert!(document.paragraphs.iter().any(|p| p.paragraph == paragraph));
+    }
+    assert_eq!(hits[0].title, "Melchizedek");
 }
