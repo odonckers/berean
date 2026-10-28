@@ -57,15 +57,31 @@
 //! `NotFound`; publication data that contradicts itself (an anchor out of
 //! range or not on its paragraph's element, a verse missing from its chapter,
 //! a table of contents that is not a tree) => `Corrupt`.
+//!
+//! # Study references
+//!
+//! [`Reader::study_references`] lists what the Research Guide (symbol
+//! `rsg`) cites for a Bible verse. The guide used is the installed one in the
+//! Bible's language. Its `VerseCommentaryMap` names the verse by the Bible's
+//! own `BibleVerseId`, so each entry's header (a `jwpub://b/` link to the
+//! verse) is checked against the verse asked for: a Bible numbered unlike the
+//! guide gives `Corrupt` rather than another verse's references. An entry is
+//! a list of references in the guide's order, newest first; each is a `<div>`
+//! holding one `<a class="xt">` link, followed by a `<div>` naming its source
+//! (e.g. `w24.08 pp. 2-6`). Empty `<p>` elements between them are skipped;
+//! anything else => `Corrupt`. A link's target is the first paragraph of its
+//! first `$`-separated `jwpub://p/` target, in the publication its
+//! `Extract` row's `RefPublication` names.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::catalog::{Catalog, CatalogFilter};
 use crate::jwpub::{
     BibleBook, DocumentParagraph, DocumentSummary, Publication, PublicationViewItem,
 };
 use crate::languages;
-use crate::library::{Library, PubKind, PublicationSummary};
+use crate::library::{format_pub_key, Library, PubKind, PublicationSummary};
 use crate::{CoreError, Inner};
 
 /// The `PublicationView` whose items are the table of contents.
@@ -75,6 +91,11 @@ const LISTS: &str = "a list of references is not a single span; resolve each par
 const REVERSED: &str = "range ends before it starts";
 const MIXED_RANGE: &str = "a chapter range cannot end at a verse";
 const ONE_BOOK: &str = "a span must stay within one book";
+const NOT_A_VERSE: &str =
+    "study references need a Bible verse: a Bible's key, book, chapter and verse, no paragraph";
+
+/// The Research Guide's publication symbol.
+const GUIDE: &str = "rsg";
 
 /// A point in a publication: a document, optionally a paragraph of it, or a
 /// Bible book, chapter and optionally verse.
@@ -162,6 +183,39 @@ pub struct VerseAnchor {
     /// paragraphs).
     pub begin: u32,
     pub end: u32,
+}
+
+/// Whether the Research Guide in a Bible's language is installed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StudyAvailability {
+    Installed,
+    /// Not installed; the catalog lists it as `pub_key`, to download.
+    NotInstalled {
+        pub_key: String,
+    },
+}
+
+/// What the Research Guide cites for one verse.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StudyReferences {
+    pub availability: StudyAvailability,
+    /// In the guide's order, newest first. Empty when the guide is not
+    /// installed or has no entry for the verse.
+    pub items: Vec<StudyReference>,
+}
+
+/// One reference the Research Guide cites.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StudyReference {
+    /// The link's text, as plain text.
+    pub label: String,
+    /// The guide's HTML for the reference: from the `<div` holding the link
+    /// through the `</div>` of the one naming its source.
+    pub html: String,
+    /// The first paragraph the link targets, in the publication the guide
+    /// says it quotes (which need not be installed). `None` when the guide
+    /// does not say which publication that is.
+    pub target: Option<Location>,
 }
 
 /// Handle to the reader. Cheap to clone; shares the core's state.
@@ -260,6 +314,82 @@ impl Reader {
         }
     }
 
+    /// What the Research Guide in the Bible's language cites for the verse
+    /// at `location`; see the module docs.
+    ///
+    /// `location` must name a verse of an installed Bible: its key, `book`,
+    /// `chapter` and `verse`, and no `paragraph` (`doc_id` is not read).
+    /// Anything else => `Invalid`; a Bible that is not installed, or an
+    /// unknown chapter or verse => `NotFound`. When the guide is not
+    /// installed, the catalog's newest `rsg` in the language is returned as
+    /// [`StudyAvailability::NotInstalled`]; if the catalog lists none (or
+    /// there is no catalog) => `NotFound`. A guide entry for another verse,
+    /// or one not shaped as described => `Corrupt`.
+    pub fn study_references(&self, location: &Location) -> Result<StudyReferences, CoreError> {
+        let (Some(book), Some(chapter), Some(verse), None) = (
+            location.book,
+            location.chapter,
+            location.verse,
+            location.paragraph,
+        ) else {
+            return Err(CoreError::Invalid(format!("{NOT_A_VERSE}: {location:?}")));
+        };
+        let bible = self.library().publication(&location.pub_key)?;
+        let installed = self.library().installed()?;
+        if !installed
+            .iter()
+            .any(|p| p.pub_key == location.pub_key && p.kind == PubKind::Bible)
+        {
+            return Err(CoreError::Invalid(format!("{NOT_A_VERSE}: {location:?}")));
+        }
+        let verse_id = bible_verse_id(&bible, book, chapter, verse)?;
+
+        let language = bible.meta().meps_language;
+        let guide = installed
+            .iter()
+            .find(|p| p.symbol == GUIDE && p.meps_language == language);
+        let Some(guide) = guide else {
+            let filter = CatalogFilter {
+                meps_language: Some(language),
+                key_symbol: Some(GUIDE.into()),
+                ..CatalogFilter::default()
+            };
+            let listed = self
+                .catalog()
+                .publications(&filter)?
+                .into_iter()
+                .find(|p| p.symbol == GUIDE)
+                .ok_or(CoreError::NotFound)?;
+            return Ok(StudyReferences {
+                availability: StudyAvailability::NotInstalled {
+                    pub_key: listed.pub_key,
+                },
+                items: Vec::new(),
+            });
+        };
+
+        let guide = self.library().publication(&guide.pub_key)?;
+        let mut items = Vec::new();
+        for entry in guide.verse_commentaries_for(verse_id)? {
+            let header = entry.label.as_deref().ok_or(CoreError::Corrupt)?;
+            if entry_verse(header) != Some((book, chapter, verse)) {
+                return Err(CoreError::Corrupt);
+            }
+            let html = guide.decrypt(entry.content.as_deref().ok_or(CoreError::Corrupt)?)?;
+            for link in study_links(&html)? {
+                items.push(StudyReference {
+                    label: plain_text(link.text).trim().to_string(),
+                    html: html[link.begin..link.end].to_string(),
+                    target: study_target(&guide, &link)?,
+                });
+            }
+        }
+        Ok(StudyReferences {
+            availability: StudyAvailability::Installed,
+            items,
+        })
+    }
+
     fn resolve_citation(&self, reference: &str) -> Result<LocationSpan, CoreError> {
         let citation = parse_citation(reference)?;
         for summary in self.installed(|p| p.kind == PubKind::Bible)? {
@@ -321,19 +451,7 @@ impl Reader {
 
     fn resolve_bible_link(&self, link: &str, rest: &str) -> Result<LocationSpan, CoreError> {
         let invalid = || CoreError::Invalid(format!("malformed Bible link {link:?}"));
-        let (symbol, range) = rest.split_once('/').ok_or_else(invalid)?;
-        let (start, end) = range.split_once('-').unwrap_or((range, range));
-        let verse_ref = |s: &str| -> Option<(u32, u32, u32)> {
-            let mut parts = s.split(':');
-            let r = (
-                number(parts.next()?)?,
-                number(parts.next()?)?,
-                number(parts.next()?)?,
-            );
-            parts.next().is_none().then_some(r)
-        };
-        let start = verse_ref(start).ok_or_else(invalid)?;
-        let end = verse_ref(end).ok_or_else(invalid)?;
+        let (symbol, start, end) = bible_link(rest).ok_or_else(invalid)?;
         if end < start {
             return Err(CoreError::Invalid(format!("{REVERSED}: {link:?}")));
         }
@@ -374,25 +492,10 @@ impl Reader {
 
     fn resolve_document_link(&self, link: &str, rest: &str) -> Result<LocationSpan, CoreError> {
         let invalid = || CoreError::Invalid(format!("malformed document link {link:?}"));
-        let rest = rest.strip_suffix('/').unwrap_or(rest);
-        let (head, paragraphs) = match rest.split_once('/') {
-            Some((head, paragraphs)) => (head, Some(paragraphs)),
-            None => (rest, None),
-        };
-        let (code, doc_id) = head.split_once(':').ok_or_else(invalid)?;
-        let doc_id: i64 = number(doc_id).ok_or_else(invalid)?;
-        let paragraphs = match paragraphs {
-            None => None,
-            Some(p) => {
-                let (first, last) = p.split_once('-').unwrap_or((p, p));
-                let first: u32 = number(first).ok_or_else(invalid)?;
-                let last: u32 = number(last).ok_or_else(invalid)?;
-                if last < first {
-                    return Err(CoreError::Invalid(format!("{REVERSED}: {link:?}")));
-                }
-                Some((first, last))
-            }
-        };
+        let (code, doc_id, paragraphs) = document_link(rest).ok_or_else(invalid)?;
+        if paragraphs.is_some_and(|(first, last)| last < first) {
+            return Err(CoreError::Invalid(format!("{REVERSED}: {link:?}")));
+        }
         let language = languages::by_code(code).ok_or(CoreError::NotFound)?;
         for summary in self.installed(|p| p.meps_language == language.meps_id)? {
             let publication = self.library().publication(&summary.pub_key)?;
@@ -438,6 +541,206 @@ impl Reader {
     fn library(&self) -> Library {
         Library::new(self.inner.clone())
     }
+
+    fn catalog(&self) -> Catalog {
+        Catalog::new(self.inner.clone())
+    }
+}
+
+/// A verse as `(book, chapter, verse)`.
+type VerseRef = (u32, u32, u32);
+
+/// A first and last paragraph.
+type ParagraphRange = (u32, u32);
+
+/// Split the part of a Bible link after `jwpub://b/`,
+/// `<symbol>/<book>:<chapter>:<verse>[-<book>:<chapter>:<verse>]`, into its
+/// symbol and its first and last verse.
+fn bible_link(rest: &str) -> Option<(&str, VerseRef, VerseRef)> {
+    let verse_ref = |s: &str| -> Option<VerseRef> {
+        let mut parts = s.split(':');
+        let r = (
+            number(parts.next()?)?,
+            number(parts.next()?)?,
+            number(parts.next()?)?,
+        );
+        parts.next().is_none().then_some(r)
+    };
+    let (symbol, range) = rest.split_once('/')?;
+    let (start, end) = range.split_once('-').unwrap_or((range, range));
+    Some((symbol, verse_ref(start)?, verse_ref(end)?))
+}
+
+/// Split the part of a document link after `jwpub://p/`,
+/// `<code>:<doc_id>[/[<paragraph>[-<paragraph>]]]`, into its language code,
+/// MEPS document id and first and last paragraph (in either order).
+fn document_link(rest: &str) -> Option<(&str, i64, Option<ParagraphRange>)> {
+    let rest = rest.strip_suffix('/').unwrap_or(rest);
+    let (head, paragraphs) = match rest.split_once('/') {
+        Some((head, paragraphs)) => (head, Some(paragraphs)),
+        None => (rest, None),
+    };
+    let (code, doc_id) = head.split_once(':')?;
+    let paragraphs = match paragraphs {
+        None => None,
+        Some(p) => {
+            let (first, last) = p.split_once('-').unwrap_or((p, p));
+            Some((number(first)?, number(last)?))
+        }
+    };
+    Some((code, number(doc_id)?, paragraphs))
+}
+
+/// The `BibleVerseId` of a verse of `bible`. No such chapter or verse =>
+/// `NotFound`.
+fn bible_verse_id(
+    bible: &Publication,
+    book: u32,
+    chapter: u32,
+    verse: u32,
+) -> Result<i64, CoreError> {
+    let row = bible
+        .bible_chapter(book, chapter)?
+        .ok_or(CoreError::NotFound)?;
+    for v in bible.bible_verses(row.first_verse_id, row.last_verse_id)? {
+        let content = bible.decrypt(&v.content)?;
+        if verse_number(&content, book, chapter).ok_or(CoreError::Corrupt)? == verse {
+            return Ok(v.bible_verse_id);
+        }
+    }
+    Err(CoreError::NotFound)
+}
+
+/// The verse a guide entry is for, from its header's
+/// `href="jwpub://b/<symbol>/<b>:<c>:<v>-<b>:<c>:<v>"`; `None` unless that
+/// names a single verse.
+fn entry_verse(header: &str) -> Option<VerseRef> {
+    const HREF: &str = "href=\"jwpub://b/";
+    let rest = &header[header.find(HREF)? + HREF.len()..];
+    let (_, start, end) = bible_link(&rest[..rest.find('"')?])?;
+    (start == end).then_some(start)
+}
+
+/// One reference of a guide entry.
+struct StudyLink<'a> {
+    /// From the link `<div` through the source `</div>`, in bytes.
+    begin: usize,
+    end: usize,
+    /// The link's content (HTML).
+    text: &'a str,
+    /// The link's `data-xtid` and `href`, if it has them.
+    xtid: Option<&'a str>,
+    href: Option<&'a str>,
+}
+
+/// The references of a guide entry's content, in order: each a `<div>`
+/// holding one `<a class="xt">` link, then a `<div>` naming the source, with
+/// only whitespace and empty `<p>` elements around them. Anything else =>
+/// `Corrupt`.
+fn study_links(html: &str) -> Result<Vec<StudyLink<'_>>, CoreError> {
+    let mut links = Vec::new();
+    let mut at = skip_blank(html, 0);
+    while at < html.len() {
+        let link_end = div_end(html, at).ok_or(CoreError::Corrupt)?;
+        let (tag, text) = xt_link(&html[at..link_end]).ok_or(CoreError::Corrupt)?;
+        let source = skip_blank(html, link_end);
+        let source_end = div_end(html, source).ok_or(CoreError::Corrupt)?;
+        if html[source..source_end].contains("<a ") {
+            return Err(CoreError::Corrupt);
+        }
+        links.push(StudyLink {
+            begin: at,
+            end: source_end,
+            text,
+            xtid: attribute(tag, "data-xtid"),
+            href: attribute(tag, "href"),
+        });
+        at = skip_blank(html, source_end);
+    }
+    Ok(links)
+}
+
+/// `at` moved past any whitespace and empty `<p ...></p>` elements.
+fn skip_blank(html: &str, mut at: usize) -> usize {
+    loop {
+        at = html.len() - html[at..].trim_start().len();
+        let rest = &html[at..];
+        let empty_p = rest
+            .starts_with("<p ")
+            .then(|| rest.find('>'))
+            .flatten()
+            .filter(|&gt| rest[gt + 1..].starts_with("</p>"))
+            .map(|gt| gt + 1 + "</p>".len());
+        match empty_p {
+            Some(len) => at += len,
+            None => return at,
+        }
+    }
+}
+
+/// The end of the `<div>` element at `at`, if there is one.
+fn div_end(html: &str, at: usize) -> Option<usize> {
+    let rest = &html[at..];
+    (rest.starts_with("<div ") || rest.starts_with("<div>"))
+        .then(|| element_end(html, at, "div"))
+        .flatten()
+}
+
+/// The opening tag and content of the only `<a>` in `div`, if it is
+/// `class="xt"`.
+fn xt_link(div: &str) -> Option<(&str, &str)> {
+    let begin = div.find("<a ")?;
+    let rest = &div[begin..];
+    let tag = &rest[..rest.find('>')? + 1];
+    let content = &rest[tag.len()..];
+    let content = &content[..content.find("</a>")?];
+    let only = !div[begin + 1..].contains("<a ");
+    (only && attribute(tag, "class") == Some("xt")).then_some((tag, content))
+}
+
+/// The value of `name="..."` in an opening tag.
+fn attribute<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
+    let key = format!(" {name}=\"");
+    let rest = &tag[tag.find(&key)? + key.len()..];
+    Some(&rest[..rest.find('"')?])
+}
+
+/// Where a reference's link points: the first paragraph of its first
+/// `$`-separated target, in the publication its `Extract` row's
+/// `RefPublication` names. `None` when there is no such row or it names no
+/// publication, or the link has no `data-xtid` or no `jwpub://p/` target. An
+/// `Extract` for another document than the link's => `Corrupt`.
+fn study_target(guide: &Publication, link: &StudyLink) -> Result<Option<Location>, CoreError> {
+    let target = link
+        .href
+        .and_then(|h| h.strip_prefix("jwpub://"))
+        .and_then(|h| h.split('$').next())
+        .and_then(|h| h.strip_prefix("p/"))
+        .and_then(document_link);
+    let (Some(xtid), Some((_, doc_id, paragraphs))) = (link.xtid.and_then(number), target) else {
+        return Ok(None);
+    };
+    let Some(extract) = guide.extract_ref(xtid)? else {
+        return Ok(None);
+    };
+    match extract.ref_meps_document_id {
+        Some(id) if id != doc_id => return Err(CoreError::Corrupt),
+        Some(_) => {}
+        None => return Ok(None),
+    }
+    let (Some(symbol), Some(lang), Some(issue)) =
+        (extract.symbol, extract.meps_language, extract.issue_tag)
+    else {
+        return Ok(None);
+    };
+    Ok(Some(Location {
+        pub_key: format_pub_key(&symbol, lang, issue),
+        doc_id: Some(doc_id),
+        book: None,
+        chapter: None,
+        verse: None,
+        paragraph: paragraphs.map(|p| p.0),
+    }))
 }
 
 /// Append the entries under `parent`, and their descendants, to `out`.
@@ -1058,6 +1361,64 @@ mod tests {
             plain_text(r#"<span id="v1">a <em>b</em> &amp; &#233;&#xE9; &bogus; &</span>"#),
             "a b & éé &bogus; &"
         );
+    }
+
+    const LINK: &str = r#"<div id="tt1" class="du-margin-children-bottom--0">
+<p id="p2" data-pid="2" class="su"><a class="xt" data-xtid="7" href="jwpub://p/E:2024530/1-23$p/E:2024530/30-30">A &amp; B</a></p>
+</div>"#;
+    const SOURCE: &str = r#"<div id="tt2" class="du-color--textSubdued"><p id="p3" data-pid="3" class="su"><em>w24.08 p. 2</em></p></div>"#;
+    const EMPTY: &str = r#"<p id="p1" data-pid="1" class="su"></p>"#;
+
+    #[test]
+    fn study_links_pair_each_link_with_its_source() {
+        let html = format!("{EMPTY}\n{LINK}\n{SOURCE}\n{LINK}\n{SOURCE}\n{EMPTY}\n");
+        let links = study_links(&html).unwrap();
+        assert_eq!(links.len(), 2);
+        for link in &links {
+            assert_eq!(&html[link.begin..link.end], format!("{LINK}\n{SOURCE}"));
+            assert_eq!(link.text, "A &amp; B");
+            assert_eq!(link.xtid, Some("7"));
+            assert_eq!(
+                link.href,
+                Some("jwpub://p/E:2024530/1-23$p/E:2024530/30-30")
+            );
+        }
+        assert!(study_links(&format!("{EMPTY}\n")).unwrap().is_empty());
+    }
+
+    #[test]
+    fn malformed_study_entries_are_corrupt() {
+        let two_links = LINK.replace("</a>", "</a><a class=\"xt\" href=\"x\">C</a>");
+        let not_xt = LINK.replace("class=\"xt\"", "class=\"b\"");
+        for html in [
+            LINK.to_string(),                      // no source
+            format!("{SOURCE}\n{LINK}"),           // source first
+            format!("{LINK}\n{LINK}\n{SOURCE}"),   // link after link
+            format!("{two_links}\n{SOURCE}"),      // two links in one div
+            format!("{not_xt}\n{SOURCE}"),         // not an xt link
+            format!("{LINK}\n{SOURCE}\ntext"),     // stray text
+            format!("{LINK}\n<p>x</p>\n{SOURCE}"), // a non-empty paragraph
+            LINK.replace("</div>", ""),            // unclosed div
+        ] {
+            assert!(
+                matches!(study_links(&html), Err(CoreError::Corrupt)),
+                "{html}"
+            );
+        }
+    }
+
+    #[test]
+    fn entry_headers_name_one_verse() {
+        let header = |href: &str| {
+            format!(
+                r#"<p id="p2" class="su"><a href="jwpub://b/NWTR/{href}" class="b"><strong>3:16</strong></a></p>"#
+            )
+        };
+        assert_eq!(entry_verse(&header("43:3:16-43:3:16")), Some((43, 3, 16)));
+        assert_eq!(entry_verse(&header("43:3:16")), Some((43, 3, 16)));
+        assert_eq!(entry_verse(&header("43:3:16-43:3:17")), None);
+        assert_eq!(entry_verse(&header("43:3")), None);
+        assert_eq!(entry_verse("<p>3:16</p>"), None);
     }
 
     #[test]
