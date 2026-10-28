@@ -144,6 +144,24 @@ type App struct {
 	havePending  bool
 
 	dragX0, dragY0 float32
+
+	// reduceTransparency is the desktop's Reduce Transparency, or the
+	// equivalent such as Windows transparency effects turned off. Run
+	// copies it from mygo.Theme before the first frame and whenever the
+	// desktop changes. Tests set it: the view does not call Theme, which
+	// panics outside App.Run, and ui.Preferences does not carry the flag.
+	reduceTransparency bool
+
+	look      *ui.Theme
+	lookDark  bool
+	lookScale float32
+
+	appearanceLogged bool
+	loggedMode       string
+	loggedReduce     bool
+	loggedVibrancy   string
+
+	win *mygo.Window
 }
 
 // New reads the library catalog and selects the first publication and,
@@ -205,35 +223,76 @@ func Run(lib *library.Library, log *slog.Logger) error {
 	}
 	a.beginStudy()
 	mygo.App.WhenReady(func() {
-		mygo.NewWindow(mygo.WindowOptions{
-			Title:   "Berean",
-			Width:   1440,
-			Height:  900,
-			Content: ui.View(a.View),
+		a.followDesktop()
+		mygo.Theme.OnUpdated(func() {
+			a.followDesktop()
+			if a.win != nil {
+				a.win.SetVibrancy(sidebarMaterial(a.reduceTransparency))
+			}
 		})
+		a.win = mygo.NewWindow(a.windowOptions())
 	})
 	return mygo.App.Run()
 }
 
 // View draws the two reading panes and the canvas.
 func (a *App) View(c *ui.Context) {
+	a.applyLook(c)
+	clear := sidebarClear(c.Vibrancy(), a.reduceTransparency)
+	a.noteVibrancy(c.Vibrancy())
 	if a.studyGate(c) {
 		return
+	}
+	// The material shows wherever the view draws nothing. The reading
+	// panes and the canvas paint their own backgrounds below.
+	if clear {
+		c.Root().Background(ui.Transparent)
 	}
 	t := c.Theme()
 	if a.paneSplit == 0 {
 		a.paneSplit = 50
 	}
-	ui.Row(c).Fill().Children(func() {
-		ui.Column(c).Width(leftWidth).Shrink(0).FillHeight().Background(t.Surface).Children(func() {
-			ui.SplitVerticalPercent(c, &a.paneSplit, func() {
-				a.publicationPane(c)
-			}, func() {
-				a.biblePane(c)
-			}).Grow(1).FillWidth()
+	bar := c.TitleBar()
+	ui.Column(c).Fill().Children(func() {
+		if bar.Height > 0 {
+			a.titleBand(c, bar, clear)
+		}
+		ui.Row(c).Grow(1).FillWidth().Children(func() {
+			a.sidebar(c, clear)
+			ui.Box(c).Width(1).FillHeight().Background(t.Border)
+			a.canvas(c)
 		})
+	})
+}
+
+// titleBand is the strip the platform's window controls sit on. The
+// sidebar's share of it is the sidebar; the rest is opaque content, so a
+// caption button on the right does not land on the material.
+func (a *App) titleBand(c *ui.Context, bar ui.TitleBar, clear bool) {
+	t := c.Theme()
+	ui.Row(c).Height(bar.Height).FillWidth().Shrink(0).DragWindow().Children(func() {
+		side := ui.Box(c).Width(leftWidth).FillHeight().Shrink(0)
+		if !clear {
+			side.Background(sidebarSolid(t.Dark))
+		}
 		ui.Box(c).Width(1).FillHeight().Background(t.Border)
-		a.canvas(c)
+		ui.Box(c).Grow(1).FillHeight().Background(t.Background)
+	})
+}
+
+// sidebar is the left column. Unpainted, the window's sidebar material
+// shows through the controls. The reading bodies paint the content color.
+func (a *App) sidebar(c *ui.Context, clear bool) {
+	col := ui.Column(c).Width(leftWidth).Shrink(0).FillHeight()
+	if !clear {
+		col.Background(sidebarSolid(c.Theme().Dark))
+	}
+	col.Children(func() {
+		ui.SplitVerticalPercent(c, &a.paneSplit, func() {
+			a.publicationPane(c)
+		}, func() {
+			a.biblePane(c)
+		}).Grow(1).FillWidth()
 	})
 }
 
@@ -390,7 +449,7 @@ func (a *App) publicationBody(c *ui.Context) {
 	// scrollMark is decided before the body, so a link followed while the
 	// body is drawing — which changes the document — still scrolls next frame.
 	scrollMark := a.focusPar && a.loadedPub == a.pubID && a.loadedDoc == a.docID
-	ui.Scroll(c).Grow(1).FillWidth().TrackScroll(&a.pubScroll).Padding(4, 16, 20, 16).Children(func() {
+	ui.Scroll(c).Grow(1).FillWidth().TrackScroll(&a.pubScroll).Padding(4, 16, 20, 16).Background(t.Background).Children(func() {
 		ui.Column(c).FillWidth().Gap(12).Children(func() {
 			// The document title and its first heading are often the same
 			// words ("Introduction"). Draw the heading, which can be clipped.
@@ -452,7 +511,7 @@ func (a *App) bibleBody(c *ui.Context) {
 	t := c.Theme()
 	pubs := a.shownBibles()
 	scrollMark := a.focusVerseOn && a.loadedBook == a.book && a.loadedChapter == a.chapter
-	ui.Scroll(c).Grow(1).FillWidth().TrackScroll(&a.bibleScroll).Padding(4, 16, 20, 16).Children(func() {
+	ui.Scroll(c).Grow(1).FillWidth().TrackScroll(&a.bibleScroll).Padding(4, 16, 20, 16).Background(t.Background).Children(func() {
 		ui.Column(c).FillWidth().Gap(10).Children(func() {
 			if a.book >= 1 {
 				ui.Textf(c, "%s %d", cite.BookTitle(a.book), a.chapter).FontSize(22).Bold()
