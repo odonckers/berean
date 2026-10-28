@@ -7,13 +7,15 @@ mod common;
 #[path = "common/trimmed_catalog.rs"]
 mod trimmed_catalog;
 
+use std::cell::RefCell;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use berean_core::catalog::{Catalog, CatalogFilter, CatalogRevision};
 use berean_core::jwpub::Publication;
-use berean_core::library::{PubKind, PublicationSummary};
+use berean_core::languages::{self, Language};
+use berean_core::library::{DownloadPlan, PubKind, PublicationSummary};
 use berean_core::{CancelToken, Core, CoreError};
 use common::fixture;
 use rusqlite::Connection;
@@ -27,6 +29,8 @@ const W_E_TITLE: &str = "The Watchtower Announcing Jehovah’s Kingdom (Study)�
 const W_S_TITLE: &str = "La Atalaya. Anunciando el Reino de Jehová (estudio) 2026";
 const LL_E_TITLE: &str = "Listen to God and Live Forever";
 const REVISION: u64 = 2624030;
+const MWB_E: &str = "mwb26:0:20260900";
+const PUB_MEDIA: &str = "https://b.jw-cdn.org/apis/pub-media/GETPUBMEDIALINKS";
 
 struct Env {
     dir: tempfile::TempDir,
@@ -74,6 +78,40 @@ impl Env {
     }
 }
 
+fn ingest(catalog: &Catalog, path: impl AsRef<Path>) -> Result<(), CoreError> {
+    catalog.ingest_file(path, &|_, _| {}, &CancelToken::new())
+}
+
+/// The distinct MEPS language ids of the ingested catalog, read straight
+/// from the stored file.
+fn catalog_language_ids(env: &Env) -> Vec<u32> {
+    let conn = Connection::open(env.data.join("catalog/catalog.db")).unwrap();
+    let mut stmt = conn
+        .prepare("SELECT DISTINCT MepsLanguageId FROM Publication ORDER BY 1")
+        .unwrap();
+    let ids = stmt.query_map([], |r| r.get(0)).unwrap();
+    ids.collect::<Result<_, _>>().unwrap()
+}
+
+/// `catalog.languages()` is exactly the catalog's ids the language table
+/// maps, each round-tripping id -> code -> id. Returns how many ids it maps.
+fn assert_languages_round_trip(env: &Env, catalog: &Catalog) -> usize {
+    let ids = catalog_language_ids(env);
+    let listed = catalog.languages().unwrap();
+    let expected: Vec<Language> = ids
+        .iter()
+        .filter_map(|&id| languages::by_meps_id(id).cloned())
+        .collect();
+    assert_eq!(listed, expected);
+    for language in &listed {
+        assert_eq!(
+            languages::by_code(&language.code).unwrap().meps_id,
+            language.meps_id
+        );
+    }
+    listed.len()
+}
+
 fn filter(meps_language: Option<u32>, kind: Option<PubKind>) -> CatalogFilter {
     CatalogFilter {
         meps_language,
@@ -111,7 +149,7 @@ fn gzip(path: &Path, out: &Path) {
 #[derive(Debug, PartialEq)]
 struct Snapshot {
     revision: Option<CatalogRevision>,
-    languages: Vec<u32>,
+    languages: Vec<Language>,
     english: Vec<PublicationSummary>,
     spanish: Vec<PublicationSummary>,
     w_e_size: Option<u64>,
@@ -133,14 +171,15 @@ fn full_catalog_end_to_end() {
     let catalog = env.core().catalog();
 
     let start = Instant::now();
-    catalog.ingest_file(fixture(trimmed_catalog::FULL)).unwrap();
+    ingest(&catalog, fixture(trimmed_catalog::FULL)).unwrap();
     eprintln!("full catalog ingest: {:?}", start.elapsed());
     env.assert_no_leftovers();
 
     assert_eq!(catalog.revision().unwrap().unwrap().level, REVISION);
-    let languages = catalog.languages().unwrap();
-    assert!(languages.contains(&0) && languages.contains(&1));
-    assert!(languages.len() > 100, "{} languages", languages.len());
+    // The language table maps nearly every catalog language.
+    assert_eq!(catalog_language_ids(&env).len(), 983);
+    let mapped = assert_languages_round_trip(&env, &catalog);
+    assert!(mapped >= 940, "{mapped} languages mapped");
 
     let watchtowers = catalog
         .publications(&CatalogFilter {
@@ -177,9 +216,20 @@ fn full_catalog_end_to_end() {
 fn trimmed_catalog_queries() {
     let env = Env::new();
     let catalog = env.core().catalog();
-    catalog.ingest_file(trimmed()).unwrap();
+    ingest(&catalog, trimmed()).unwrap();
 
-    assert_eq!(catalog.languages().unwrap(), [0, 1]);
+    let english = Language {
+        meps_id: 0,
+        code: "E".into(),
+        name: "English".into(),
+    };
+    let spanish_language = Language {
+        meps_id: 1,
+        code: "S".into(),
+        name: "Spanish".into(),
+    };
+    assert_eq!(catalog.languages().unwrap(), [english, spanish_language]);
+    assert_eq!(assert_languages_round_trip(&env, &catalog), 2);
     assert_eq!(
         catalog.revision().unwrap(),
         Some(CatalogRevision {
@@ -213,13 +263,32 @@ fn trimmed_catalog_queries() {
     assert_eq!(find(&brochures, LL_E).unwrap().title, LL_E_TITLE);
     assert!(find(&brochures, W_E).is_none());
 
-    // Kinds without a variant of their own (e.g. Meeting Workbook) are Other.
+    // Meeting Workbooks (PublicationTypeId 30) have a kind of their own.
+    let workbooks = catalog
+        .publications(&filter(Some(0), Some(PubKind::MeetingWorkbook)))
+        .unwrap();
+    assert_eq!(
+        find(&workbooks, MWB_E),
+        Some(&PublicationSummary {
+            pub_key: MWB_E.into(),
+            symbol: "mwb26".into(),
+            meps_language: 0,
+            issue_tag: 20260900,
+            year: 2026,
+            title: "Our Christian Life and Ministry—Meeting Workbook—2026".into(),
+            kind: PubKind::MeetingWorkbook,
+        })
+    );
+    assert!(workbooks.iter().all(|s| s.kind == PubKind::MeetingWorkbook));
+
+    // Kinds without a variant of their own (e.g. Kingdom Ministry) are Other.
     let other = catalog
         .publications(&filter(Some(0), Some(PubKind::Other)))
         .unwrap();
-    assert!(find(&other, "mwb26:0:20260100").is_some());
+    assert!(find(&other, "km:0:20151200").is_some());
     assert!(other.iter().all(|s| s.kind == PubKind::Other));
     assert!(find(&other, LL_E).is_none());
+    assert!(find(&other, MWB_E).is_none());
 
     // Newest first: year, then issue, descending.
     let all = catalog.publications(&CatalogFilter::default()).unwrap();
@@ -285,7 +354,7 @@ fn assets_match_the_jwpub_files() {
     let core = env.core();
     let catalog = core.catalog();
     let library = core.library();
-    catalog.ingest_file(trimmed()).unwrap();
+    ingest(&catalog, trimmed()).unwrap();
     let listed = catalog.publications(&CatalogFilter::default()).unwrap();
 
     for (file, key) in [
@@ -342,15 +411,15 @@ fn reingest_is_idempotent_and_replaces() {
     let env = Env::new();
     let catalog = env.core().catalog();
 
-    catalog.ingest_file(trimmed()).unwrap();
+    ingest(&catalog, trimmed()).unwrap();
     let first = snapshot(&catalog);
-    catalog.ingest_file(trimmed()).unwrap();
+    ingest(&catalog, trimmed()).unwrap();
     assert_eq!(snapshot(&catalog), first);
 
     // The gzipped form ingests to the same catalog.
     let gz = env.scratch("trimmed.db.gz");
     gzip(&trimmed(), &gz);
-    catalog.ingest_file(&gz).unwrap();
+    ingest(&catalog, &gz).unwrap();
     assert_eq!(snapshot(&catalog), first);
 
     let edited = env.edited_trimmed(
@@ -360,9 +429,10 @@ fn reingest_is_idempotent_and_replaces() {
          UPDATE Publication SET Title = 'Edited' WHERE Symbol = 'll' AND MepsLanguageId = 0;
          UPDATE Revision SET Level = Level + 1;",
     );
-    catalog.ingest_file(&edited).unwrap();
+    ingest(&catalog, &edited).unwrap();
     assert_eq!(catalog.revision().unwrap().unwrap().level, REVISION + 1);
-    assert_eq!(catalog.languages().unwrap(), [0]);
+    // English only.
+    assert_eq!(catalog.languages().unwrap(), first.languages[..1]);
     assert!(catalog
         .publications(&filter(Some(1), None))
         .unwrap()
@@ -378,7 +448,7 @@ fn reingest_is_idempotent_and_replaces() {
 fn bad_catalog_is_corrupt_and_keeps_the_old_one() {
     let env = Env::new();
     let catalog = env.core().catalog();
-    catalog.ingest_file(trimmed()).unwrap();
+    ingest(&catalog, trimmed()).unwrap();
     let before = snapshot(&catalog);
 
     // Deterministic noise.
@@ -430,14 +500,14 @@ fn bad_catalog_is_corrupt_and_keeps_the_old_one() {
         &no_revision,
         &damaged,
     ] {
-        let err = catalog.ingest_file(path).unwrap_err();
+        let err = ingest(&catalog, path).unwrap_err();
         assert!(matches!(err, CoreError::Corrupt), "{path:?}: {err:?}");
         assert_eq!(snapshot(&catalog), before, "{path:?}");
         env.assert_no_leftovers();
     }
 
     // A missing file is an I/O error, not a bad catalog.
-    let err = catalog.ingest_file(env.scratch("missing.db")).unwrap_err();
+    let err = ingest(&catalog, env.scratch("missing.db")).unwrap_err();
     assert!(matches!(err, CoreError::Io(_)), "{err:?}");
     assert_eq!(snapshot(&catalog), before);
     env.assert_no_leftovers();
@@ -447,7 +517,7 @@ fn bad_catalog_is_corrupt_and_keeps_the_old_one() {
 fn catalog_persists_across_reopen() {
     let env = Env::new();
     let core = env.core();
-    core.catalog().ingest_file(trimmed()).unwrap();
+    ingest(&core.catalog(), trimmed()).unwrap();
     let before = snapshot(&core.catalog());
     drop(core);
 
@@ -522,7 +592,7 @@ fn duplicate_key_resolves_to_latest_then_lowest_id() {
         "older.db",
         &duplicate_w_e("wx", "Older", 1, "'2000-01-01T00:00:00+00:00'"),
     );
-    catalog.ingest_file(&older).unwrap();
+    ingest(&catalog, &older).unwrap();
     assert_eq!(catalog.asset(W_E).unwrap().size, original_size);
     assert_eq!(english_w_e(&catalog), W_E_TITLE);
     assert!(by_key_symbol(&catalog, "wx").is_empty());
@@ -532,7 +602,7 @@ fn duplicate_key_resolves_to_latest_then_lowest_id() {
         "newer.db",
         &duplicate_w_e("wx", "Newer", 2, "'2099-01-01T00:00:00+00:00'"),
     );
-    catalog.ingest_file(&newer).unwrap();
+    ingest(&catalog, &newer).unwrap();
     let asset = catalog.asset(W_E).unwrap();
     assert_eq!(asset.size, 2);
     assert_eq!(asset.last_modified, "2099-01-01T00:00:00+00:00");
@@ -542,20 +612,255 @@ fn duplicate_key_resolves_to_latest_then_lowest_id() {
 
     // Same LastModified: the lower Id (the original) wins.
     let tie = env.edited_trimmed("tie.db", &duplicate_w_e("wx", "Tie", 3, "NULL"));
-    catalog.ingest_file(&tie).unwrap();
+    ingest(&catalog, &tie).unwrap();
     assert_eq!(catalog.asset(W_E).unwrap().size, original_size);
     assert_eq!(english_w_e(&catalog), W_E_TITLE);
     assert!(by_key_symbol(&catalog, "wx").is_empty());
 }
 
 #[test]
-fn plan_download_is_still_not_available() {
+fn ingest_cancelled_keeps_the_old_catalog() {
+    let env = Env::new();
+    let catalog = env.core().catalog();
+    ingest(&catalog, trimmed()).unwrap();
+    let before = snapshot(&catalog);
+    let edited = env.edited_trimmed("edited.db", "UPDATE Revision SET Level = Level + 1;");
+
+    // Cancelled before it starts.
+    let cancel = CancelToken::new();
+    cancel.cancel();
+    let err = catalog
+        .ingest_file(&edited, &|_, _| {}, &cancel)
+        .unwrap_err();
+    assert!(matches!(err, CoreError::Cancelled), "{err:?}");
+    assert_eq!(snapshot(&catalog), before);
+    env.assert_no_leftovers();
+
+    // Cancelled between each pair of steps, including just before the swap.
+    for step in 1..=3 {
+        let cancel = CancelToken::new();
+        let on_progress = |done: u64, _total: u64| {
+            if done == step {
+                cancel.cancel();
+            }
+        };
+        let err = catalog
+            .ingest_file(&edited, &on_progress, &cancel)
+            .unwrap_err();
+        assert!(matches!(err, CoreError::Cancelled), "step {step}: {err:?}");
+        assert_eq!(snapshot(&catalog), before, "step {step}");
+        env.assert_no_leftovers();
+    }
+
+    // Not cancelled: it replaces the catalog.
+    ingest(&catalog, &edited).unwrap();
+    assert_eq!(catalog.revision().unwrap().unwrap().level, REVISION + 1);
+}
+
+#[test]
+fn ingest_progress_reaches_completion() {
+    let env = Env::new();
+    let catalog = env.core().catalog();
+    let calls = RefCell::new(Vec::new());
+    let record = |done: u64, total: u64| calls.borrow_mut().push((done, total));
+    catalog
+        .ingest_file(trimmed(), &record, &CancelToken::new())
+        .unwrap();
+
+    let calls = calls.into_inner();
+    assert!(!calls.is_empty());
+    let total = calls[0].1;
+    assert!(calls.iter().all(|&(_, t)| t == total), "{calls:?}");
+    assert!(calls.windows(2).all(|w| w[0].0 < w[1].0), "{calls:?}");
+    assert_eq!(calls.last().unwrap().0, total);
+}
+
+/// A recorded pub-media reply (see `core/scripts/fixtures.txt`).
+fn reply(name: &str) -> Vec<u8> {
+    std::fs::read(fixture(name)).unwrap()
+}
+
+#[test]
+fn download_requests() {
     let env = Env::new();
     let core = env.core();
-    core.catalog().ingest_file(trimmed()).unwrap();
-    assert!(core.catalog().asset(W_E).is_ok());
+    let library = core.library();
+
+    // No catalog yet.
     assert!(matches!(
-        core.library().plan_download(W_E),
+        library.download_request(W_E),
         Err(CoreError::NotFound)
     ));
+    ingest(&core.catalog(), trimmed()).unwrap();
+
+    for (key, query) in [
+        (W_E, "pub=w&langwritten=E&issue=202608"),
+        (W_S, "pub=w&langwritten=S&issue=202608"),
+        (LL_E, "pub=ll&langwritten=E"),
+        (MWB_E, "pub=mwb&langwritten=E&issue=202609"),
+    ] {
+        assert_eq!(
+            library.download_request(key).unwrap().url,
+            format!("{PUB_MEDIA}?output=json&fileformat=JWPUB&{query}"),
+            "{key}"
+        );
+    }
+
+    assert!(matches!(
+        library.download_request("w26:2:20260800"),
+        Err(CoreError::NotFound)
+    ));
+    assert!(matches!(
+        library.download_request("w26"),
+        Err(CoreError::Invalid(_))
+    ));
+}
+
+#[test]
+fn unmapped_language_has_no_download_request() {
+    // Move the English watchtower to a MEPS id the table doesn't map.
+    let unmapped = (0..u32::MAX)
+        .find(|&id| languages::by_meps_id(id).is_none())
+        .unwrap();
+    let env = Env::new();
+    let core = env.core();
+    let edited = env.edited_trimmed(
+        "unmapped.db",
+        &format!(
+            "UPDATE Publication SET MepsLanguageId = {unmapped}
+             WHERE Symbol = 'w26' AND MepsLanguageId = 0 AND IssueTagNumber = 20260800;"
+        ),
+    );
+    ingest(&core.catalog(), &edited).unwrap();
+    let key = format!("w26:{unmapped}:20260800");
+    assert!(core.catalog().asset(&key).is_ok());
+    assert!(matches!(
+        core.library().download_request(&key),
+        Err(CoreError::NotFound)
+    ));
+    assert!(matches!(
+        core.library()
+            .plan_download(&key, &reply("pubmedia-w_E_202608.json")),
+        Err(CoreError::NotFound)
+    ));
+    // Unmapped languages are not listed.
+    assert!(!core
+        .catalog()
+        .languages()
+        .unwrap()
+        .iter()
+        .any(|l| l.meps_id == unmapped));
+}
+
+#[test]
+fn download_plans_match_the_jwpub_files() {
+    let env = Env::new();
+    let core = env.core();
+    let library = core.library();
+    ingest(&core.catalog(), trimmed()).unwrap();
+
+    for (key, reply_file, jwpub, url) in [
+        (
+            W_E,
+            "pubmedia-w_E_202608.json",
+            "w_E_202608.jwpub",
+            "https://cfp2.jw-cdn.org/a/d1b56ee/2/o/w_E_202608.jwpub",
+        ),
+        (
+            W_S,
+            "pubmedia-w_S_202608.json",
+            "w_S_202608.jwpub",
+            "https://cfp2.jw-cdn.org/a/1e7c39/4/o/w_S_202608.jwpub",
+        ),
+        (
+            LL_E,
+            "pubmedia-ll_E.json",
+            "ll_E.jwpub",
+            "https://cfp2.jw-cdn.org/a/33502e/2/o/ll_E.jwpub",
+        ),
+    ] {
+        let path = fixture(jwpub);
+        let plan = library.plan_download(key, &reply(reply_file)).unwrap();
+        assert_eq!(
+            plan,
+            DownloadPlan {
+                url: url.into(),
+                size: std::fs::metadata(&path).unwrap().len(),
+                checksum: sha1_hex(&path),
+            },
+            "{key}"
+        );
+        let asset = core.catalog().asset(key).unwrap();
+        assert_eq!((plan.size, plan.checksum), (asset.size, asset.sha1));
+    }
+}
+
+#[test]
+fn bad_download_replies() {
+    let env = Env::new();
+    let core = env.core();
+    let library = core.library();
+    ingest(&core.catalog(), trimmed()).unwrap();
+
+    // A reply for another publication in the same language: wrong size.
+    let err = library
+        .plan_download(W_E, &reply("pubmedia-ll_E.json"))
+        .unwrap_err();
+    assert!(matches!(err, CoreError::Corrupt), "{err:?}");
+
+    // Not a pub-media reply at all.
+    for garbage in [&b"\x00\xffnot json"[..], b"", b"{}", b"{\"files\": 3}"] {
+        let err = library.plan_download(W_E, garbage).unwrap_err();
+        assert!(matches!(err, CoreError::Corrupt), "{garbage:?}: {err:?}");
+    }
+
+    // A reply that lists only Spanish, for the English issue.
+    let err = library
+        .plan_download(W_E, &reply("pubmedia-w_S_202608.json"))
+        .unwrap_err();
+    assert!(matches!(err, CoreError::NotFound), "{err:?}");
+    let err = library
+        .plan_download(W_E, br#"{"files": {"E": {"PDF": []}}}"#)
+        .unwrap_err();
+    assert!(matches!(err, CoreError::NotFound), "{err:?}");
+
+    // Unknown or malformed key.
+    let w_e = reply("pubmedia-w_E_202608.json");
+    assert!(matches!(
+        library.plan_download("w26:2:20260800", &w_e),
+        Err(CoreError::NotFound)
+    ));
+    assert!(matches!(
+        library.plan_download("w26", &w_e),
+        Err(CoreError::Invalid(_))
+    ));
+}
+
+#[test]
+fn several_jwpub_files_pick_the_catalog_size() {
+    let env = Env::new();
+    let core = env.core();
+    let library = core.library();
+    ingest(&core.catalog(), trimmed()).unwrap();
+    let size = core.catalog().asset(W_E).unwrap().size;
+
+    let file = |url: &str, filesize: u64| {
+        format!(r#"{{"file": {{"url": "{url}", "checksum": "x"}}, "filesize": {filesize}}}"#)
+    };
+    let two = format!(
+        r#"{{"files": {{"E": {{"JWPUB": [{}, {}]}}}}}}"#,
+        file("https://example.invalid/other.jwpub", size + 1),
+        file("https://example.invalid/right.jwpub", size)
+    );
+    let plan = library.plan_download(W_E, two.as_bytes()).unwrap();
+    assert_eq!(plan.url, "https://example.invalid/right.jwpub");
+    assert_eq!(plan.size, size);
+
+    let none = format!(
+        r#"{{"files": {{"E": {{"JWPUB": [{}, {}]}}}}}}"#,
+        file("https://example.invalid/a.jwpub", size + 1),
+        file("https://example.invalid/b.jwpub", size - 1)
+    );
+    let err = library.plan_download(W_E, none.as_bytes()).unwrap_err();
+    assert!(matches!(err, CoreError::Corrupt), "{err:?}");
 }

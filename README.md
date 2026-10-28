@@ -26,8 +26,11 @@ Requires Rust 1.95 or newer (`rust-version` in `core/Cargo.toml`); `core/rust-to
 
 ```sh
 cd core
+scripts/fetch-fixtures.sh   # pinned real fixtures into core/fixtures/ (not committed)
 cargo test --workspace
 ```
+
+The tests use real JW files pinned by SHA-256 in `core/scripts/fixtures.txt`. Old snapshots may vanish from the CDN, so CI's fixtures cache is what keeps them. To re-pin one: download the new file, `sha256sum` it, update its line in `fixtures.txt`, and update the test expectations.
 
 ### Apple apps (on a Mac)
 

@@ -1,0 +1,950 @@
+# MEPS language table, built by core/scripts/gen-languages.py
+# version	catalog-v5 ffa78686 (Revision 2624030), mediator 2026-10-27
+# meps_id	code	name	vernacular
+0	E	English	English
+1	S	Spanish	español
+2	X	German	Deutsch
+3	F	French	Français
+4	I	Italian	Italiano
+5	T	Portuguese (Brazil)	Português (Brasil)
+6	O	Dutch	Nederlands
+7	J	Japanese	日本語
+8	AU	Abua	Abua
+9	AC	Acholi	Acholi
+10	AF	Afrikaans	Afrikaans
+11	AL	Albanian	shqip
+12	AM	Amharic	አማርኛ
+13	AI	Amis	阿美語
+14	A	Arabic	العربية
+15	R	Armenian (West)	Արեւմտահայերէն
+16	AE	Assamese	অসমীয়া
+17	AS	Assyrian	ܐܵܬܘܿܪܵܝܵܐ
+18	IE	Ateso	Ateso
+19	AR	Bambara	Bamanankan
+20	BM	Yemba	Dschang
+21	AO	Baoule	Wawle
+22	BH	Bari	Bari
+23	BS	Bassa (Cameroon)	Basaa (Kamerun)
+24	BA	Bassa (Liberia)	Ɓǎsɔ́ɔ̀ (Ɖàbíɖà)
+25	AK	Batak (Karo)	Batak Karo
+26	OI	Odia	ଓଡ଼ିଆ
+27	BT	Batak (Toba)	Batak Toba
+29	BE	Bengali	বাংলা
+30	IK	Biak	Biak
+31	BI	Bicol	Bicol
+32	LM	Bislama	Bislama
+33	BO	Boulou	Bulu
+36	BL	Bulgarian	български
+37	BU	Myanmar	မြန်မာ
+38	CB	Cambodian	ខ្មែរ
+39	CV	Cebuano	Cebuano
+40	CC	Chavacano	Chavacano
+42	CN	Chichewa	Chichewa
+43	CH	Chinese Mandarin (Traditional)	中文繁體（國語）
+45	CG	Chitonga	Chitonga
+46	CK	Chokwe	Chokwe
+47	CW	Cibemba	Cibemba
+48	NM	Cinamwanga	Cinamwanga
+49	CT	Chitonga (Malawi)	Chitonga (Malawi)
+50	CY	Cree Plains (Roman)	nēhiyawēwin
+51	CR	Haitian Creole	Kreyòl ayisyen
+52	C	Croatian	hrvatski
+53	B	Czech	čeština
+54	D	Danish	Dansk
+55	DK	Dayak Ngaju	Dayak Ngaju
+57	DI	Dinka	Dinka
+58	DA	Douala	Douala
+59	ED	Edo	Edo
+60	EF	Efik	Efịk
+62	ST	Estonian	eesti
+63	EW	Ewe	Eʋegbe
+64	FA	Fante	Mfantse
+65	FR	Faroese	Føroyskt
+66	FN	Fijian	vakaViti
+67	FI	Finnish	suomi
+68	GA	Ga	Ga
+69	GB	Kiribati	Kiribati
+70	GY	Giryama	Giryama
+71	GO	Gouro	Goro
+72	G	Greek	Ελληνική
+73	GL	Greenlandic	Kalaallisut
+74	GI	Guarani	guarani
+75	GU	Gujarati	ગુજરાતી
+76	EG	Gun	Gungbe
+78	HK	Chin (Hakha)	Chin (Hakha)
+79	HA	Hausa	Hausa
+80	HW	Hawaiian	ʻŌlelo Hawaiʻi
+81	HY	Haya	Ekihaya
+82	Q	Hebrew	עברית
+83	HR	Herero	Otjiherero
+84	HV	Hiligaynon	Hiligaynon
+85	HI	Hindi	हिंदी
+86	MO	Hiri Motu	Hiri Motu
+87	HO	Ajië	A'jië
+88	HU	Hula	Vula’a
+89	H	Hungarian	magyar
+90	IA	Iban	Iban
+91	IG	Ibanag	Ibanag
+92	IC	Icelandic	íslenska
+93	ID	Idoma	Idoma
+95	AA	Igala	Igala
+96	IB	Igbo	Igbo
+97	IJ	Ijaw	Ijaw
+98	IL	Iloko	Iloko
+99	IN	Indonesian	Indonesia
+100	IU	Inuktitut (Syllabics)	ᐃᓄᒃᑎᑐᑦ (ᖃᓂᐅᔮᖅᐸᐃᑦ)
+101	GC	Irish	Gaeilge
+103	IS	Isoko	Isoko
+104	IT	Itsekiri	Itsekiri
+106	JA	Javanese	Jawa
+107	AH	Kachin	Kachin
+108	KL	Kalanga (Botswana)	Kalanga (Botswana)
+109	KJ	Kalenjin	Kalenjin
+110	KA	Kannada	ಕನ್ನಡ
+111	KR	Karen (S'gaw)	ကညီ(စှီၤ)ကျိာ်
+112	KE	Tairuma	Tairuma
+114	KS	Khasi	Khasi
+115	KB	Kamba	Kikamba
+116	KD	Kikaonde	Kikaonde
+117	KG	Kikongo	Kikongo
+118	KQ	Kikuyu	Gĩkũyũ
+119	KU	Kiluba	Kiluba
+120	KK	Kinyakyusa	Kinyakyusa
+121	YW	Kinyarwanda	Ikinyarwanda
+123	RU	Kirundi	Ikirundi
+124	KI	Kisi	Kisiei
+125	II	Kisii	Kisii
+128	KT	Konkani (Roman)	Konkani (Romi)
+129	KO	Korean	한국어
+130	OS	Kosraean	Kosraean
+131	KP	Kpelle	Kpelle
+132	UN	Guna	dule
+134	WG	Kwangali	Rukwangali
+135	KY	Kwanyama	Oshikwanyama
+136	KW	Kwara'ae	Kwara'ae
+137	LN	Lango	lango
+138	LA	Laotian	ລາວ
+139	LF	Drehu	Drehu
+140	LI	Lingala	Lingala
+141	L	Lithuanian	lietuvių
+142	OM	Loma	Lɔɔma
+143	LC	Luchazi	Luchazi
+144	LU	Luganda	Luganda
+145	LG	Lugbara	Lugbara
+147	LK	Bukusu	Bukusu
+148	LB	Olunyole	Olunyole
+150	LW	Wanga	Kiwanga
+151	LO	Luo	Dholuo
+152	LS	Mizo	Mizo
+153	LV	Luvale	Luvale
+154	MS	Maasai	Maasai
+155	MC	Macedonian	македонски
+156	MU	Maguindanao	Maguindanao
+157	MG	Malagasy	Malagasy
+158	ML	Malay	Melayu
+159	MY	Malayalam	മലയാളം
+160	MT	Maltese	Malti
+161	MI	Manipuri	মৈতৈলোন্
+163	MA	Maori	Te Reo Māori
+164	OL	Maragoli	Luragooli
+166	MR	Marathi	मराठी
+167	RE	Nengone	Nengone
+169	MH	Marshallese	Kajin M̦ajel̦
+171	CE	Mauritian Creole	Kreol Morisien
+172	ME	Mende	Mɛnde
+173	UU	Meru	Kĩmĩĩrũ
+174	MK	Kongo	Kikongo (Rép. dém. du congo)
+175	MM	Moore	Moore
+176	NA	Nama	ǀApakhoen gowab
+178	OD	Ndonga	Oshindonga
+180	NP	Nepali	नेपाली
+181	MP	Tok Pisin	Tok Pisin
+182	NI	Nias	Nias
+183	NN	Niuean	Faka-Niue
+184	N	Norwegian	Norsk
+188	NZ	Nzema	Nzema
+189	OG	Khana	Khana
+191	OT	Otetela	Ɔtɛtɛla
+192	PU	Palauan	Palauan
+194	PN	Pangasinan	Pangasinan
+195	PA	Papiamento (Curaçao)	Papiamentu (Kòrsou)
+196	ZN	Zande	Zande
+197	PR	Persian	فارسی
+198	P	Polish	polski
+199	PP	Pohnpeian	Lokaiahn Pohnpei
+200	PJ	Punjabi	ਪੰਜਾਬੀ
+201	RA	Cook Islands Māori	Kuki Airani
+202	M	Romanian	Română
+204	RN	Ronga	Xironga
+205	RO	Rotuman	Rotuạm ta
+206	RR	Runyankore	Runyankore
+207	U	Russian	русский
+208	RT	Rutoro	Rutoro
+209	SA	Waray-Waray	Waray-Waray
+211	SM	Samoan	Faa-Samoa
+212	SG	Sango	Sango
+213	SE	Sepedi	Sepedi
+214	SB	Serbian (Cyrillic)	српски (ћирилица)
+215	ER	Serer	Seereer
+216	SU	Sesotho (Lesotho)	Sesotho (Lesotho)
+217	SC	Seychelles Creole	Kreol Seselwa
+218	CA	Shona	Shona
+219	SK	Silozi	Silozi
+220	SN	Sinhala	සිංහල
+221	V	Slovak	slovenčina
+222	SV	Slovenian	slovenščina
+223	SP	Solomon Islands Pidgin	Solomon Islands Pidgin
+224	SO	Somali	Soomaali
+225	SR	Sranantongo	Sranantongo
+226	UK	Sukuma	Kisukuma
+227	SD	Sunda	Sunda
+228	SW	Swahili	Kiswahili
+229	ZS	Swahili (Congo)	Kiswahili (Congo)
+230	Z	Swedish	Svenska
+231	TG	Tagalog	Tagalog
+232	TH	Tahitian	Tahiti
+234	TL	Tamil	தமிழ்
+235	TA	Tausug	Tausug
+236	TU	Telugu	తెలుగు
+237	SI	Thai	ไทย
+239	CI	Chin (Tiddim)	Chin (Tedim)
+240	TI	Tigrinya	ትግርኛ
+241	TV	Tiv	Tiv
+242	TR	Toaripi	Toaripi
+243	OE	Tokelauan	Faka-Tokelau
+244	TO	Tongan	Faka-Tonga
+245	TE	Chuukese	Chuuk
+246	SH	Tshiluba	Tshiluba
+247	TS	Tsonga	Xitsonga
+248	TN	Setswana	Setswana
+249	TB	Chitumbuka	Chitumbuka
+250	TK	Turkish	Türkçe
+251	VL	Tuvaluan	Tuvalu
+252	TW	Twi	Twi
+253	K	Ukrainian	українська
+254	UB	Umbundu	Umbundu
+255	UD	Urdu	اُردو
+256	UR	Urhobo	Urhobo
+257	VE	Venda	Luvenda
+258	VT	Vietnamese	Việt
+259	WA	Wallisian	Faka'uvea
+260	W	Welsh	Cymraeg
+261	WO	Wolof	wolof
+262	XO	Xhosa	IsiXhosa
+263	YA	Chiyao	Chiyao
+264	YP	Yapese	Waab
+265	YG	Tarok	Tarok
+267	YR	Yoruba	Yorùbá
+268	ZU	Zulu	IsiZulu
+269	GK	Kekchi	q’eqchi’
+271	GE	Georgian	ქართული
+272	LD	Lunda	Lunda
+273	OA	Oromo	Afaan Oromoo
+274	PK	Karen (Pwo Western)	Karen (Pwo Western)
+275	KIM	Kimbundu	Kimbundu
+276	BQ	Basque	Euskara
+277	CQ	Cakchiquel (Western)	Kaqchikel occidental
+278	AN	Catalan	català
+279	CHS	Chinese Mandarin (Simplified)	中文简体（普通话）
+284	AB	Lamba	Lamba
+285	LT	Latvian	latviešu
+286	MZ	Mam	mam
+287	MQN	Marquesian (Nuku Hiva)	Marquisien (Nuku Hiva)
+288	DU	Medumba	Bangangté
+289	NG	Ngambaye	Ngambay
+292	QU	Quechua (Cuzco)	quechua (Cusco)
+293	QC	Quiche	quiché
+295	DM	Sidama	Sidaamu Afoo
+296	AW	Tshwa	ciTshwa
+297	HM	Hmong (White)	Hmoob Dawb
+298	RD	Kurdish Kurmanji	Kurdî (Kurmancî)
+301	RH	Romansh (Ladin)	Rumantsch (Ladin)
+302	RHS	Romansh (Sursilvan)	romontsch (sursilvan)
+303	SHA	Shan	Shan
+304	AJ	Azerbaijani (Cyrillic)	Aзәрбајҹан (кирил әлифбасы)
+305	KAB	Kabiye	Kabɩyɛ
+307	TAT	Tatar	татар
+308	BY	Buryat	буряад
+309	GBA	Gbaya	Gbaya
+310	NV	Navajo	Diné Bizaad
+311	OB	To'abaita	Toabaita
+313	OU	Moundang	Moundang
+314	RM	Romany (Macedonia)	romane (Makedonija)
+315	RV	Roviana	Roviana
+316	WL	Wolaita	Wolayttattuwa
+317	MIS	Miskito	miskitu
+318	AZ	Kazakh	қазақ
+319	UG	Uighur (Cyrillic)	Уйғур (кирилл йезиғи)
+320	KZ	Kirghiz	кыргыз
+321	AP	Aymara	Aymara
+322	DT	Dakota	Dakota
+324	NC	Nicobarese	Nicobarese
+326	LP	Saami (North)	sámegiella (davvi)
+327	AD	Adyghe	адыгабзэ
+328	KHK	Khakass	хакас
+329	YK	Yakutsk	сахалыы
+330	KHA	Mongolian	монгол
+331	MAR	Mari	марий
+332	CU	Chuvash	чӑвашла
+333	KAD	Dusun	Dusun
+334	JC	Popti'	poptí
+335	KAN	Akateko	akateko
+336	LAH	Lahu	Laˇhuˍ hkawˇ
+337	KND	Konkani (Devanagari)	कोंकणी (देवनागरी)
+338	ABK	Abkhaz	аԥсуа
+339	JL	Jula	Jula
+341	ZR	Zarma	Zarma
+342	BB	Bariba	Baatɔnum
+343	OSS	Ossetian	ирон
+346	LR	Lari	Kilari
+347	KBY	Kabyle	Taqbaylit
+348	KBR	Kabardin-Cherkess	адыгэбзэ
+349	BAL	Karachay-Balkar	къарачай-малкъар
+350	RDA	Kurdish Sorani	کوردی سۆرانی
+351	KUK	Chin (Kuki)	Chin (Kuki)
+352	LE	Lomwe	Elomwe
+353	MAC	Macua	Emakhuwa
+354	UE	Nuer	Thok Nath
+355	SEN	Sena	Cisena
+356	TJ	Tajiki	тоҷикӣ
+357	UZ	Uzbek	ўзбекча
+358	DR	Uruund	Uruund
+359	NW	Newari	नेवारी
+360	ET	Bété	ˈBhɛtɩgbʋʋ
+361	CO	Chuabo	Etxuwabo
+362	VI	Tuvinian	тыва
+363	ZO	Chin (Zotung)	Chin (Zotung)
+364	PJN	Punjabi (Shahmukhi)	پنجابی (شاہ مُکھی)
+366	NB	Nambya	Nambya
+367	DG	Dangme	Dangme
+368	FF	Frafra	Farefare
+369	KIN	Kinande	Kinande
+370	KIT	Kituba	Kituba
+373	ORR	Mahorian (Roman)	Shimaore (Alifuɓe)
+374	KIP	Kipende	Kipende
+375	BEL	Belorussian	беларуская
+376	ALT	Altai	алтай
+377	BLN	Balinese	Bali
+379	DO	Diola	Jóola
+380	FO	Fon	Fɔngbe
+381	FD	Fulfulde (Cameroon)	Fulfulde (Kamerun)
+382	GN	Gokana	Gokana
+383	IBI	Ibinda	Ibinda
+384	IH	Esan	Esan
+385	TCR	Bissau Guinean Creole	Kriol di Gine-Bisau
+387	SL	Shilluk	Dhøg Cøllø
+388	SBO	Serbian (Roman)	srpski (latinica)
+390	MSH	Mashi	Mashi
+392	KSN	Kisonge	Kisongye
+393	REA	Armenian	Հայերեն
+394	GCS	Scottish Gaelic	Gàidhlig
+395	TOR	Toraja	Toraja
+396	KM	Komi	коми
+397	LZ	Lezgian	лезги
+398	HE	Chechen	нохчийн
+399	RCR	Réunion Creole	Kréol Rénioné
+400	EZ	Erzya	эрзянь
+401	MAZ	Mazatec (Huautla)	énná
+402	MOK	Moksha	мокшень
+403	TZE	Tzeltal	tseltal
+404	TZO	Tzotzil	tsotsil
+405	UM	Udmurt	удмурт
+407	MAA	Chin (Mara)	Chin (Mara)
+408	TRN	Turkana	Ng'aturkana
+409	NK	Nyaneka	Nyaneka
+410	GZ	Gagauz	гaгaуз
+412	WY	Wayuunaiki	Wayuunaiki
+413	FT	Futuna (East)	Fakafutuna
+414	BAK	Bashkir	башҡорт
+415	RDC	Kurdish Kurmanji (Cyrillic)	К′öрди Кöрманщи (Кирили)
+416	FS	Frisian	Frysk
+417	MAY	Maya	maaya
+418	AV	Avar	магӀарул
+419	LAD	Ladin (Gardenese)	Ladin de Gherdëina
+420	ASL	American Sign Language	American Sign Language
+421	QUB	Quechua (Bolivia)	Quechua (Bolivia)
+422	TOB	Toba	toba
+423	SKL	Sakalava	Sakalava
+424	TNK	Tankarana	Tankarana
+425	TOT	Totonac	totonaco
+426	VZ	Vezo	Vezo
+427	MTU	Motu	Motu
+428	PAA	Papiamento (Aruba)	Papiamento (Aruba)
+429	LHK	Lhukonzo	Lhukonzo
+430	HUV	Huave (San Mateo del Mar)	ombeayiiüts
+431	MX	Mixe (North Central)	ayuk
+432	TJO	Tojolabal	tojol-abʼal
+433	AJR	Azerbaijani	Azərbaycan
+434	TSC	Torres Strait Creole	Tores Streit Kriol
+435	ZPI	Zapotec (Isthmus)	diidxazá
+436	ZPX	Zapotec (Ixtlán)	Dillexhon
+437	ZPV	Zapotec (Villa Alta)	didza xhidza
+438	ELI	Liberian English	Liberian English
+439	BTS	Betsimisaraka (Northern)	Betsimisaraka Avaratra
+440	TTP	Tetun Dili	Tetun Dili
+442	CHL	Chol	ch'ol
+443	NHT	Nahuatl (Northern Puebla)	náhuatl del norte de Puebla
+445	TRH	Tarahumara (Central)	ralámuli
+446	TRS	Tarascan	Purépecha
+447	MBK	Mbukushu	Thimbukushu
+448	IGE	Igede	Igede
+449	QUA	Quechua (Ayacucho)	Quechua (Ayacucho)
+450	LSA	Argentinean Sign Language	lengua de señas argentina
+451	AUS	Australian Sign Language	Auslan (Australian Sign Language)
+452	LSB	Brazilian Sign Language	Língua brasileira de sinais (Libras)
+453	BSL	British Sign Language	British Sign Language
+454	SCH	Chilean Sign Language	lengua de señas chilena
+455	LSC	Colombian Sign Language	lengua de señas colombiana
+456	CSE	Czech Sign Language	český znakový jazyk
+457	DSL	Danish Sign Language	Dansk tegnsprog
+458	NGT	Dutch Sign Language	Nederlandse Gebarentaal
+459	SEC	Ecuadorian Sign Language	lengua de señas ecuatoriana
+460	STD	Estonian Sign Language	eesti viipekeel
+461	FID	Finnish Sign Language	suomalainen viittomakieli
+462	LSF	French Sign Language	Langue des signes française
+463	DGS	German Sign Language	Deutsche Gebärdensprache
+464	HDF	Hungarian Sign Language	magyar jelnyelv
+465	ISL	Italian Sign Language	Lingua dei segni italiana
+466	JSL	Japanese Sign Language	日本手話
+467	KSL	Korean Sign Language	한국 수어
+468	LSM	Mexican Sign Language	lengua de señas mexicana
+469	NDF	Norwegian Sign Language	Norsk tegnspråk
+470	LSP	Paraguayan Sign Language	lengua de señas paraguaya
+471	SPE	Peruvian Sign Language	lengua de señas peruana
+472	PDF	Polish Sign Language	polski język migowy
+473	LSQ	Quebec Sign Language	Langue des signes québécoise
+474	RSL	Russian Sign Language	русский жестовый
+475	LSE	Spanish Sign Language	lengua de signos española
+476	LSV	Venezuelan Sign Language	lengua de señas venezolana
+477	PH	Pashto	پښتو
+478	MWI	Mentawai	Mentawai
+479	LX	Luxembourgish	Lëtzebuergesch
+480	MDI	Madi	Madi
+481	LSN	Nicaraguan Sign Language	lenguaje de señas nicaragüense
+482	RMS	Romany (Eastern Slovakia)	romanes (vichodno Slovačiko)
+484	NHG	Nahuatl (Guerrero)	náhuatl de guerrero
+485	TLN	Tlapanec	me̱ʼpha̱a̱
+486	NDA	Ndau	Cindau
+487	DGR	Digor	дигорон
+488	TZU	Tzutujil	tzʼutujil
+489	BLF	Blackfoot	Siksikáíitsi'powahsini
+490	GSL	Greek Sign Language	Ελληνική Νοηματική Γλώσσα
+491	NOR	Northern Ojibwe (Roman)	Anishinaabemowin
+492	NOS	Northern Ojibwe (Syllabics)	ᐊᓂᔑᓈᐯᒧᐎᓐ
+493	LJ	Lenje	Cilenje
+494	QUN	Quechua (Ancash)	Quechua (Ancash)
+496	QSL	Israeli Sign Language	שפת סימנים ישראלית
+499	AKA	Akha	Akha
+500	FLM	Chin (Falam)	Chin (Falam)
+504	WAM	Wa	Vax
+505	XV	Xavante	A'uwẽ mreme
+506	TSL	Taiwanese Sign Language	台灣手語
+507	VSL	Slovak Sign Language	slovenský posunkový jazyk
+508	BSN	Bosnian	bosanski
+509	ZSL	Zimbabwe Sign Language	Zimbabwe Sign Language
+510	LSL	Latvian Sign Language	latviešu zīmju valoda
+516	CHJ	Chuj	chuj
+519	CLT	Chontal (Tabasco)	yokotʼan
+520	CLX	Chontal (Oaxaca)	lataiki
+523	COR	Cora (El Nayar)	cora (el nayar)
+525	HCH	Wixárika	wixárika
+526	HST	Huastec (San Luis Potosi)	tének
+528	IXL	Ixil	ixil
+536	MXG	Mixtec (Guerrero)	tu’un sâví
+537	MXO	Mixtec (Huajuapan)	Tu̱ʼun ndaʼví
+538	MYO	Mayo	yoremnok'ki
+539	MZH	Mazahua	jñatrjo
+540	NHH	Nahuatl (Huasteca)	náhuatl de la huasteca
+541	NHV	Nahuatl (Veracruz)	náhuatl de Veracruz
+543	OTM	Otomi (Mezquital Valley)	Ñañu
+547	PPG	O’odham (Tohono)	O’odham
+548	NGM	Ngigua (San Marcos Tlacoyalco)	ngigua de San Marcos Tlacoyalco
+549	PPU	Popoluca (Highland)	popoluca de la Sierra
+555	YQ	Yaqui	jiiak noki
+557	PSL	Panamanian Sign Language	lengua de señas panameñas
+559	LL	Lele	Lele
+560	LVA	Romany (Lovari, Hungary)	romani (lovári, Ungriko Them)
+561	MSR	Mongolian Sign Language	монгол дохионы хэл
+562	OKP	Okpe	Okpe
+563	KUR	Kuria	Igikuria
+564	SHU	Shuar	shuar
+565	AGR	Awajun	awajun
+566	SCR	Costa Rican Sign Language	lengua de señas costarricense
+568	KLK	Kalmyk	хальмг
+569	KSI	Kenyan Sign Language	Kenyan Sign Language
+570	ZPD	Zapotec (del Valle)	ditsa
+571	ZPG	Zapotec (Guevea)	dîdzrie’
+572	ZPL	Zapotec (Lachiguiri)	diitza
+574	ZPT	Zapotec (Quiatoni)	zapoteco de Quiatoni
+575	ZPC	Zapotec (Quiavicuzas)	ditz zea
+576	DRG	Dargwa	дарган
+577	ISG	Irish Sign Language	Irish Sign Language
+580	LGP	Portuguese Sign Language	Língua Gestual Portuguesa
+581	LUC	Saint Lucian Creole	Kwéyòl (Patwa)
+582	TBN	Tabasaran	табасаран
+585	UZR	Uzbek (Roman)	o‘zbekcha (lotincha)
+586	MOU	Moussey	Moussey
+588	SSL	Swedish Sign Language	Svenskt teckenspråk
+589	LTS	Lithuanian Sign Language	lietuvių gestų
+590	CMG	Comorian (Ngazidja)	Shikomori (Ngazidja)
+592	SAS	South African Sign Language	South African Sign Language
+593	UGA	Uighur (Arabic)	ئۇيغۇر تىلى ‏(‏ئەرەب يېزىقى‏)‏‏‏‏
+594	GRF	Garifuna	Garifuna
+595	LWX	Low German	Plautdietsch
+596	MYG	Mayangna	mayangna
+597	GZR	Gagauz (Roman)	gagauz (latin)
+599	JU	Arabic (Sudanese Creole)	Arabi Juba
+600	SRM	Saramaccan	Saamakatöngö
+601	GIB	Guarani (Bolivia)	Guaraní boliviano
+602	INI	Indonesian Sign Language	Bahasa Isyarat Indonesia
+603	SSU	Suriname Sign Language	Surinaamse Gebarentaal
+604	NZS	New Zealand Sign Language	New Zealand Sign Language
+605	BVL	Bolivian Sign Language	lengua de señas boliviana
+606	BRI	Bribri	bribri
+607	CRB	Carib	Kariʼnia
+608	NBL	Ndebele	IsiNdebele
+609	NHC	Nahuatl (Central)	náhuatl del centro
+610	SWI	Swati	SiSwati
+611	CTC	Crimean Tatar (Cyrillic)	къырымтатар (кирилл)
+614	KUA	Kuanua	Tinata Tuna
+615	BLS	Bulgarian Sign Language	български жестов език
+616	SBS	Serbian Sign Language	srpski znakovni jezik
+618	CYS	Cree Plains (Syllabics)	ᓀᐦᐃᔭᐁᐧᐃᐧᐣ
+619	CSL	Chinese Sign Language	中国手语
+620	NGL	Ngangela	Ngangela
+621	PTJ	Pitjantjatjara	Pitjantjatjara
+622	SGS	Swiss German Sign Language	Deutschschweizer Gebärdensprache
+623	SBF	Belgian French Sign Language	Langue des signes de Belgique francophone
+625	VGT	Flemish Sign Language	Vlaamse Gebarentaal
+626	LSG	Guatemalan Sign Language	lengua de señas de Guatemala
+627	TTM	Madagascar Sign Language	Tenin’ny Tanana Malagasy
+628	RPN	Rapa Nui	rapa nui
+629	SZJ	Slovenian Sign Language	slovenski znakovni jezik
+630	MXC	Mixtec (Costa)	saʼan xiñi saví
+631	MXN	Mixtec (Tilantongo)	ñutnuu
+632	MXT	Mixtec (Tlaxiaco)	saʼan savi
+633	SIL	Thai Sign Language	ภาษามือไทย
+634	MSL	Malawi Sign Language	Chinenero Chamanja cha ku Malawi
+635	ALQ	Algonquin	Anishinàbemowin
+636	JWK	Jiwaka	Jiwaka Yu
+637	KMP	Komi-Permyak	коми-пермяцкӧй
+639	ORK	Orokaiva	Orokaiva
+640	YC	Cree West Swampy (Roman)	Ininîmowin
+641	YCS	Cree West Swampy (Syllabics)	ᐃᓂᓃᒧᐏᐣ
+642	FSL	Filipino Sign Language	Filipino Sign Language
+643	NGB	Ngabere	ngäbere
+644	CBS	Cuban Sign Language	lengua de señas cubana
+645	OGS	Austrian Sign Language	Österreichische Gebärdensprache
+646	CIN	Cinyanja	Cinyanja
+647	CPC	Curripaco	Curripaco
+648	EMB	Emberá (Catío)	embera katio
+649	MPD	Mapudungun	mapudungun
+650	WCH	Wichi	wichí
+652	SHO	Honduras Sign Language	lengua de señas hondureña
+653	KMY	Kamayo	Kamayo
+655	IKN	Inakeanon	Inakeanon
+656	KNR	Kinaray-a	Kinaray-a
+660	ACH	Achi	achi
+661	AZA	Kazakh (Arabic)	قازاق ٴتىلى (ارابشا جازۋى)
+662	ADH	Adhola	Dhopadhola
+663	FTL	Fataluku	Fataluku
+664	MKS	Makasae	Makasae
+666	ODW	Odawa	Nishnaabemwin
+667	SLM	Mozambican Sign Language	Língua de Sinais Moçambicana
+668	NBZ	Ndebele (Zimbabwe)	Ndebele (Zimbabwe)
+669	PIC	Paicî	Paicî
+671	AHK	Ashaninka	ashaninka
+672	HZJ	Croatian Sign Language	hrvatski znakovni jezik
+673	JCR	Jamaican Creole	Patwa
+674	KRI	Krio	Krio
+675	MHK	Mohawk	Kanienʼkéha
+677	SRI	Sarnami	Sarnami Hindoestani
+679	CHN	Min Nan (Quanzhou)	闽南语（泉州）
+680	MWL	Mambwe-Lungu	Cimambwe-Lungu
+681	TND	Tandroy	Tandroy
+682	RNY	Rumanyo	Rumanyo
+683	PLG	Pilagá	pilagá
+684	QIS	Quichua (Santiago del Estero)	quichua (Santiago del Estero)
+685	ABN	Abaknon	Abaknon
+687	AKN	Aukan	Okanisitongo
+690	GTN	Gitonga	Gitonga
+691	IBL	Ibaloi	Ibaloi
+692	KNY	Kankanaey	Kankanaey
+695	DAR	Dari	دری
+697	ABB	Abbey	Abɛ
+698	ATI	Attié	Akie
+699	GUR	Guéré	wɛ
+700	MBD	Mbunda	Mbunda
+701	RMB	Romany (Western Bulgaria)	ромски (западна България)
+702	TPR	Toupouri	Toupouri
+703	YCB	Yacouba	Yaoba
+704	NSL	Nepali Sign Language	नेपाली साङ्केतिक भाषा
+705	LMG	Romanian Sign Language	Limba semnelor române
+710	NYU	Nyungwe	Cinyungwe
+711	SOL	Soli	Cisoli
+713	VRU	Voru	võro
+714	HSL	Hong Kong Sign Language	香港手語
+717	MME	Mambae (Ermera)	Mambae (Ermera)
+719	MAP	Maya (Mopán)	T'an
+720	NEN	Nsenga (Zambia)	Cinsenga
+721	SYL	Sylheti (Bengali)	সেলেটি (বাংলা)
+723	BDY	Bidayuh (Bukar)	Bidayuh (Bukar)
+724	DGA	Dagaare	Dagaare
+725	MJK	Mandjak	Manjaku
+726	QIC	Quichua (Chimborazo)	quichua (chimborazo)
+727	QII	Quichua (Imbabura)	quichua (imbabura)
+728	QIP	Quichua (Pastaza)	quichua (pastaza)
+729	QIT	Quichua (Tena)	quichua (tena)
+730	HLA	Halia	Halia
+731	NKM	Nukumanu	Nukumanu
+732	SFC	Senoufo (Cebaara)	Senarì
+733	TCN	Ticuna	Ticuna
+735	SHC	Shipibo-Conibo	shipibo-conibo
+736	ZAS	Zambian Sign Language	Zambian Sign Language
+737	CNO	Chinantec (Ojitlan)	jújmi kiʼtsa köwɨ̱
+738	RGS	Rungus	Momogun
+739	SLS	Sri Lankan Sign Language	ශ්‍රී ලංකා සංඥා භාෂාව
+741	BIM	Malaysian Sign Language	Bahasa Isyarat Malaysia
+742	BUS	Myanmar Sign Language	မြန်မာ လက်သင်္ကေတပြဘာသာစကား
+743	RMG	Romany (Southern Greece)	Ρομανί (Νότια Ελλάδα)
+745	CPI	Chopi	Txitxopi
+746	MWM	Makhuwa-Meetto	Imakhuwa Imeetto
+747	MKD	Makonde	Shimakonde
+748	LSU	Uruguayan Sign Language	lengua de señas uruguaya
+749	CAB	Cabécar (Tayní)	cabécar
+750	IMN	Iu Mien	Iu-Mienh
+751	KAZ	Kadazan	Kadazan
+752	ALU	Alur	Alur
+753	BMB	Bembe	Kibembe
+756	DNS	Dengese	Londengese
+757	KYK	Kanyok	Ciin-kanyok
+758	LND	Lendu	Baledha
+759	MBL	Mbala	Gimbala
+760	SGA	Sanga	Kisanga
+761	SGM	Songomeno	Losongomino
+764	YMB	Yombe	Yombe
+765	SBR	Samburu	Sampur
+766	CGW	Chitonga (Zimbabwe)	Chitonga (Zimbabwe)
+767	KLZ	Kalanga (Zimbabwe)	Kalanga (Zimbabwe)
+768	GLC	Galician	Galego
+769	VLC	Valencian	valencià
+770	ALS	Albanian Sign Language	shqipe e shenjave
+771	INS	Indian Sign Language	Indian Sign Language
+772	MYW	Manyawa	Emanyawa
+773	GHB	Guahibo	guahibo
+774	PMN	Pemon	pemon pe
+775	PRA	Piaroa	huo̧ttö̧ja̧
+777	WRO	Warao	warao
+778	YKP	Yukpa	yukpa
+779	RDU	Kurdish Kurmanji (Caucasus)	Kurdî Kurmancî (Kavkazûs)
+780	KGL	Kikongo ya Leta	Kikongo ya leta
+781	LGA	Lega	Lega
+783	NGN	Ngbandi (Northern)	Ngbandi (ya Nɔrdi)
+785	TPO	Portuguese (Portugal)	Português (Portugal)
+786	RMN	Romany (Northern Greece)	Ρομανί (Βόρεια Ελλάδα)
+795	AMG	Amuzgo (Guerrero)	ñoomndaa
+796	GRZ	Guerze	Kpɛlɛɛwoo
+797	TER	Terêna	Terêna
+798	MCS	Macushi	Makusi
+799	SUS	Susu	Soso xui
+801	PMR	Pomeranian	Pomerisch
+802	QUH	Quechua (Huaylla Wanca)	quechua wanca
+803	PLR	Pular	Fula
+804	SAR	Sar	Sar
+805	JAR	Jarai	Jarai
+807	SLV	Vietnamese Sign Language	Việt Nam (Ngôn ngữ ký hiệu)
+810	LAS	Angolan Sign Language	Língua angolana de sinais
+812	RMP	Romany (Northern Russia)	романы (русска рома)
+813	BTD	Batak (Dairi)	Pakpak
+814	SGR	Sangir	Sangir
+815	GRC	Gourmanchéma	Gulmancema
+816	KHN	Kuhane (Subiya)	Kuhane (Subiya)
+817	BZK	Belize Kriol	Bileez Kriol
+818	DKA	Dayak Ahe	Dayak Ahe
+819	MGR	Mangareva	Mangareva
+820	XPA	Pennsylvania German	Pennsylvania Dutch (Deitsh)
+822	ABU	Abui	Alor Abui
+823	ADZ	Arabic (Algeria)	العربيّة (الدّارجة الجزائريّة)
+824	AMO	Arabic (Morocco)	العربية (الدارجة المغربية)
+825	ATN	Arabic (Tunisia)	العربية (الدّارجة‏ ‏التّونسيّة)
+826	HSK	Hunsrik	Hunsrik
+827	TAL	Talian	Talian
+828	QUL	Quechua (Huallaga Huánuco)	Quechua de Huánuco (Huallaga)
+829	GHS	Ghanaian Sign Language	Ghanaian Sign Language
+830	RMA	Romany (Argentina)	Romanes Kalderash
+831	LLO	Lolo	Ilolo
+832	GAR	Garo (Abeng)	গারো (আবেং)
+834	LTG	Latgalian	Latgalīšu
+841	PQM	Poqomchi'	poqomchi'
+843	MGL	Mingrelian	მარგალური
+846	LKT	Lakota	Lakotiya
+847	CBL	Cambodian Sign Language	ភាសាសញ្ញាខ្មែរ
+848	TYW	Tyrewuju	Tilewuyu
+850	AHN	Ahanta	Aɣɩnda
+852	DGB	Dagbani	Dagbanli
+854	KSM	Kasem	Kasem
+855	KKB	Konkomba	Konkomba
+856	KUS	Kusaal	Kusaal
+857	SHW	Sehwi	Sehwi
+858	TMR	Turkmen	türkmen
+859	LSS	Salvadoran Sign Language	lengua de señas salvadoreña
+860	OTS	Otomi (State of Mexico)	ñätho
+862	RMC	Romany (Macedonia) Cyrillic	романе (Македонија) кирилица
+865	APM	Apma	Apma
+866	EFN	Efate (North)	Efate (North)
+867	EFS	Efate (South)	Efate (South)
+868	HNO	Hano	Hano
+870	PMA	Paama	Paama
+871	BTA	Betsimisaraka (Southern)	Betsimisaraka Atsimo
+872	DMR	Damara	Damara
+880	BTK	Batak (Simalungun)	Batak (Simalungun)
+881	MDR	Madura	Madura
+882	CHW	Min Nan (Taiwan)	閩南語（台灣）
+883	TEW	Tewe	Ciutee
+884	ARH	Arhuaco	Arhuaco
+887	PAZ	Páez	nasa yuwe
+888	CGA	Changana (Zimbabwe)	Xichangana (Zimbabwe)
+890	CSC	Corsican	Corsu
+892	NKY	Nkoya	Nkoya
+893	QIB	Quichua (Chibuleo)	quichua (chibuleo)
+894	SLN	Namibian Sign Language	Namibian Sign Language
+895	BSH	Bushi	Kibushi
+896	OTE	Otomi (Eastern Highland)	ñuhü
+903	CRS	Central African Republic Sign Language	Langue des signes centrafricaine
+904	LSI	Ivorian Sign Language	Langue des signes ivoirienne
+905	RML	Romany (Albania)	rome (shqipëri)
+906	HSV	Huastec (Veracruz)	tének de Veracruz
+907	SGH	Shughni	шуғнонӣ
+908	NKN	Kyangonde	Kyangonde
+909	MNO	Mano	Maa
+910	KRK	Karakalpak	қарақалпақ
+911	RMR	Romany (Romania)	Rromani (România)
+912	UBM	Uab Meto	Timor Dawan
+913	SAL	Saluan	Saluan
+914	AMA	Mamasa	Mamasa
+915	KRY	Kryashen	керәшен татар
+916	SPL	Sepulana	Sepulana
+918	CKE	Cherokee	ᏣᎳᎩ ᎦᏬᏂᎯᏍᏗ
+919	GCR	Guadeloupean Creole	Kréyòl Gwadloup
+920	GNC	Guianese Creole	Kréyòl gwiyanè
+921	YU	Central Alaskan Yupik	Central Alaskan Yupik
+922	QNJ	Q'anjob'al	q'anjob'al
+928	HPI	Hopi	Hopi
+929	MBA	Moba	Muaba
+930	NGP	Nigerian Pidgin	Nigerian Pidgin
+931	OBL	Obolo	Obolo
+935	KSH	Kashubian	kaszëbsczi
+936	SSN	Silesian	jynzyk Ślónska Cieszyńskigo
+940	MHM	Makhuwa-Marrevone	Makhuwa-Marrevone
+941	MHS	Makhuwa-Shirima	Makhuwa-Shirima
+947	RMT	Romany (Poland)	romani (Polska Roma)
+948	FJS	Fiji Sign Language	Fiji Sign Language
+949	PLK	Palikúr	Palikur
+953	AJG	Aja	Aja
+954	AWA	Awa (Cuaiquer)	awapit
+956	CRE	Islander Creole English	San Andrés Creole
+957	EMC	Emberá (Chamí)	ẽbẽra beɗea chamí
+958	EMP	Emberá (Northern)	Emberá dóbida
+960	GBM	Guambiano	Namtrik
+961	GG	Gogo	Cigogo
+963	HH	Hehe	Kihehe
+964	INB	Inga	Inga
+965	KBV	Kabuverdianu	Kabuverdianu
+966	MNS	Melanesian Sign Language	Melanesian Sign Language
+967	NDL	Ndali	Ichindali
+969	PCM	Pidgin (Cameroon)	Pidgin for Cameroon
+971	TUO	Tucano	Dahse ye
+974	HMN	Hmong (Green)	Moob Ntsuab
+975	KMB	Kambera	Kambera (Sumba Timur)
+979	MHL	Maithili	मैथिली
+981	PHN	Pehuenche	chedungun (pewenche)
+982	SRG	Surigaonon	Surigaonon
+983	XSW	Swiss German	Schweizerdeutsch
+984	TBW	Taabwa	Taabwa
+985	TJU	Tajiki (Samarkand)	тоҷикӣ (Самарқанд)
+986	TLR	Tamil (Roman)	Thamil (Rōman)
+987	WJW	Wejewa	Wejewa (Sumba Barat)
+988	HWU	Hawu	Sabu
+989	KNM	Kunama	Kunama
+990	USL	Ugandan Sign Language	Ugandan Sign Language
+991	AEY	Arabic (Egypt)	العربية (اللهجة المصرية)
+992	TKL	Turkish Sign Language	Türk İşaret Dili
+996	CGM	Changana (Mozambique)	xiChangana (Moçambique)
+997	FGN	Fang	Fang
+999	MTC	Martiniquan Creole	Kréyòl Matinik
+1001	RME	Romany (Serbia)	Romane (Srbija)
+1007	HRV	Haryanvi	हरियाण्वी
+1009	CHG	Chinese (Shanghainese)	中文（上海话）
+1011	CGS	Congolese Sign Language	Langue des signes congolaise
+1012	AYI	Anyin (Indenie)	anyin (indenie)
+1013	GHM	Ghomálá’	Bandjoun-Baham
+1014	FFE	Fe'fe'	Bafang
+1016	SSA	Sesotho (South Africa)	Sesotho (South Africa)
+1020	SHD	Santhali (Devanagari)	Santhali (Devanagari)
+1021	SHR	Santhali (Roman)	Santhali (Roman)
+1022	TBT	Tibetan	བོད་སྐད།
+1023	NMB	Ngiemboon	Ngiemboon
+1024	RMK	Romany (Kalderash, Russia)	хомани (котлярско, Хусыя)
+1025	RMV	Romany (Vlax, Russia)	романи (влахитско, Россия)
+1026	BDG	Badaga	படகா
+1031	BRW	Barwe	Barwe
+1032	RMX	Romany (Germany)	Romanes (Sinti)
+1033	TTB	Tetun Belu	Tetun Belu
+1034	PMO	Pamona	Pamona
+1035	KEI	Kei	Kei
+1036	TII	Tii	Rote Tii
+1037	NNS	Nigerian Sign Language	Nigerian Sign Language
+1039	QCC	Quichua (Cañar)	quichua (cañar)
+1040	QCS	Quichua (Salasaca)	quichua (salasaca)
+1041	NML	Ngombale	Babadjou
+1043	ESL	Ethiopian Sign Language	የኢትዮጵያ ምልክት ቋንቋ
+1049	KDA	Kunda	Kunda
+1058	MNC	Mnong (Central)	Bunong
+1059	JVN	Javanese (Eastern)	Jawa Timur
+1060	MNK	Mandinka	Mandinka
+1064	ARS	Armenian Sign Language	Հայերեն ժեստերի լեզու
+1065	RMU	Romany (Ukraine)	Романі (ромунгри, Україна)
+1066	HKI	Hakka (Indonesia)	Cina Khek (Indonesia)
+1068	ITW	Itawit	Itawit
+1071	CHC	Chinese Cantonese (Traditional)	中文繁體（廣東話）
+1072	CNS	Chinese Cantonese (Simplified)	中文简体（广东话）
+1073	LMB	Lambya	Chilambya
+1074	BFI	Bafia	bafia (rikpag)
+1076	ETN	Eton	Iton
+1077	EWN	Ewondo	Ewondo
+1078	MKA	Makaa	Makaa
+1081	NJB	Njebi	Njebi
+1084	JML	Jamaican Sign Language	Jamaican Sign Language
+1088	NNT	Nenets	ненэцяʼ
+1090	HMS	Hamshen (Cyrillic)	һамшенерен (кирилица)
+1093	CSN	Chinese (Sichuanese)	中文（四川话）
+1094	DYT	Dayak Tomun	Dayak Tomun
+1095	BNJ	Banjar	Banjar
+1096	BKK	Bakoko	Bakoko
+1097	TNN	Tunen	Banen
+1098	AWN	Awing	Awing
+1099	HMA	Hamshen (Armenian)	համշեներեն (հայերեն)
+1100	LBM	Limbum	Limbum
+1102	MNT	Montenegrin	crnogorski
+1105	RMH	Romany (Chile)	Romane Jorajane
+1110	IUR	Inuktitut (Roman)	Inuktitut
+1111	MTN	Matengo	Kimatengo
+1112	FCA	French (Canada)	Français (Canada)
+1113	MBO	Mbo	Mbo
+1115	MRH	Mari (Hill)	кырык мары
+1119	MTA	Meta'	Meta'
+1120	TZL	Tanzanian Sign Language	Lugha ya Alama ya Tanzania
+1121	OMB	Ombamba	Ombamba
+1122	KGG	Kaingang	kaingang
+1123	NGU	Nhengatu	Nheengatu
+1124	STM	Sateré-Mawé	Satere Mawe
+1125	WPH	Wapishana	Wapichana
+1126	MNM	Manado Malay	Manado
+1127	NVC	Nivaclé	nivaĉle
+1128	MDH	Medan Hokkien	Hokkien Medan
+1130	KOC	Korean (China)	조선어
+1132	PGW	Pidgin (West Africa)	Pidgin (West Africa)
+1133	RMF	Romany (France)	Romanes (Manouche)
+1134	BRM	Berom	Berom
+1135	BUR	Bura	Bura
+1136	EBA	Ebira	Ebira
+1139	FLN	Fulfulde (Nigerian)	Fulfulde (Nigerian)
+1141	KMW	Kamwe	Kamwe
+1147	TRW	Tarahumara (Western)	tarahumara occidental
+1154	RWS	Rwandan Sign Language	Ururimi rw'amarenga yo mu Rwanda
+1155	SMS	Samoan Sign Language	Samoan Sign Language
+1156	CGG	Chiga	Orukiga
+1157	HVU	Havu	Ekihavu
+1159	MNI	Mansi	маньси
+1160	DND	Dendi	Dendi
+1162	CTI	Chorote (Iyojwa'ja)	chorote (iyojwa'ja)
+1168	TWD	Teochew (Indonesia)	Teochew (Indonesia)
+1169	MTS	Mauritian Sign Language	Mauritian Sign Language
+1171	CQC	Cakchiquel (Central)	Kaqchikel central
+1172	CQE	Cakchiquel (Eastern)	Kaqchikel oriental
+1176	SWS	Swazi Sign Language	Swazi Sign Language
+1177	WSL	Botswana Sign Language	Botswana Sign Language
+1183	PHM	Phimbi	Chiphimbi
+1185	KKL	Kokola	Kokola
+1189	BMN	Bamun	Shü Pamom
+1190	DTM	Ditammari	Ditammari
+1194	CBE	Cubeo	Cubeo
+1195	GBR	Guayabero	jiw
+1197	MLY	Malayo	wiwa dumuna
+1216	MIR	Manipuri (Roman)	Manipuri (Roman)
+1217	CTW	Choctaw	Choctaw
+1218	RNN	Romanian (Vlach)	rumunski (vlaški)
+1221	LGD	Longuda	Longuda
+1223	CMK	Como Karim	Como Karim
+1226	HWI	Shawi	shawi
+1228	QUM	Quechua (Lambayeque)	quechua (lambayeque)
+1236	ZPS	Zapotec (Santiago Xanica)	Zapotec (Santiago Xanica)
+1237	BNW	Baniwa	Baniua
+1238	NSM	Nsenga (Mozambique)	Chinsenga (Mozambique)
+1240	TEM	Tem	Kotokoli
+1241	RVC	Romany (Moldova) Cyrillic	Романи (Молдова) кирилик
+1245	CPL	Cha’palaa	cha'palaa
+1246	HWP	Hawai’i Pidgin	Hawai’i Pidgin
+1249	MSS	Matses	Matses
+1250	BHJ	Bhojpuri	भोजपुरी
+1253	QIX	Quichua (Cotopaxi)	quichua (cotopaxi)
+1257	CDG	Chedungun (Coast)	Chedungun labquenche
+1258	STN	Sãotomense	Santome
+1268	BRS	Burundi Sign Language	Langue des signes burundaise
+1269	CSR	Cree Southern East (Roman)	Iinuuayimuwin
+1273	RCK	Romany (Meçkar)	Romany (Meçkar)
+1279	RSC	Rusyn (Carpathian)	Закарпатська русинська
+1283	KVM	Kuvale (Mucubal)	Kuvale (Mucubal)
+1284	SGO	Songo	Songo
+1285	MKQ	Mi’kmaq	Mi'kmaw
+1286	LBS	Lebanese Sign Language	لغة الإشارات اللبنانية
+1287	AHW	Achuar-Shiwiar	achuar-shiwiar
+1290	KAA	Kaiwá	Guarani (Kaiowá)
+1291	GIM	Guaraní (Mbyá)	Guaraní (Mbyá)
+1294	BNS	Blaan (Sarangani)	Blaan (Sarangani)
+1309	BHM	Bhojpuri (Mauritius)	Bhojpuri (Mauritius)
+1310	GDE	Gedeo	Gede'uffa
+1316	ANM	Anal	Anal
+1317	AWD	Awadhi	Awadhi
+1318	CGD	Chhattisgarhi (Devanagari)	छत्तीसगढ़ी (देवनागरी)
+1322	DZ	Dzongkha (Tibetan)	Dzongkha (Tibetan)
+1323	GRW	Garhwali	गढ़वाली
+1324	KCC	Kutchi	કચ્છી
+1325	KGH	Kangri (Hamirpuri)	कंगड़ी (हमीरपुरी)
+1327	NGR	Naga (Rongmei)	Naga (Rongmei)
+1328	NGD	Nagamese	Nagamese
+1332	SDD	Sadri (Devanagari)	सादरी (देवनागरी)
+1339	NDW	Ndau (Western)	Ndau (Western)
+1340	RNK	Romanian (Vlach, Bačka)	rumunski (vlaški, Bačka)
+1352	SGL	Singapore Sign Language	Singapore Sign Language
+1355	KBL	Kibala	Kibala
+1356	MBN	Mbangala	Mbangala
+1358	HDY	Hadiyya	Hadiyya
+1362	BNM	Banda (Mid-Southern)	Banda (Mid-Southern)
+1363	MNJ	Mandja	Mandja
+1364	YKM	Yakoma	Yakoma
+1370	ACC	Achi (Cubulco)	achí de cubulco
+1371	ACR	Achi (Rabinal)	achí de rabinal
+1375	ASN	Arabic (Sudanese)	العربية (اللهجة السودانية)
+1378	TME	Tamang (Eastern)	Tamang (Eastern)
+1380	HRM	Hindi (Roman)	Hindi (Roman)
+1382	TTS	Trinidad and Tobago Sign Language	Trinidad and Tobago Sign Language
+1383	TNG	Portuguese (Angola)	Português (Angola)
+1385	LKA	Lokaa	Lokaa
+1391	CML	Langue des signes camerounaise	Langue des signes camerounaise
+1396	BCM	Bacama	Bacama
+1397	GRB	Grebo	Grebo
+1404	BHL	Bushilele	Bushilele
+1405	KHB	Kihemba	Kihemba
+1417	KFL	Kifuliiru	Kifuliiru
+1418	MAF	Mafa	Mafa
+1421	MMU	Mbum	Mbum
+1422	SWK	Swahili (Katanga)	Swahili (Katanga)
+1424	RMY	Romany (Central Bulgaria)	ромски (централна България)
+1425	BTO	Betsileo	Betsileo
+1426	KBT	Kabuverdianu (Barlaventu)	Kabuverdianu (Barlaventu)
+1433	TGS	Togo Sign Language	Togo Sign Language
+1434	BNL	Benin Sign Language	Benin Sign Language
+1436	HTX	Hutterite German	Hutterite German
+1437	TMH	Tsimihety	Tsimihety
+1439	UKL	українська жестова мова	українська жестова мова

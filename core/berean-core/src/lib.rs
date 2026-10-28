@@ -1,11 +1,13 @@
 //! Berean core: owns all on-device data (the user-data SQLite DB, the
 //! downloaded publication store, and the search index). Callers see only this
-//! API — never a path into the data or any SQL. Network transfer lives outside
-//! the core: it produces download plans and later consumes the resulting files
-//! from disk.
+//! API — never a path into the data or any SQL. The core never does
+//! networking: it says which requests to make (`Library::download_request`),
+//! turns their replies into download plans (`Library::plan_download`), and
+//! later consumes the downloaded files from disk.
 
 pub mod catalog;
 pub mod jwpub;
+pub mod languages;
 pub mod library;
 pub mod search;
 pub mod userdata;

@@ -6,6 +6,7 @@
 //! the network. [`Catalog::ingest_file`] accepts either form, copies it
 //! (gunzipping if needed) into `catalog/.staging/`, checks that it is a
 //! readable catalog, adds one index, and renames it over `catalog/catalog.db`.
+//! Cancellation is checked, and progress reported, between those four steps.
 //! The rename is the commit point: until it happens the previous catalog stays
 //! in place and keeps answering; any failure deletes the staged copy, and
 //! opening the core empties `.staging`. Queries open the stored file
@@ -13,6 +14,9 @@
 //!
 //! Before anything is ingested every listing is empty, [`Catalog::revision`]
 //! is `None` and [`Catalog::asset`] is `NotFound`.
+//!
+//! Catalog languages are numeric MEPS ids; [`Catalog::languages`] names them
+//! from the language table in [`crate::languages`].
 //!
 //! # Keys
 //!
@@ -36,8 +40,9 @@ use std::sync::Arc;
 use rusqlite::{params_from_iter, Connection, OpenFlags, OptionalExtension};
 use tempfile::TempDir;
 
+use crate::languages::{self, Language};
 use crate::library::{format_pub_key, parse_pub_key, remove_path, PubKind, PublicationSummary};
-use crate::{CoreError, Inner};
+use crate::{CancelToken, CoreError, Inner, ProgressSink};
 
 const DIR: &str = "catalog";
 const STAGING: &str = ".staging";
@@ -81,6 +86,7 @@ const KINDS: &[(i64, PubKind)] = &[
     (6, PubKind::Index),
     (13, PubKind::Awake),
     (14, PubKind::Watchtower),
+    (30, PubKind::MeetingWorkbook),
 ];
 
 /// SQL condition: `a` (the `PublicationAsset` of `p`) belongs to the row its
@@ -126,6 +132,15 @@ pub struct CatalogAsset {
     pub last_modified: String,
 }
 
+/// What the core needs from a catalog row to download its publication.
+pub(crate) struct CatalogEntry {
+    /// The undated `KeySymbol`, e.g. `w`: pub-media's `pub`.
+    pub key_symbol: String,
+    pub meps_language: u32,
+    pub issue_tag: u32,
+    pub asset: CatalogAsset,
+}
+
 /// Handle to the catalog. Cheap to clone; shares the core's state.
 #[derive(Clone)]
 pub struct Catalog {
@@ -138,9 +153,19 @@ impl Catalog {
     }
 
     /// Replace the catalog with the one at `file_path`: a `catalog.db.gz` or
-    /// the `catalog.db` inside it. Not a readable catalog => `Corrupt`. On any
+    /// the `catalog.db` inside it. Progress counts copying the file,
+    /// validating it, indexing it, and committing.
+    ///
+    /// Not a readable catalog => `Corrupt`; cancelled => `Cancelled`. On any
     /// error the previous catalog is unchanged.
-    pub fn ingest_file(&self, file_path: impl AsRef<Path>) -> Result<(), CoreError> {
+    pub fn ingest_file(
+        &self,
+        file_path: impl AsRef<Path>,
+        progress: &dyn ProgressSink,
+        cancel: &CancelToken,
+    ) -> Result<(), CoreError> {
+        const TOTAL: u64 = 4;
+        cancel.check()?;
         let mut source = File::open(file_path)?;
         let mut magic = [0u8; 2];
         let gzipped = source.read_exact(&mut magic).is_ok() && magic == [0x1f, 0x8b];
@@ -157,10 +182,15 @@ impl Catalog {
         }
         out.sync_all()?;
         drop(out);
+        progress.on_progress(1, TOTAL);
 
+        cancel.check()?;
         let conn = Connection::open_with_flags(&staged, OpenFlags::SQLITE_OPEN_READ_WRITE)
             .map_err(|_| CoreError::Corrupt)?;
         validate(&conn).map_err(|_| CoreError::Corrupt)?;
+        progress.on_progress(2, TOTAL);
+
+        cancel.check()?;
         // A rollback journal, so the stored file reads alone; and the index
         // that resolving a key and filtering by language search on.
         conn.execute_batch(
@@ -169,7 +199,11 @@ impl Catalog {
              ON Publication (MepsLanguageId, Symbol, IssueTagNumber);",
         )?;
         conn.close().map_err(|(_, e)| e)?;
+        progress.on_progress(3, TOTAL);
+
+        cancel.check()?;
         std::fs::rename(&staged, self.dir().join(CURRENT))?;
+        progress.on_progress(TOTAL, TOTAL);
         Ok(())
     }
 
@@ -266,41 +300,61 @@ impl Catalog {
         Ok(out)
     }
 
-    /// The MEPS language ids with at least one publication, ascending.
-    pub fn languages(&self) -> Result<Vec<u32>, CoreError> {
+    /// The languages with at least one publication, by MEPS id. A language
+    /// the language table does not map has no code or name, so it is left
+    /// out (its publications still list, by `meps_language`).
+    pub fn languages(&self) -> Result<Vec<Language>, CoreError> {
         let Some(conn) = self.open()? else {
             return Ok(Vec::new());
         };
         let mut stmt =
             conn.prepare("SELECT DISTINCT MepsLanguageId FROM Publication ORDER BY 1")?;
-        let rows = stmt.query_map([], |r| r.get(0))?;
-        Ok(rows.collect::<Result<_, _>>()?)
+        let ids = stmt.query_map([], |r| r.get::<_, u32>(0))?;
+        let mut out = Vec::new();
+        for id in ids {
+            if let Some(language) = languages::by_meps_id(id?) {
+                out.push(language.clone());
+            }
+        }
+        Ok(out)
     }
 
     /// The `.jwpub` file the catalog lists for `pub_key`. Malformed key =>
     /// `Invalid`; not in the catalog (or no catalog) => `NotFound`.
     pub fn asset(&self, pub_key: &str) -> Result<CatalogAsset, CoreError> {
+        Ok(self.entry(pub_key)?.asset)
+    }
+
+    /// The catalog row `pub_key` resolves to. Malformed key => `Invalid`; not
+    /// in the catalog (or no catalog) => `NotFound`.
+    pub(crate) fn entry(&self, pub_key: &str) -> Result<CatalogEntry, CoreError> {
         let (symbol, lang, issue) = parse_pub_key(pub_key)?;
         let Some(conn) = self.open()? else {
             return Err(CoreError::NotFound);
         };
-        let asset = conn.query_row(
-            "SELECT a.Size, a.Signature, a.SchemaVersion, a.MinPlatformVersion, a.LastModified \
+        let entry = conn.query_row(
+            "SELECT a.Size, a.Signature, a.SchemaVersion, a.MinPlatformVersion, a.LastModified, \
+                    p.KeySymbol \
              FROM Publication p JOIN PublicationAsset a ON a.PublicationId = p.Id \
              WHERE p.MepsLanguageId = ?1 AND p.Symbol = ?2 AND p.IssueTagNumber = ?3 \
              ORDER BY a.LastModified DESC, p.Id LIMIT 1",
             rusqlite::params![lang, symbol, issue],
             |r| {
-                Ok(CatalogAsset {
-                    size: get_u64(r, 0)?,
-                    sha1: r.get(1)?,
-                    schema_version: r.get(2)?,
-                    min_platform_version: r.get(3)?,
-                    last_modified: r.get(4)?,
+                Ok(CatalogEntry {
+                    key_symbol: r.get(5)?,
+                    meps_language: lang,
+                    issue_tag: issue,
+                    asset: CatalogAsset {
+                        size: get_u64(r, 0)?,
+                        sha1: r.get(1)?,
+                        schema_version: r.get(2)?,
+                        min_platform_version: r.get(3)?,
+                        last_modified: r.get(4)?,
+                    },
                 })
             },
         )?;
-        Ok(asset)
+        Ok(entry)
     }
 
     /// Create the catalog directory and empty `.staging`, which only ever
@@ -390,7 +444,7 @@ mod tests {
         assert_eq!(kind_of(14), PubKind::Watchtower);
         assert_eq!(kind_of(13), PubKind::Awake);
         assert_eq!(kind_of(1), PubKind::Bible);
-        assert_eq!(kind_of(30), PubKind::Other);
+        assert_eq!(kind_of(30), PubKind::MeetingWorkbook);
         assert_eq!(kind_of(7), PubKind::Other);
     }
 }
