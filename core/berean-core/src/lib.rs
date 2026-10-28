@@ -10,8 +10,9 @@ pub mod library;
 pub mod search;
 pub mod userdata;
 
-use std::path::Path;
-use std::sync::Mutex;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use rusqlite::Connection;
 use rusqlite_migration::{Migrations, M};
@@ -76,10 +77,27 @@ impl From<rusqlite_migration::Error> for CoreError {
 }
 
 /// Forward-only migrations for the user-data DB, tracked with
-/// `PRAGMA user_version`. The initial migration is intentionally empty: it
-/// stamps the DB at version 1 without yet defining any tables.
+/// `PRAGMA user_version`. Only ever append. The initial migration is
+/// intentionally empty: it stamps the DB at version 1.
 fn migration_list() -> Vec<M<'static>> {
-    vec![M::up("")]
+    vec![
+        M::up(""),
+        // One row per publication in the store; `dir` is its directory under
+        // `publications/`, `installed_at` is Unix seconds.
+        M::up(
+            "CREATE TABLE installed_publication (
+                pub_key TEXT PRIMARY KEY NOT NULL,
+                symbol TEXT NOT NULL,
+                meps_language INTEGER NOT NULL,
+                issue_tag INTEGER NOT NULL,
+                year INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                publication_type TEXT NOT NULL,
+                dir TEXT NOT NULL UNIQUE,
+                installed_at INTEGER NOT NULL
+            );",
+        ),
+    ]
 }
 
 /// The schema version this build targets — i.e. the number of migrations the
@@ -88,10 +106,62 @@ pub fn user_db_schema() -> u32 {
     migration_list().len() as u32
 }
 
+/// Lets a caller stop a long-running call. The core checks it between steps;
+/// a call that sees it set fails with `Cancelled` and leaves nothing behind.
+#[derive(Debug, Default)]
+pub struct CancelToken(AtomicBool);
+
+impl CancelToken {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn cancel(&self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.0.load(Ordering::Relaxed)
+    }
+
+    /// `Err(Cancelled)` once cancelled.
+    pub(crate) fn check(&self) -> Result<(), CoreError> {
+        if self.is_cancelled() {
+            Err(CoreError::Cancelled)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+/// Receives progress from a long-running call: `done` of `total` steps.
+/// `total` is fixed for the call and `done` never decreases.
+pub trait ProgressSink {
+    fn on_progress(&self, done: u64, total: u64);
+}
+
+impl<F: Fn(u64, u64)> ProgressSink for F {
+    fn on_progress(&self, done: u64, total: u64) {
+        self(done, total)
+    }
+}
+
 /// The single shared handle to all core data. `Send + Sync`: the SQLite
 /// connection is behind a `Mutex`, so callers may use it from any thread.
 pub struct Core {
+    inner: Arc<Inner>,
+}
+
+/// State shared by `Core` and the handles it gives out.
+pub(crate) struct Inner {
     conn: Mutex<Connection>,
+    pub(crate) data_dir: PathBuf,
+}
+
+impl Inner {
+    pub(crate) fn conn(&self) -> MutexGuard<'_, Connection> {
+        self.conn.lock().expect("core connection mutex poisoned")
+    }
 }
 
 impl Core {
@@ -109,14 +179,22 @@ impl Core {
         let mut conn = Connection::open(data_dir.join("user.sqlite"))?;
         migrations().to_latest(&mut conn)?;
 
-        Ok(Core {
+        let inner = Arc::new(Inner {
             conn: Mutex::new(conn),
-        })
+            data_dir: data_dir.to_path_buf(),
+        });
+        library::Library::new(inner.clone()).prepare_store()?;
+        Ok(Core { inner })
+    }
+
+    /// The publication library.
+    pub fn library(&self) -> library::Library {
+        library::Library::new(self.inner.clone())
     }
 
     /// The user DB's actual schema version, read from `PRAGMA user_version`.
     pub fn db_version(&self) -> Result<u32, CoreError> {
-        let conn = self.conn.lock().expect("core connection mutex poisoned");
+        let conn = self.inner.conn();
         let v: u32 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         Ok(v)
     }
@@ -130,6 +208,13 @@ fn migrations() -> Migrations<'static> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn core_is_send_and_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<Core>();
+        assert_send_sync::<library::Library>();
+    }
 
     #[test]
     fn core_version_matches_cargo_pkg_version() {

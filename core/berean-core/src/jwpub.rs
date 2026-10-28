@@ -27,7 +27,7 @@
 //! - An unknown document id, or a document without content => `NotFound`.
 
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{Read, Write};
 use std::path::Path;
 
 use aes::cipher::{block_padding::Pkcs7, BlockDecryptMut, KeyIvInit};
@@ -148,38 +148,36 @@ struct ManifestPublication {
     language: i64,
 }
 
-/// An opened JWPUB. The database is extracted to a temp file that lives (and
-/// is deleted) with this value.
-pub struct Publication {
-    // Declared before `_db_file` so the connection closes before the file is
-    // deleted.
-    conn: Connection,
-    meta: PublicationMeta,
-    key: [u8; 16],
-    iv: [u8; 16],
-    _db_file: NamedTempFile,
+/// Name of the manifest inside a `.jwpub`, and of the copy kept beside an
+/// unpacked publication.
+const MANIFEST: &str = "manifest.json";
+
+/// A `.jwpub` whose `contents` hash has been checked against its manifest
+/// and whose `contents` zip holds the database the manifest names. The
+/// `contents` zip is copied to a temp file that lives (and is deleted) with
+/// this value.
+pub(crate) struct Container {
+    manifest_json: Vec<u8>,
+    manifest: Manifest,
+    // Declared before `_contents` so the archive's handle closes before the
+    // file is deleted.
+    inner: zip::ZipArchive<File>,
+    _contents: NamedTempFile,
 }
 
-impl Publication {
-    /// Open a `.jwpub`, extracting its database under the system temp dir.
-    pub fn open(path: impl AsRef<Path>) -> Result<Self, CoreError> {
-        Self::open_in(path, std::env::temp_dir())
-    }
-
-    /// Open a `.jwpub`, extracting its database under `temp_dir`.
-    pub fn open_in(path: impl AsRef<Path>, temp_dir: impl AsRef<Path>) -> Result<Self, CoreError> {
-        let temp_dir = temp_dir.as_ref();
+impl Container {
+    /// Open and verify a `.jwpub`, copying its `contents` under `temp_dir`.
+    pub(crate) fn open(path: impl AsRef<Path>, temp_dir: &Path) -> Result<Self, CoreError> {
         let mut outer = zip::ZipArchive::new(File::open(path)?).map_err(corrupt)?;
 
-        let manifest: Manifest = {
-            let mut text = String::new();
-            outer
-                .by_name("manifest.json")
-                .map_err(corrupt)?
-                .read_to_string(&mut text)
-                .map_err(corrupt)?;
-            serde_json::from_str(&text).map_err(corrupt)?
-        };
+        let mut manifest_json = Vec::new();
+        outer
+            .by_name(MANIFEST)
+            .map_err(corrupt)?
+            .read_to_end(&mut manifest_json)
+            .map_err(corrupt)?;
+        let manifest: Manifest = serde_json::from_slice(&manifest_json).map_err(corrupt)?;
+        check_file_name(&manifest.publication.file_name)?;
 
         // Copy `contents` out (it can be large) while hashing it.
         let mut contents = NamedTempFile::new_in(temp_dir)?;
@@ -193,21 +191,115 @@ impl Publication {
             return Err(CoreError::Corrupt);
         }
 
-        contents.as_file_mut().seek(SeekFrom::Start(0))?;
-        let mut inner = zip::ZipArchive::new(contents.as_file()).map_err(corrupt)?;
+        let inner = zip::ZipArchive::new(contents.reopen()?).map_err(corrupt)?;
+        if inner
+            .index_for_name(&manifest.publication.file_name)
+            .is_none()
+        {
+            return Err(CoreError::Corrupt);
+        }
+        Ok(Container {
+            manifest_json,
+            manifest,
+            inner,
+            _contents: contents,
+        })
+    }
+
+    /// The number of entries in `contents`.
+    pub(crate) fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    /// Write the manifest, byte for byte, to `dir/manifest.json`.
+    pub(crate) fn write_manifest(&self, dir: &Path) -> Result<(), CoreError> {
+        Ok(std::fs::write(dir.join(MANIFEST), &self.manifest_json)?)
+    }
+
+    /// Extract `contents` entry `index` under `dir`. A name that is absolute,
+    /// climbs out with `..`, or collides with a file already there (a
+    /// duplicate entry, or `manifest.json`) => `Corrupt`.
+    pub(crate) fn unpack_entry(&mut self, index: usize, dir: &Path) -> Result<(), CoreError> {
+        let entry = self.inner.by_index(index).map_err(corrupt)?;
+        let dest = dir.join(entry.enclosed_name().ok_or(CoreError::Corrupt)?);
+        if entry.is_dir() {
+            std::fs::create_dir_all(dest)?;
+            return Ok(());
+        }
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&dest)
+            .map_err(|e| match e.kind() {
+                std::io::ErrorKind::AlreadyExists => CoreError::Corrupt,
+                _ => e.into(),
+            })?;
+        copy_entry(entry, &mut file, None)
+    }
+}
+
+/// An opened JWPUB: either a `.jwpub` file, whose database is extracted to a
+/// temp file that lives (and is deleted) with this value, or an unpacked
+/// publication directory.
+pub struct Publication {
+    // Declared before `_db_file` so the connection closes before the file is
+    // deleted.
+    conn: Connection,
+    meta: PublicationMeta,
+    key: [u8; 16],
+    iv: [u8; 16],
+    _db_file: Option<NamedTempFile>,
+}
+
+impl Publication {
+    /// Open a `.jwpub`, extracting its database under the system temp dir.
+    pub fn open(path: impl AsRef<Path>) -> Result<Self, CoreError> {
+        Self::open_in(path, std::env::temp_dir())
+    }
+
+    /// Open a `.jwpub`, extracting its database under `temp_dir`.
+    pub fn open_in(path: impl AsRef<Path>, temp_dir: impl AsRef<Path>) -> Result<Self, CoreError> {
+        let temp_dir = temp_dir.as_ref();
+        let mut container = Container::open(path, temp_dir)?;
         let mut db_file = NamedTempFile::new_in(temp_dir)?;
         copy_entry(
-            inner
-                .by_name(&manifest.publication.file_name)
+            container
+                .inner
+                .by_name(&container.manifest.publication.file_name)
                 .map_err(corrupt)?,
             db_file.as_file_mut(),
             None,
         )?;
-        drop(inner);
-        drop(contents);
+        let Container { manifest, .. } = container;
+        let db = db_file.path().to_path_buf();
+        Self::from_db(&db, &manifest, Some(db_file))
+    }
 
+    /// Open a publication unpacked into `dir`: its `contents` entries plus
+    /// `manifest.json`, as the library stores it. The `contents` hash is not
+    /// re-checked; the manifest/database identity is. A missing manifest or
+    /// database => `Io`; otherwise errors map as for [`Publication::open`].
+    pub fn open_dir(dir: impl AsRef<Path>) -> Result<Self, CoreError> {
+        let dir = dir.as_ref();
+        let manifest: Manifest =
+            serde_json::from_slice(&std::fs::read(dir.join(MANIFEST))?).map_err(corrupt)?;
+        check_file_name(&manifest.publication.file_name)?;
+        let db = dir.join(&manifest.publication.file_name);
+        // SQLite would report a missing file as a generic open failure.
+        std::fs::metadata(&db)?;
+        Self::from_db(&db, &manifest, None)
+    }
+
+    fn from_db(
+        db: &Path,
+        manifest: &Manifest,
+        db_file: Option<NamedTempFile>,
+    ) -> Result<Self, CoreError> {
         let conn = Connection::open_with_flags(
-            db_file.path(),
+            db,
             OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
         )?;
         let meta = read_meta(&conn)?;
@@ -582,6 +674,89 @@ fn db_err(e: rusqlite::Error) -> CoreError {
     }
 }
 
+/// The manifest's database name must be a plain file name, so it can only
+/// ever name a file directly inside an unpacked publication's directory.
+fn check_file_name(name: &str) -> Result<(), CoreError> {
+    let mut parts = Path::new(name).components();
+    match (parts.next(), parts.next()) {
+        (Some(std::path::Component::Normal(_)), None) => Ok(()),
+        _ => Err(CoreError::Corrupt),
+    }
+}
+
 fn corrupt<E>(_: E) -> CoreError {
     CoreError::Corrupt
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zip::write::SimpleFileOptions;
+
+    fn zip_bytes(entries: &[(&str, &[u8])]) -> Vec<u8> {
+        let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        for (name, data) in entries {
+            w.start_file(*name, SimpleFileOptions::default()).unwrap();
+            w.write_all(data).unwrap();
+        }
+        w.finish().unwrap().into_inner()
+    }
+
+    /// A container whose `contents` holds `t.db` plus `extra`.
+    fn container(dir: &Path, extra: &str) -> Container {
+        let contents = zip_bytes(&[("t.db", b"db"), (extra, b"x")]);
+        let manifest = format!(
+            r#"{{"hash":"{}","publication":{{"fileName":"t.db","symbol":"t","language":0}}}}"#,
+            hex::encode(Sha256::digest(&contents))
+        );
+        let path = dir.join("t.jwpub");
+        std::fs::write(
+            &path,
+            zip_bytes(&[
+                ("manifest.json", manifest.as_bytes()),
+                ("contents", &contents),
+            ]),
+        )
+        .unwrap();
+        Container::open(&path, dir).unwrap()
+    }
+
+    #[test]
+    fn unpack_rejects_escaping_and_colliding_names() {
+        for name in ["../evil", "a/../../evil", "/abs", "manifest.json"] {
+            let tmp = tempfile::tempdir().unwrap();
+            let out = tmp.path().join("out");
+            std::fs::create_dir(&out).unwrap();
+            let mut c = container(tmp.path(), name);
+            c.write_manifest(&out).unwrap();
+            c.unpack_entry(0, &out).unwrap();
+            let err = c.unpack_entry(1, &out).unwrap_err();
+            assert!(matches!(err, CoreError::Corrupt), "{name}: {err:?}");
+            assert!(!tmp.path().join("evil").exists(), "{name}");
+        }
+    }
+
+    #[test]
+    fn unpack_keeps_subdirectories() {
+        let tmp = tempfile::tempdir().unwrap();
+        let out = tmp.path().join("out");
+        std::fs::create_dir(&out).unwrap();
+        let mut c = container(tmp.path(), "img/a.jpg");
+        for i in 0..c.len() {
+            c.unpack_entry(i, &out).unwrap();
+        }
+        assert_eq!(std::fs::read(out.join("img/a.jpg")).unwrap(), b"x");
+        assert_eq!(std::fs::read(out.join("t.db")).unwrap(), b"db");
+    }
+
+    #[test]
+    fn manifest_file_name_must_be_plain() {
+        for name in ["../t.db", "a/t.db", "/t.db", ""] {
+            assert!(
+                matches!(check_file_name(name), Err(CoreError::Corrupt)),
+                "{name:?}"
+            );
+        }
+        check_file_name("t.db").unwrap();
+    }
 }

@@ -1,25 +1,15 @@
 //! Tests against real JW Library publications. The fixtures are not committed:
 //! run `core/scripts/fetch-fixtures.sh` to download them into `core/fixtures/`.
 
+mod common;
+
 use std::io::Read;
-use std::path::PathBuf;
 
 use berean_core::jwpub::{Publication, PublicationMeta};
+use common::fixture;
 use rusqlite::Connection;
 
 const ALL: [&str; 3] = ["w_E_202608.jwpub", "w_S_202608.jwpub", "ll_E.jwpub"];
-
-fn fixture(name: &str) -> PathBuf {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../fixtures")
-        .join(name);
-    assert!(
-        path.is_file(),
-        "fixture missing: run core/scripts/fetch-fixtures.sh ({})",
-        path.display()
-    );
-    path
-}
 
 fn open(name: &str) -> Publication {
     Publication::open(fixture(name)).unwrap_or_else(|e| panic!("open {name}: {e:?}"))

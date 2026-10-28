@@ -17,3 +17,6 @@ crate-type = ["staticlib", "cdylib", "lib"]
 berean-core = { path = "../berean-core" }
 thiserror = { workspace = true }
 uniffi = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
