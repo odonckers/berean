@@ -31,6 +31,22 @@ When you select a verse in the Bible reader, the chapter splits open at that ver
 | **Loading** | Skeleton lines appear in the body at the final height, so there's no second layout jump. | Show nothing for the first 150 ms to avoid flicker. |
 | **Error** | A one-line message ("Couldn't load study notes") with a Retry button. Other tabs still work. | Errors are per tab, not per pane. |
 
+### Research Guide connections
+
+The **Research** tab shows the Research Guide's references for the selected verse (or merged range). It sits with the other content tabs; My notes stays pinned at the bottom of the pane below it, as on every tab.
+
+| Situation | What you see | Notes |
+| --- | --- | --- |
+| **Installed, has references** | A list grouped by topic heading, in the guide's order. Each row shows the publication title, the paragraph or page reference, and a one-line snippet when available. | Tapping a row previews the reference inline in the pane body (back button in the pane header); a second action opens it in the reader. References to publications that aren't downloaded use the same inline download row as **Not downloaded**. |
+| **Installed, no references for this verse** | The Research tab is hidden, like any empty tab. | Consistent with "tabs with no content are hidden". |
+| **Not installed** | The Research tab stays visible (the one exception to hiding empty tabs) and shows a single inline suggestion row: "Research Guide references are available for this verse. Install Research Guide (size)". | Same interaction as **Not downloaded**: a progress ring in place, then the references fill in without reopening the pane. Never a modal, sheet, or alert, and it never blocks reading. |
+| **Not installed, dismissed** | After "Not now", the Research tab is hidden on future verses and a quiet "Research Guide" entry remains in the pane's overflow menu. | Dismissal is remembered on the device and can be undone in Settings. |
+| **Installed for another language** | Treated as not installed for the current Bible language, with the suggestion naming the language. | |
+
+- **Multi-verse:** references merge and de-duplicate across the range, grouped by verse, then topic.
+- **Accessibility:** each row reads as "publication, reference, snippet". The install row is a single button with its size in the label, and VoiceOver announces "Research Guide installed" when the download finishes.
+- **Keyboard:** Research is one of the ⌘1–⌘4 tab shortcuts. Return opens the focused row's preview.
+
 ## 3. Gestures and input
 
 | Input | iPhone | iPad | Mac |
