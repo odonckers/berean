@@ -1,3 +1,22 @@
+# Pinned test fixtures, fetched into core/fixtures/ by fetch-fixtures.sh:
+# `<sha256>  <file name>  <url>` per line; `#` lines are comments.
+#
+# Old snapshots may vanish from the CDN, so the CI fixtures cache is what
+# keeps them. Its key is the pinned SHA-256s only (comment edits don't change
+# it) and it restores from older keys, so re-pinning one file keeps the rest.
+# To re-pin a file: download the new one, `sha256sum` it, update its line
+# here, and update the test expectations that depend on it.
 c210afb79382d6ed73067bc4a83b5ebb92a0f2bf1f06f32430f70f4f797a1c3b  w_E_202608.jwpub  https://cfp2.jw-cdn.org/a/d1b56ee/2/o/w_E_202608.jwpub
 c8253d47d03ccab3c8e44f38f9bd373c4b193682146f7b1b7b87e00775cbd514  w_S_202608.jwpub  https://cfp2.jw-cdn.org/a/1e7c39/4/o/w_S_202608.jwpub
 039b6b3b69d244f66ed4c47299222ba7139d467399ba667d400d9cf5c5fd1284  ll_E.jwpub  https://cfp2.jw-cdn.org/a/33502e/2/o/ll_E.jwpub
+# The publication catalog snapshot. Its GUID rotates with every new catalog
+# and the CDN may drop old snapshots. Re-pinning means updating this line and
+# the expectations in berean-core/tests/catalog.rs (revision level, titles,
+# sizes, checksums) — and regenerating berean-core/src/languages.tsv with
+# gen-languages.py if the catalog gained languages.
+c55762f49cc53f8d6af06115a542d63021633161a974b23c163b8183ef00ee45  catalog-v5-ffa78686.db.gz  https://app.jw-cdn.org/catalogs/publications/v5/ffa78686-d029-4d91-8b72-c90d9f9526be/catalog.db.gz
+# Recorded pub-media (GETPUBMEDIALINKS) replies for the .jwpub fixtures
+# above; the download-plan tests in berean-core/tests/catalog.rs read them.
+1f057e75cf10072d05c175a3dd5803acc23ff2054fd5e3a231a3ca6ba50d643a  pubmedia-w_E_202608.json  https://b.jw-cdn.org/apis/pub-media/GETPUBMEDIALINKS?output=json&fileformat=JWPUB&pub=w&langwritten=E&issue=202608
+9a103b79e5555ac1ea449c54b8311e7536cc7b324d6e422c46acf55c5f3f4814  pubmedia-w_S_202608.json  https://b.jw-cdn.org/apis/pub-media/GETPUBMEDIALINKS?output=json&fileformat=JWPUB&pub=w&langwritten=S&issue=202608
+36c107335bf866f346078075221eea620d4f9a64054237e3b6771c088d3bbf40  pubmedia-ll_E.json  https://b.jw-cdn.org/apis/pub-media/GETPUBMEDIALINKS?output=json&fileformat=JWPUB&pub=ll&langwritten=E

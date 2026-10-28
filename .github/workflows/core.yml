@@ -27,10 +27,21 @@ jobs:
         with:
           workspaces: core
 
+      - name: Fixtures cache key
+        # Only the pinned SHA-256s (first column of the non-comment lines), so
+        # comment edits don't bust the cache.
+        id: fixtures-key
+        run: |
+          sums=$(grep -v -e '^#' -e '^[[:space:]]*$' scripts/fixtures.txt | awk '{print $1}' | sha256sum | cut -d' ' -f1)
+          echo "key=jwpub-fixtures-$sums" >> "$GITHUB_OUTPUT"
+
       - uses: actions/cache@v4
         with:
           path: core/fixtures
-          key: jwpub-fixtures-${{ hashFiles('core/scripts/fixtures.txt') }}
+          key: ${{ steps.fixtures-key.outputs.key }}
+          # A re-pin of one file still restores the others: old snapshots may
+          # be gone from the CDN, and the fetch script re-verifies every hash.
+          restore-keys: jwpub-fixtures-
 
       - name: Fetch fixtures
         # Verifies every cached file's hash and downloads anything missing.

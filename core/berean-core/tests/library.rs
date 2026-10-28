@@ -285,17 +285,6 @@ fn progress_is_monotonic_and_completes() {
 }
 
 #[test]
-fn plan_download_is_not_available_yet() {
-    let env = Env::new();
-    let lib = env.core().library();
-    assert!(matches!(lib.plan_download(W_E), Err(CoreError::NotFound)));
-    assert!(matches!(
-        lib.plan_download("w26"),
-        Err(CoreError::Invalid(_))
-    ));
-}
-
-#[test]
 fn reopen_clears_leftovers() {
     let env = Env::new();
     let core = env.core();

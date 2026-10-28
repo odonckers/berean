@@ -1,11 +1,13 @@
 //! Berean core: owns all on-device data (the user-data SQLite DB, the
 //! downloaded publication store, and the search index). Callers see only this
-//! API — never a path into the data or any SQL. Network transfer lives outside
-//! the core: it produces download plans and later consumes the resulting files
-//! from disk.
+//! API — never a path into the data or any SQL. The core never does
+//! networking: it says which requests to make (`Library::download_request`),
+//! turns their replies into download plans (`Library::plan_download`), and
+//! later consumes the downloaded files from disk.
 
 pub mod catalog;
 pub mod jwpub;
+pub mod languages;
 pub mod library;
 pub mod search;
 pub mod userdata;
@@ -184,12 +186,18 @@ impl Core {
             data_dir: data_dir.to_path_buf(),
         });
         library::Library::new(inner.clone()).prepare_store()?;
+        catalog::Catalog::new(inner.clone()).prepare_dir()?;
         Ok(Core { inner })
     }
 
     /// The publication library.
     pub fn library(&self) -> library::Library {
         library::Library::new(self.inner.clone())
+    }
+
+    /// The publication catalog.
+    pub fn catalog(&self) -> catalog::Catalog {
+        catalog::Catalog::new(self.inner.clone())
     }
 
     /// The user DB's actual schema version, read from `PRAGMA user_version`.

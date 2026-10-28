@@ -1,6 +1,16 @@
-//! Library: verifies, unpacks and records the publication files provided to
-//! it, and tracks what is installed. Download planning arrives with the
-//! catalog.
+//! Library: plans publication downloads, verifies, unpacks and records the
+//! publication files provided to it, and tracks what is installed.
+//!
+//! # Downloads
+//!
+//! The core never does networking. To download a publication the caller
+//! asks [`Library::download_request`] for a pub-media request, which is
+//! built from the publication's catalog row and the language table, fetches
+//! it, and hands the reply to [`Library::plan_download`]. That picks the
+//! `.jwpub` the reply lists and checks it against the catalog; the caller
+//! downloads the plan's file and passes it to [`Library::install`].
+//!
+//! # Store
 //!
 //! Each installed publication is unpacked into its own directory under
 //! `publications/` in the data dir: the `.jwpub`'s `contents` entries (the
@@ -23,14 +33,18 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::{params, OptionalExtension};
+use serde::Deserialize;
 use tempfile::TempDir;
 
+use crate::catalog::{Catalog, CatalogEntry};
 use crate::jwpub::{Container, Publication, PublicationMeta};
+use crate::languages;
 use crate::{CancelToken, CoreError, Inner, ProgressSink};
 
 const STORE: &str = "publications";
 const STAGING: &str = ".staging";
 const TRASH: &str = ".trash";
+const PUB_MEDIA: &str = "https://b.jw-cdn.org/apis/pub-media/GETPUBMEDIALINKS";
 
 /// The broad kind of a publication, from its `PublicationType`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,6 +55,7 @@ pub enum PubKind {
     Watchtower,
     Awake,
     Index,
+    MeetingWorkbook,
     Other,
 }
 
@@ -53,6 +68,7 @@ impl PubKind {
             "Watchtower" => PubKind::Watchtower,
             "Awake" | "Awake!" => PubKind::Awake,
             "Index" => PubKind::Index,
+            "Meeting Workbook" => PubKind::MeetingWorkbook,
             _ => PubKind::Other,
         }
     }
@@ -70,12 +86,45 @@ pub struct PublicationSummary {
     pub kind: PubKind,
 }
 
-/// Where and how to download a publication.
+/// An HTTP GET for the caller to make and return the reply body of.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HttpRequest {
+    pub url: String,
+}
+
+/// Where to download a publication's `.jwpub`, and what to expect.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DownloadPlan {
     pub url: String,
+    /// File size in bytes, as the catalog lists it.
     pub size: u64,
+    /// SHA-1 of the file, hex, as the catalog lists it. (Pub-media gives only
+    /// an MD5; the catalog's SHA-1 is the stronger check.)
     pub checksum: String,
+}
+
+/// The parts of a pub-media `GETPUBMEDIALINKS` reply the core reads:
+/// `{"files": {"<code>": {"JWPUB": [{"file": {"url": …}, "filesize": …}]}}}`.
+#[derive(Deserialize)]
+struct PubMediaReply {
+    files: std::collections::HashMap<String, PubMediaFormats>,
+}
+
+#[derive(Deserialize)]
+struct PubMediaFormats {
+    #[serde(rename = "JWPUB", default)]
+    jwpub: Vec<PubMediaFile>,
+}
+
+#[derive(Deserialize)]
+struct PubMediaFile {
+    file: PubMediaLink,
+    filesize: u64,
+}
+
+#[derive(Deserialize)]
+struct PubMediaLink {
+    url: String,
 }
 
 /// Handle to the publication store. Cheap to clone; shares the core's state.
@@ -128,7 +177,7 @@ impl Library {
 
         cancel.check()?;
         let meta = Publication::open_dir(&unpacked)?.meta().clone();
-        let key = pub_key_of(&meta);
+        let key = meta.pub_key();
         if key != pub_key {
             return Err(CoreError::Invalid(format!(
                 "file is publication {key}, not {pub_key}"
@@ -206,11 +255,62 @@ impl Library {
         Ok(())
     }
 
-    /// Where to download a publication. Not available until the catalog
-    /// exists: always `NotFound` for a well-formed key.
-    pub fn plan_download(&self, pub_key: &str) -> Result<DownloadPlan, CoreError> {
-        dir_name(pub_key)?;
-        Err(CoreError::NotFound)
+    /// The pub-media request that lists `pub_key`'s `.jwpub`:
+    /// `GETPUBMEDIALINKS?output=json&fileformat=JWPUB&pub=<KeySymbol>`
+    /// `&langwritten=<code>`, plus an `&issue=` for a dated issue. pub-media
+    /// matches the issue at the tag's own precision: a month-level tag
+    /// (`IssueTagNumber` ending in `00`, e.g. `20260800`) is sent as `YYYYMM`
+    /// (`202608`); a day-level tag (e.g. `20151215`) is sent whole, as
+    /// `YYYYMMDD` (`issue=201512` lists nothing for it). An `IssueTagNumber`
+    /// of 0 sends no issue. Malformed key => `Invalid`; not in the catalog
+    /// (or no catalog), or a language the language table does not map =>
+    /// `NotFound`.
+    pub fn download_request(&self, pub_key: &str) -> Result<HttpRequest, CoreError> {
+        let entry = self.catalog().entry(pub_key)?;
+        let code = language_code(&entry)?;
+        let mut url = format!(
+            "{PUB_MEDIA}?output=json&fileformat=JWPUB&pub={}&langwritten={}",
+            query_value(&entry.key_symbol),
+            query_value(code)
+        );
+        match entry.issue_tag {
+            0 => {}
+            tag if tag % 100 == 0 => url.push_str(&format!("&issue={}", tag / 100)),
+            tag => url.push_str(&format!("&issue={tag}")),
+        }
+        Ok(HttpRequest { url })
+    }
+
+    /// Where to download `pub_key`, from the reply to its
+    /// [`download_request`](Self::download_request): the reply's `.jwpub`
+    /// for the publication's language whose size is the catalog's. The plan
+    /// carries the catalog's size and SHA-1.
+    ///
+    /// Malformed key => `Invalid`; not in the catalog, or the reply lists no
+    /// `.jwpub` in its language => `NotFound`; an unreadable reply, or none
+    /// of its files has the catalog's size => `Corrupt`.
+    pub fn plan_download(&self, pub_key: &str, response: &[u8]) -> Result<DownloadPlan, CoreError> {
+        let entry = self.catalog().entry(pub_key)?;
+        let code = language_code(&entry)?;
+        let reply: PubMediaReply =
+            serde_json::from_slice(response).map_err(|_| CoreError::Corrupt)?;
+        let files = reply
+            .files
+            .get(code)
+            .map(|f| f.jwpub.as_slice())
+            .unwrap_or_default();
+        if files.is_empty() {
+            return Err(CoreError::NotFound);
+        }
+        let file = files
+            .iter()
+            .find(|f| f.filesize == entry.asset.size)
+            .ok_or(CoreError::Corrupt)?;
+        Ok(DownloadPlan {
+            url: file.file.url.clone(),
+            size: entry.asset.size,
+            checksum: entry.asset.sha1,
+        })
     }
 
     /// Open an installed publication from the store. Malformed key =>
@@ -309,11 +409,61 @@ impl Library {
     fn store(&self) -> PathBuf {
         self.inner.data_dir.join(STORE)
     }
+
+    fn catalog(&self) -> Catalog {
+        Catalog::new(self.inner.clone())
+    }
 }
 
-/// The key of the publication `meta` describes.
-pub(crate) fn pub_key_of(meta: &PublicationMeta) -> String {
-    format!("{}:{}:{}", meta.symbol, meta.meps_language, meta.issue_tag)
+/// The JW code of a catalog row's language. Unmapped => `NotFound`.
+fn language_code(entry: &CatalogEntry) -> Result<&'static str, CoreError> {
+    languages::by_meps_id(entry.meps_language)
+        .map(|l| l.code.as_str())
+        .ok_or(CoreError::NotFound)
+}
+
+/// Percent-encode a URL query value: every byte outside the unreserved set.
+fn query_value(s: &str) -> String {
+    let mut out = String::new();
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                out.push(b as char)
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
+impl PublicationMeta {
+    /// This publication's key.
+    pub fn pub_key(&self) -> String {
+        format_pub_key(&self.symbol, self.meps_language, self.issue_tag)
+    }
+}
+
+/// Build a publication key, `{symbol}:{meps_language}:{issue_tag}`. The only
+/// place a key is formatted; [`parse_pub_key`] is the only place one is read.
+pub(crate) fn format_pub_key(symbol: &str, meps_language: u32, issue_tag: u32) -> String {
+    format!("{symbol}:{meps_language}:{issue_tag}")
+}
+
+/// Split a key into its symbol, MEPS language and issue tag. Both numbers
+/// must be canonical decimal `u32`s, so every key has one spelling. A
+/// malformed key => `Invalid`.
+pub(crate) fn parse_pub_key(pub_key: &str) -> Result<(&str, u32, u32), CoreError> {
+    let invalid = || CoreError::Invalid(format!("malformed publication key {pub_key:?}"));
+    // Numbers come off the right, so the symbol itself may contain `:`.
+    let mut parts = pub_key.rsplitn(3, ':');
+    let (Some(issue), Some(lang), Some(symbol)) = (parts.next(), parts.next(), parts.next()) else {
+        return Err(invalid());
+    };
+    let canonical_u32 = |s: &str| s.parse::<u32>().ok().filter(|n| n.to_string() == s);
+    match (canonical_u32(lang), canonical_u32(issue)) {
+        (Some(lang), Some(issue)) if !symbol.is_empty() => Ok((symbol, lang, issue)),
+        _ => Err(invalid()),
+    }
 }
 
 /// Validate a key and derive its store directory name: the symbol with every
@@ -322,16 +472,7 @@ pub(crate) fn pub_key_of(meta: &PublicationMeta) -> String {
 /// keys give names that differ even on case-insensitive file systems.
 /// A malformed key => `Invalid`.
 fn dir_name(pub_key: &str) -> Result<String, CoreError> {
-    let invalid = || CoreError::Invalid(format!("malformed publication key {pub_key:?}"));
-    // Numbers come off the right, so the symbol itself may contain `:`.
-    let mut parts = pub_key.rsplitn(3, ':');
-    let (Some(issue), Some(lang), Some(symbol)) = (parts.next(), parts.next(), parts.next()) else {
-        return Err(invalid());
-    };
-    let canonical_u32 = |s: &str| s.parse::<u32>().is_ok_and(|n| n.to_string() == s);
-    if symbol.is_empty() || !canonical_u32(lang) || !canonical_u32(issue) {
-        return Err(invalid());
-    }
+    let (symbol, lang, issue) = parse_pub_key(pub_key)?;
     let mut name = String::new();
     for b in symbol.bytes() {
         match b {
@@ -342,7 +483,7 @@ fn dir_name(pub_key: &str) -> Result<String, CoreError> {
     Ok(format!("{name}_{lang}_{issue}"))
 }
 
-fn remove_path(path: &Path) -> std::io::Result<()> {
+pub(crate) fn remove_path(path: &Path) -> std::io::Result<()> {
     if path.is_dir() {
         std::fs::remove_dir_all(path)
     } else {
@@ -363,6 +504,15 @@ mod tests {
         assert_eq!(dir_name("a:b:0:0").unwrap(), "a^3ab_0_0");
         assert_eq!(dir_name("..:0:0").unwrap(), "^2e^2e_0_0");
         assert_ne!(dir_name("W:0:0").unwrap(), dir_name("w:0:0").unwrap());
+    }
+
+    #[test]
+    fn pub_keys_round_trip() {
+        for (symbol, lang, issue) in [("w26", 0, 20260800), ("ll", 0, 0), ("a:b", 1, 2)] {
+            let key = format_pub_key(symbol, lang, issue);
+            assert_eq!(parse_pub_key(&key).unwrap(), (symbol, lang, issue));
+        }
+        assert_eq!(format_pub_key("w26", 0, 20260800), "w26:0:20260800");
     }
 
     #[test]
@@ -387,6 +537,13 @@ mod tests {
     }
 
     #[test]
+    fn query_values() {
+        assert_eq!(query_value("w"), "w");
+        assert_eq!(query_value("S-38"), "S-38");
+        assert_eq!(query_value("a&b=c d"), "a%26b%3Dc%20d");
+    }
+
+    #[test]
     fn pub_kinds() {
         assert_eq!(
             PubKind::from_publication_type("Watchtower"),
@@ -394,6 +551,10 @@ mod tests {
         );
         assert_eq!(PubKind::from_publication_type("Bible"), PubKind::Bible);
         assert_eq!(PubKind::from_publication_type("Awake!"), PubKind::Awake);
+        assert_eq!(
+            PubKind::from_publication_type("Meeting Workbook"),
+            PubKind::MeetingWorkbook
+        );
         assert_eq!(PubKind::from_publication_type("Tract"), PubKind::Other);
     }
 }
