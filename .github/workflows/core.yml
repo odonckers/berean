@@ -27,6 +27,15 @@ jobs:
         with:
           workspaces: core
 
+      - uses: actions/cache@v4
+        with:
+          path: core/fixtures
+          key: jwpub-fixtures-${{ hashFiles('core/scripts/fixtures.txt') }}
+
+      - name: Fetch fixtures
+        # Verifies every cached file's hash and downloads anything missing.
+        run: scripts/fetch-fixtures.sh
+
       - name: Format
         run: cargo fmt --all --check
 
