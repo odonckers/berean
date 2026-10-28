@@ -100,6 +100,22 @@ fn migration_list() -> Vec<M<'static>> {
                 installed_at INTEGER NOT NULL
             );",
         ),
+        // The search index (see `search`): one row per verse or paragraph of
+        // an installed publication. Only `text` is searched; the rest says
+        // where the row is.
+        M::up(
+            "CREATE VIRTUAL TABLE search_index USING fts5(
+                text,
+                title UNINDEXED,
+                pub_key UNINDEXED,
+                doc_id UNINDEXED,
+                book UNINDEXED,
+                chapter UNINDEXED,
+                verse UNINDEXED,
+                paragraph UNINDEXED,
+                tokenize = 'unicode61 remove_diacritics 2'
+            );",
+        ),
     ]
 }
 
@@ -225,6 +241,11 @@ impl Core {
         reader::Reader::new(self.inner.clone())
     }
 
+    /// Full-text search over the installed publications.
+    pub fn search(&self) -> search::Search {
+        search::Search::new(self.inner.clone())
+    }
+
     /// The user DB's actual schema version, read from `PRAGMA user_version`.
     pub fn db_version(&self) -> Result<u32, CoreError> {
         let conn = self.inner.conn();
@@ -248,6 +269,7 @@ mod tests {
         assert_send_sync::<Core>();
         assert_send_sync::<library::Library>();
         assert_send_sync::<reader::Reader>();
+        assert_send_sync::<search::Search>();
     }
 
     #[test]

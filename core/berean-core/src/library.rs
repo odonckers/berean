@@ -19,7 +19,8 @@
 //! the directory the current record points at. The `installed_publication`
 //! row is the commit point: an install unpacks into `publications/.staging/`,
 //! moves the finished directory into `publications/`, then switches the row
-//! to it in one transaction; only then is the replaced directory moved to
+//! to it, and its search index rows to the new copy's, in one transaction;
+//! only then is the replaced directory moved to
 //! `publications/.trash/` and deleted. Opening the core empties `.staging`
 //! and `.trash` and deletes any directory no row points at, so a crash at any
 //! point leaves either the old or the new publication installed, never a
@@ -39,6 +40,7 @@ use tempfile::TempDir;
 use crate::catalog::{Catalog, CatalogEntry};
 use crate::jwpub::{Container, Publication, PublicationMeta};
 use crate::languages;
+use crate::search::{self, IndexRow, INDEX_STEPS};
 use crate::{CancelToken, CoreError, Inner, ProgressSink};
 
 const STORE: &str = "publications";
@@ -62,7 +64,7 @@ pub enum PubKind {
 }
 
 impl PubKind {
-    fn from_publication_type(t: &str) -> Self {
+    pub(crate) fn from_publication_type(t: &str) -> Self {
         match t {
             "Bible" => PubKind::Bible,
             "Book" => PubKind::Book,
@@ -141,13 +143,15 @@ impl Library {
     }
 
     /// Verify the `.jwpub` at `file_path`, check it is the publication
-    /// `pub_key` names, unpack it into the store and record it, replacing any
-    /// installed copy. Progress counts opening and verifying the file, each
-    /// unpacked entry, checking the unpacked copy, and committing.
+    /// `pub_key` names, unpack it into the store, index it for search and
+    /// record it, replacing any installed copy and its index rows. Progress
+    /// counts opening and verifying the file, each unpacked entry, checking
+    /// the unpacked copy, a fixed 100 steps for indexing it, and committing.
     ///
     /// A malformed key, or a file that is a different publication =>
-    /// `Invalid`; a damaged file => `Corrupt`; cancelled => `Cancelled`. On
-    /// any error the store is unchanged.
+    /// `Invalid`; a damaged file (including content the reader cannot read)
+    /// => `Corrupt`; cancelled => `Cancelled`. On any error the store and
+    /// the search index are unchanged.
     pub fn install(
         &self,
         pub_key: &str,
@@ -166,7 +170,7 @@ impl Library {
 
         let mut container = Container::open(file_path, staging.path())?;
         let entries = container.len() as u64;
-        let total = entries + 3;
+        let total = entries + 3 + INDEX_STEPS;
         progress.on_progress(1, total);
 
         container.write_manifest(&unpacked)?;
@@ -178,7 +182,8 @@ impl Library {
         drop(container);
 
         cancel.check()?;
-        let meta = Publication::open_dir(&unpacked)?.meta().clone();
+        let publication = Publication::open_dir(&unpacked)?;
+        let meta = publication.meta().clone();
         let key = meta.pub_key();
         if key != pub_key {
             return Err(CoreError::Invalid(format!(
@@ -186,6 +191,9 @@ impl Library {
             )));
         }
         progress.on_progress(entries + 2, total);
+
+        let rows = search::index_rows(&publication, progress, entries + 2, total, cancel)?;
+        drop(publication);
 
         cancel.check()?;
         // `.tmpXXXXXX`: unique within `.staging`, and in practice in the store.
@@ -198,7 +206,7 @@ impl Library {
         let installed_dir = store.join(&dir);
         std::fs::rename(&unpacked, &installed_dir)?;
 
-        let replaced = match self.record(pub_key, &meta, &dir) {
+        let replaced = match self.record(pub_key, &meta, &dir, &rows) {
             Ok(replaced) => replaced,
             Err(e) => {
                 // Not recorded: the new directory is an orphan; drop it.
@@ -235,7 +243,8 @@ impl Library {
         Ok(rows.collect::<Result<_, _>>()?)
     }
 
-    /// Uninstall a publication: drop its record and delete its directory.
+    /// Uninstall a publication: drop its record and search index rows, and
+    /// delete its directory.
     /// Malformed key => `Invalid`; not installed => `NotFound`.
     pub fn remove(&self, pub_key: &str) -> Result<(), CoreError> {
         dir_name(pub_key)?;
@@ -251,6 +260,7 @@ impl Library {
                 "DELETE FROM installed_publication WHERE pub_key = ?1",
                 [pub_key],
             )?;
+            search::delete_rows(&tx, pub_key)?;
             tx.commit()?;
             dir
         };
@@ -320,13 +330,23 @@ impl Library {
     /// Open an installed publication from the store. Malformed key =>
     /// `Invalid`; not installed => `NotFound`.
     pub fn publication(&self, pub_key: &str) -> Result<Publication, CoreError> {
+        Ok(self.publication_and_dir(pub_key)?.1)
+    }
+
+    /// [`publication`](Self::publication), opened afresh (not from the
+    /// cache), with the store directory it was opened from.
+    pub(crate) fn publication_and_dir(
+        &self,
+        pub_key: &str,
+    ) -> Result<(String, Publication), CoreError> {
         dir_name(pub_key)?;
         let dir: String = self.inner.conn().query_row(
             "SELECT dir FROM installed_publication WHERE pub_key = ?1",
             [pub_key],
             |r| r.get(0),
         )?;
-        Publication::open_dir(self.store().join(dir))
+        let publication = Publication::open_dir(self.store().join(&dir))?;
+        Ok((dir, publication))
     }
 
     /// Run `f` on the installed publication `pub_key`. The publication is
@@ -414,13 +434,15 @@ impl Library {
         Ok(())
     }
 
-    /// Insert or replace the record for `pub_key`, pointing at `dir`.
-    /// Returns the directory the replaced record pointed at, if any.
+    /// Insert or replace the record for `pub_key`, pointing at `dir`, and
+    /// its search index rows with `rows`, in one transaction. Returns the
+    /// directory the replaced record pointed at, if any.
     fn record(
         &self,
         pub_key: &str,
         meta: &PublicationMeta,
         dir: &str,
+        rows: &[IndexRow],
     ) -> Result<Option<String>, CoreError> {
         let installed_at = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -451,6 +473,7 @@ impl Library {
                 installed_at,
             ],
         )?;
+        search::replace_rows(&tx, pub_key, rows)?;
         tx.commit()?;
         Ok(old)
     }

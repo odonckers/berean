@@ -772,7 +772,9 @@ fn toc_walk(
 }
 
 /// The publication's documents by local `DocumentId`.
-fn documents_by_id(publication: &Publication) -> Result<HashMap<i64, DocumentSummary>, CoreError> {
+pub(crate) fn documents_by_id(
+    publication: &Publication,
+) -> Result<HashMap<i64, DocumentSummary>, CoreError> {
     Ok(publication
         .documents()?
         .into_iter()
@@ -785,18 +787,17 @@ fn find_document(
     publication: &Publication,
     doc_id: i64,
 ) -> Result<Option<DocumentSummary>, CoreError> {
-    let mut found = publication
-        .documents()?
-        .into_iter()
-        .filter(|d| d.meps_document_id == doc_id);
-    let doc = found.next();
-    if found.next().is_some() {
+    let mut found = publication.documents_with_meps_id(doc_id)?;
+    if found.len() > 1 {
         return Err(CoreError::Corrupt);
     }
-    Ok(doc)
+    Ok(found.pop())
 }
 
-fn paragraph_anchor(html: &str, p: DocumentParagraph) -> Result<ParagraphAnchor, CoreError> {
+pub(crate) fn paragraph_anchor(
+    html: &str,
+    p: DocumentParagraph,
+) -> Result<ParagraphAnchor, CoreError> {
     let paragraph = u32::try_from(p.paragraph_index).map_err(|_| CoreError::Corrupt)?;
     let (begin, end) = match (p.begin_position, p.end_position) {
         (Some(begin), Some(end)) => {
@@ -906,7 +907,7 @@ fn bible_location(
     })
 }
 
-fn read_chapter(
+pub(crate) fn read_chapter(
     publication: &Publication,
     pub_key: &str,
     book: u32,
@@ -1010,7 +1011,7 @@ fn verse_number(content: &str, book: u32, chapter: u32) -> Option<u32> {
 }
 
 /// HTML as plain text: tags dropped, character references decoded.
-fn plain_text(html: &str) -> String {
+pub(crate) fn plain_text(html: &str) -> String {
     let mut text = String::new();
     let mut rest = html;
     while let Some(i) = rest.find('<') {
