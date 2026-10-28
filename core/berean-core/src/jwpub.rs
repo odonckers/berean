@@ -134,6 +134,16 @@ pub struct ParagraphCommentaryMap {
     pub paragraph_commentary_id: i64,
 }
 
+/// An `Extract` row and the `RefPublication` it quotes from. The reference
+/// columns are `None` when absent or when the `RefPublication` row is missing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ExtractRef {
+    pub ref_meps_document_id: Option<i64>,
+    pub symbol: Option<String>,
+    pub meps_language: Option<u32>,
+    pub issue_tag: Option<u32>,
+}
+
 /// One row of `PublicationView`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublicationView {
@@ -545,6 +555,61 @@ impl Publication {
         })
     }
 
+    /// The `VerseCommentary` rows `VerseCommentaryMap` maps `bible_verse_id`
+    /// to, by `VerseCommentaryMapId`; empty if there are none (or no such
+    /// tables).
+    pub(crate) fn verse_commentaries_for(
+        &self,
+        bible_verse_id: i64,
+    ) -> Result<Vec<Commentary>, CoreError> {
+        let map = ["VerseCommentaryMapId", "BibleVerseId", "VerseCommentaryId"];
+        if select_sql(&self.conn, "VerseCommentaryMap", &map, &[], "")?.is_none() {
+            return Ok(Vec::new());
+        }
+        self.commentaries_where(
+            "VerseCommentary",
+            "VerseCommentaryId",
+            " JOIN VerseCommentaryMap m USING (VerseCommentaryId) \
+             WHERE m.BibleVerseId = ?1 ORDER BY m.VerseCommentaryMapId",
+            [bible_verse_id],
+        )
+    }
+
+    /// The `Extract` row `extract_id` with its `RefPublication`; `None` if
+    /// there is no such row (or no `Extract` table). A `RefPublication`
+    /// language or issue tag that is not a `u32` reads as `None`.
+    pub(crate) fn extract_ref(&self, extract_id: i64) -> Result<Option<ExtractRef>, CoreError> {
+        let extract = ["ExtractId", "RefPublicationId", "RefMepsDocumentId"];
+        let publication = [
+            "RefPublicationId",
+            "Symbol",
+            "MepsLanguageIndex",
+            "IssueTagNumber",
+        ];
+        if select_sql(&self.conn, "Extract", &extract, &[], "")?.is_none()
+            || select_sql(&self.conn, "RefPublication", &publication, &[], "")?.is_none()
+        {
+            return Ok(None);
+        }
+        let mut rows = self.query(
+            "SELECT e.RefMepsDocumentId, r.Symbol, r.MepsLanguageIndex, r.IssueTagNumber \
+             FROM Extract e LEFT JOIN RefPublication r ON r.RefPublicationId = e.RefPublicationId \
+             WHERE e.ExtractId = ?1",
+            [extract_id],
+            |r| {
+                Ok(ExtractRef {
+                    ref_meps_document_id: r.get(0)?,
+                    symbol: r.get(1)?,
+                    meps_language: r
+                        .get::<_, Option<i64>>(2)?
+                        .and_then(|n| u32::try_from(n).ok()),
+                    issue_tag: issue_tag(r.get(3)?).ok(),
+                })
+            },
+        )?;
+        Ok(rows.pop())
+    }
+
     /// All `PublicationView` rows, by `PublicationViewId`.
     pub fn publication_views(&self) -> Result<Vec<PublicationView>, CoreError> {
         let Some(sql) = select_sql(
@@ -680,6 +745,18 @@ impl Publication {
     }
 
     fn commentaries(&self, table: &str, id_col: &str) -> Result<Vec<Commentary>, CoreError> {
+        self.commentaries_where(table, id_col, &format!(" ORDER BY {id_col}"), [])
+    }
+
+    /// `table`'s commentary rows, selected by `tail` (joins, `WHERE`,
+    /// `ORDER BY`) after `FROM {table}`.
+    fn commentaries_where<P: rusqlite::Params>(
+        &self,
+        table: &str,
+        id_col: &str,
+        tail: &str,
+        params: P,
+    ) -> Result<Vec<Commentary>, CoreError> {
         let Some(sql) = select_sql(
             &self.conn,
             table,
@@ -692,12 +769,12 @@ impl Publication {
                 "BeginParagraphOrdinal",
                 "EndParagraphOrdinal",
             ],
-            &format!(" FROM {table} ORDER BY {id_col}"),
+            &format!(" FROM {table}{tail}"),
         )?
         else {
             return Ok(Vec::new());
         };
-        self.query(&sql, [], |r| {
+        self.query(&sql, params, |r| {
             Ok(Commentary {
                 commentary_id: r.get(0)?,
                 commentary_type: r.get(1)?,
@@ -763,22 +840,26 @@ fn read_meta(conn: &Connection) -> Result<PublicationMeta, CoreError> {
         // JWPUB database.
         .map_err(corrupt)?;
     let (title, symbol, year, lang, issue, publication_type, pub_type) = row;
-    // IssueTagNumber is declared TEXT and stored as e.g. '20260800' or '0',
-    // but may also be an integer.
-    let issue_tag = match issue {
-        Value::Integer(n) => n,
-        Value::Text(s) => s.parse().map_err(corrupt)?,
-        _ => return Err(CoreError::Corrupt),
-    };
     Ok(PublicationMeta {
         symbol,
         meps_language: u32::try_from(lang).map_err(corrupt)?,
         year: u32::try_from(year).map_err(corrupt)?,
-        issue_tag: u32::try_from(issue_tag).map_err(corrupt)?,
+        issue_tag: issue_tag(issue)?,
         title,
         publication_type,
         pub_type,
     })
+}
+
+/// An `IssueTagNumber`. It is declared TEXT and stored as e.g. `'20260800'`
+/// or `'0'`, but may also be an integer. Anything else => `Corrupt`.
+fn issue_tag(value: Value) -> Result<u32, CoreError> {
+    let n = match value {
+        Value::Integer(n) => n,
+        Value::Text(s) => s.parse().map_err(corrupt)?,
+        _ => return Err(CoreError::Corrupt),
+    };
+    u32::try_from(n).map_err(corrupt)
 }
 
 /// Build `SELECT <required>, <optional> <tail>` for `table`, substituting
