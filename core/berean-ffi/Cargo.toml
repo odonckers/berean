@@ -1,0 +1,19 @@
+[package]
+name = "berean-ffi"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+
+[lib]
+# staticlib → the `.a` a platform shell links into its native package.
+# cdylib    → the `.so`/`.dylib` that `uniffi-bindgen generate --library`
+#             reads to emit the foreign-language bindings (library mode needs a
+#             shared or static library with the metadata section; a cdylib is
+#             the one that works reliably on Linux CI, so we always produce it).
+# lib       → lets this crate be used as a normal Rust dependency (tests, etc).
+crate-type = ["staticlib", "cdylib", "lib"]
+
+[dependencies]
+berean-core = { path = "../berean-core" }
+thiserror = { workspace = true }
+uniffi = { workspace = true }

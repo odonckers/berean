@@ -1,0 +1,17 @@
+# Rust
+core/target/
+
+# Generated Apple artifacts (built by apple/scripts/build-xcframework.sh)
+apple/Cupertino/BereanCoreFFI.xcframework/
+apple/Cupertino/Sources/CupertinoCore/Generated/*.swift
+
+# XcodeGen output
+apple/Berean.xcodeproj/
+
+# SwiftPM
+.build/
+.swiftpm/
+
+# Misc
+.DS_Store
+build/

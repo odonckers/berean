@@ -1,0 +1,54 @@
+name: Berean
+
+options:
+  bundleIdPrefix: com.odonckers
+  deploymentTarget:
+    iOS: "26.0"
+    macOS: "26.0"
+
+packages:
+  Cupertino:
+    path: Cupertino
+
+targets:
+  Berean-iOS:
+    type: application
+    platform: iOS
+    sources:
+      - Apps/Shared
+    dependencies:
+      - package: Cupertino
+        product: CupertinoCore
+      - package: Cupertino
+        product: CupertinoUI
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.odonckers.berean
+
+  Berean-macOS:
+    type: application
+    platform: macOS
+    sources:
+      - Apps/Shared
+    dependencies:
+      - package: Cupertino
+        product: CupertinoCore
+      - package: Cupertino
+        product: CupertinoUI
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.odonckers.berean.mac
+
+# Explicit shared schemes so `xcodebuild -scheme <name>` works on a freshly
+# generated project (before it is ever opened in Xcode).
+schemes:
+  Berean-iOS:
+    build:
+      targets:
+        Berean-iOS: all
+  Berean-macOS:
+    build:
+      targets:
+        Berean-macOS: all

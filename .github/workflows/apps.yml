@@ -1,0 +1,44 @@
+name: apps
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "core/**"
+      - "apple/**"
+      - ".github/workflows/apps.yml"
+  pull_request:
+    paths:
+      - "core/**"
+      - "apple/**"
+      - ".github/workflows/apps.yml"
+
+jobs:
+  build:
+    # Owen's Mac, registered as a self-hosted runner. Never GitHub-hosted macOS.
+    # Assumes rustup, xcodegen and Xcode 26 are already installed on it.
+    runs-on: [self-hosted, macOS]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build XCFramework + Swift bindings
+        run: ./apple/scripts/build-xcframework.sh
+
+      - name: Generate Xcode project
+        run: xcodegen generate --spec apple/project.yml
+
+      - name: Build Berean-iOS
+        run: >
+          xcodebuild build
+          -project apple/Berean.xcodeproj
+          -scheme Berean-iOS
+          -destination 'generic/platform=iOS Simulator'
+          CODE_SIGNING_ALLOWED=NO
+
+      - name: Build Berean-macOS
+        run: >
+          xcodebuild build
+          -project apple/Berean.xcodeproj
+          -scheme Berean-macOS
+          -destination 'platform=macOS'
+          CODE_SIGNING_ALLOWED=NO
