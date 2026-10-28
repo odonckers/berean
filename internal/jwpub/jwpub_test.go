@@ -105,12 +105,16 @@ func TestLineBreak(t *testing.T) {
 
 func TestInsightParagraphNumbers(t *testing.T) {
 	const src = `
-<h1 data-pid="1">Sovereignty</h1>
-<p data-pid="2" class="sb">First body.</p>
-<p data-pid="3" class="sn">A subheading</p>
-<p data-pid="4" class="sc">Caption</p>
-<p data-pid="5" class="sb">Second body.</p>
-<p data-pid="6" class="sb"></p>`
+<h1 data-pid="1">Aaron</h1>
+<p data-pid="2" class="sn">Pronunciation</p>
+<p data-pid="3" class="sb">First body.</p>
+<p data-pid="4"><strong>A subheading</strong></p>
+<p data-pid="5">Second body.</p>
+<p data-pid="6" class="sn">Later subheading</p>
+<p data-pid="7" class="sc">Caption</p>
+<table><tr><td><p data-pid="8">A cell</p></td></tr></table>
+<div class="pGroup"><p data-pid="9" class="sb"><strong>Bold body</strong></p></div>
+<p data-pid="10" class="sb"></p>`
 	paras, err := paragraphsFromHTML(src)
 	if err != nil {
 		t.Fatal(err)
@@ -122,8 +126,14 @@ func TestInsightParagraphNumbers(t *testing.T) {
 			got[p.Index] = p.Number
 		}
 	}
-	if len(got) != 2 || got[2] != 1 || got[5] != 2 {
+	want := map[int]int{2: 1, 3: 2, 5: 3, 9: 4}
+	if len(got) != len(want) {
 		t.Fatalf("numbered = %v", got)
+	}
+	for pid, n := range want {
+		if got[pid] != n {
+			t.Fatalf("pid %d = %d, numbered %v", pid, got[pid], got)
+		}
 	}
 }
 

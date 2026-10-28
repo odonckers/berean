@@ -214,9 +214,8 @@ func (p *Publication) ForEachDocument(ctx context.Context, fn func(Document) err
 					paras[i].Numbered = true
 				}
 			}
-			// Insight stores no paragraph labels. The Research Guide counts
-			// the body paragraphs (class sb), skipping the title, subheadings,
-			// and captions.
+			// Insight stores no paragraph labels. The Research Guide numbers
+			// the pronunciation line and the body paragraphs.
 			if p.meta.Symbol == "it" || p.meta.CiteSymbol == "it" {
 				numberInsightParagraphs(paras)
 			}
@@ -231,13 +230,29 @@ func (p *Publication) ForEachDocument(ctx context.Context, fn func(Document) err
 
 func numberInsightParagraphs(paras []Paragraph) {
 	n := 0
+	seen := false
 	for i := range paras {
-		if paras[i].Numbered || !paras[i].body {
+		if paras[i].Numbered {
+			seen = true
+			continue
+		}
+		if paras[i].pronunciation {
+			if seen {
+				continue
+			}
+			n++
+			paras[i].Number = n
+			paras[i].Numbered = true
+			seen = true
+			continue
+		}
+		if !paras[i].body {
 			continue
 		}
 		n++
 		paras[i].Number = n
 		paras[i].Numbered = true
+		seen = true
 	}
 }
 

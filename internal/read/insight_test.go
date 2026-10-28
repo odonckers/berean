@@ -170,7 +170,7 @@ func TestInsightChipsOpenTheArticle(t *testing.T) {
 	tt.SetPreferences(ui.Preferences{ReduceMotion: true, TextScale: 1})
 	tt.Frame()
 	started := app.docID
-	writeNote(t, tt, "it-2 “Sovereignty”. it-2 \"Sovereignty\". it-2 Sovereignty. it-1 “Aaron”. it-1 Guard. it-2 p. 1011. it p. 1011. it-2 “Sovereignty” pars. 12-31. it-1 “High Priest” pars. 3-10.")
+	writeNote(t, tt, "it-2 “Sovereignty”. it-2 \"Sovereignty\". it-2 Sovereignty. it-1 “Aaron”. it-1 Guard. it-2 p. 1011. it p. 1011. it-2 “Sovereignty” pars. 12-31. it-1 “High Priest” pars. 3-10. it-1 “Aaron” pars. 7-9. it-1 “Abishag” par. 4. it-2 “Jephthah” pars. 11-17. it-1 “Archaeology” par. 17.")
 	if len(app.problems) != 1 || app.problems[0] != "it p. 1011: it needs a page and a paragraph" {
 		t.Fatalf("editor problems = %q", app.problems)
 	}
@@ -226,16 +226,33 @@ func TestInsightChipsOpenTheArticle(t *testing.T) {
 
 	sovPars := mustResolve(t, lib, "it-2 “Sovereignty” pars. 12-31")
 	priestPars := mustResolve(t, lib, "it-1 “High Priest” pars. 3-10")
+	aaronPars := mustResolve(t, lib, "it-1 “Aaron” pars. 7-9")
+	abishag := mustResolve(t, lib, "it-1 “Abishag” par. 4")
+	jephthah := mustResolve(t, lib, "it-2 “Jephthah” pars. 11-17")
+	archaeology := mustResolve(t, lib, "it-1 “Archaeology” par. 17")
 	if len(sovPars) != 20 || sovPars[0].Paragraph != 12 || sovPars[0].ParagraphIndex != 13 || sovPars[len(sovPars)-1].Paragraph != 31 || sovPars[len(sovPars)-1].ParagraphIndex != 33 {
 		t.Fatalf("sovereignty pars = %d first=%+v last=%+v", len(sovPars), sovPars[0], sovPars[len(sovPars)-1])
 	}
 	if len(priestPars) != 8 || priestPars[0].Paragraph != 3 || priestPars[0].ParagraphIndex != 4 || priestPars[len(priestPars)-1].Paragraph != 10 || priestPars[len(priestPars)-1].ParagraphIndex != 11 {
 		t.Fatalf("high priest pars = %d first=%+v last=%+v", len(priestPars), priestPars[0], priestPars[len(priestPars)-1])
 	}
+	if len(aaronPars) != 3 || aaronPars[0].Paragraph != 7 || aaronPars[0].ParagraphIndex != 8 || aaronPars[len(aaronPars)-1].ParagraphIndex != 10 {
+		t.Fatalf("aaron pars = %+v .. %+v", aaronPars[0], aaronPars[len(aaronPars)-1])
+	}
+	if len(abishag) != 1 || abishag[0].Paragraph != 4 || abishag[0].ParagraphIndex != 5 {
+		t.Fatalf("abishag = %+v", abishag)
+	}
+	if len(jephthah) != 7 || jephthah[0].Paragraph != 11 || jephthah[0].ParagraphIndex != 12 || jephthah[len(jephthah)-1].ParagraphIndex != 19 {
+		t.Fatalf("jephthah = %+v .. %+v", jephthah[0], jephthah[len(jephthah)-1])
+	}
+	if len(archaeology) != 1 || archaeology[0].Paragraph != 17 || archaeology[0].ParagraphIndex != 18 {
+		t.Fatalf("archaeology = %+v", archaeology)
+	}
 	openParagraph := func(citation string, hits []library.Hit) {
 		t.Helper()
 		first, last := hits[0], hits[len(hits)-1]
 		before := countContains(tt, first.Text)
+		bringOnScreen(t, tt, app, citation)
 		if err := tt.Click(citation); err != nil {
 			t.Fatal(err)
 		}
@@ -266,6 +283,10 @@ func TestInsightChipsOpenTheArticle(t *testing.T) {
 	}
 	openParagraph("it-2 “Sovereignty” pars. 12-31", sovPars)
 	openParagraph("it-1 “High Priest” pars. 3-10", priestPars)
+	openParagraph("it-1 “Aaron” pars. 7-9", aaronPars)
+	openParagraph("it-1 “Abishag” par. 4", abishag)
+	openParagraph("it-2 “Jephthah” pars. 11-17", jephthah)
+	openParagraph("it-1 “Archaeology” par. 17", archaeology)
 }
 
 func openEmpty(t *testing.T) *library.Library {

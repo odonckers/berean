@@ -28,6 +28,11 @@ import (
 // English publications are 0.
 const resolveLanguage = 0
 
+// insightParagraphRule numbers Insight paragraphs the way the Research Guide
+// does: the pronunciation line, class sb, and unclassed body paragraphs.
+// Libraries stored before this rule have 0 and are numbered again on import.
+const insightParagraphRule = 1
+
 const schema = `
 PRAGMA foreign_keys = ON;
 
@@ -220,6 +225,7 @@ func (l *Library) init() error {
 		`ALTER TABLE paragraph ADD COLUMN markup TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE verse ADD COLUMN markup TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE document ADD COLUMN volume INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE publication ADD COLUMN insight_paragraph_rule INTEGER NOT NULL DEFAULT 0`,
 	} {
 		if _, err := l.db.Exec(q); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			return fmt.Errorf("migrate schema: %w", err)
@@ -324,6 +330,11 @@ func (l *Library) Import(ctx context.Context, path string) (ImportResult, error)
 	counts, err := insertContent(ctx, tx, pub, pubID)
 	if err != nil {
 		return ImportResult{}, fmt.Errorf("import %s: %w", base, err)
+	}
+	if meta.Symbol == "it" || meta.CiteSymbol == "it" {
+		if _, err := tx.ExecContext(ctx, `UPDATE publication SET insight_paragraph_rule=? WHERE id=?`, insightParagraphRule, pubID); err != nil {
+			return ImportResult{}, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return ImportResult{}, err
@@ -503,19 +514,20 @@ func (l *Library) fillVolumes(ctx context.Context, pubID int64, pub *jwpub.Publi
 	return tx.Commit()
 }
 
-// fillInsightParagraphs numbers Insight body paragraphs on a publication
-// imported before those numbers were stored. The Research Guide cites them
-// as pars. N. Other publications already carry their own paragraph labels.
+// fillInsightParagraphs numbers Insight paragraphs when the stored rule is
+// older than insightParagraphRule. A library numbered by an earlier rule
+// keeps those numbers until this runs, so the rule is checked, not merely
+// whether any number is present.
 func (l *Library) fillInsightParagraphs(ctx context.Context, pubID int64, pub *jwpub.Publication) error {
 	meta := pub.Meta()
 	if meta.Symbol != "it" && meta.CiteSymbol != "it" {
 		return nil
 	}
-	var n int
-	if err := l.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM paragraph WHERE publication_id=? AND paragraph_number IS NOT NULL`, pubID).Scan(&n); err != nil {
+	var rule int
+	if err := l.db.QueryRowContext(ctx, `SELECT insight_paragraph_rule FROM publication WHERE id=?`, pubID).Scan(&rule); err != nil {
 		return err
 	}
-	if n > 0 {
+	if rule == insightParagraphRule {
 		return nil
 	}
 	tx, err := l.db.BeginTx(ctx, nil)
@@ -523,6 +535,9 @@ func (l *Library) fillInsightParagraphs(ctx context.Context, pubID int64, pub *j
 		return err
 	}
 	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `UPDATE paragraph SET paragraph_number=NULL WHERE publication_id=?`, pubID); err != nil {
+		return err
+	}
 	stmt, err := tx.PrepareContext(ctx, `
 		UPDATE paragraph SET paragraph_number=?
 		WHERE publication_id=? AND document_id=? AND paragraph_index=? AND ordinal=?`)
@@ -545,6 +560,9 @@ func (l *Library) fillInsightParagraphs(ctx context.Context, pubID int64, pub *j
 		return nil
 	})
 	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE publication SET insight_paragraph_rule=? WHERE id=?`, insightParagraphRule, pubID); err != nil {
 		return err
 	}
 	return tx.Commit()
