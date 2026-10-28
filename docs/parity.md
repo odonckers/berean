@@ -67,8 +67,8 @@ Only features that a cited source describes are listed. Rows marked **to verify*
 ## Study pane: Research Guide connections
 | ID | Feature | JW Library behavior | Status | Layer | UI | Board row / PR | Notes |
 |---|---|---|---|---|---|---|---|
-| RG-1 | Research Guide references for a verse | Select a verse, then the Research Guide icon in the study pane. References are listed newest first. [S11] | UI pending | both | Kiwi/Moss | Parity: Research Guide connections in the study pane / (this PR) | `Reader::study_references(Location)` gives `Installed` + items `{label, html, target}`, in the guide's own order. Tested on real `rsg_E` [S13]. Design spec by Lumen (row "Design spec: Research Guide connections", Watching 2/3). |
-| RG-2 | Install the Research Guide from the study pane | If it isn't downloaded, the study pane offers the download (gem icon). [S11] | UI pending | both | Kiwi/Moss | (this PR) | `NotInstalled { pub_key }` from the catalog (e.g. `rsg:1:0` for Spanish). The download goes through DL-1. |
+| RG-1 | Research Guide references for a verse | Select a verse, then the Research Guide icon in the study pane. References are listed newest first. [S11] | UI pending | both | Kiwi/Moss | Parity: Research Guide connections in the study pane / #18 | `Reader::study_references(Location)` gives `Installed` + items `{label, html, target}`, in the guide's own order. Tested on real `rsg_E` [S13]. Design spec by Lumen (row "Design spec: Research Guide connections", Watching 2/3). |
+| RG-2 | Install the Research Guide from the study pane | If it isn't downloaded, the study pane offers the download (gem icon). [S11] | UI pending | both | Kiwi/Moss | #18 | `NotInstalled { pub_key }` from the catalog (e.g. `rsg:1:0` for Spanish). The download goes through DL-1. |
 | RG-3 | Research Guide for publication paragraphs | — | Not started | core | — | — | The `rsg` schema has `ParagraphCommentary`/`Map` tables, but they're empty in rsg_E 2026 [S13]. **to verify** that the app has any such feature. |
 
 ## Search
