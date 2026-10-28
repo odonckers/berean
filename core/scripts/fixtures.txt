@@ -9,6 +9,12 @@
 c210afb79382d6ed73067bc4a83b5ebb92a0f2bf1f06f32430f70f4f797a1c3b  w_E_202608.jwpub  https://cfp2.jw-cdn.org/a/d1b56ee/2/o/w_E_202608.jwpub
 c8253d47d03ccab3c8e44f38f9bd373c4b193682146f7b1b7b87e00775cbd514  w_S_202608.jwpub  https://cfp2.jw-cdn.org/a/1e7c39/4/o/w_S_202608.jwpub
 039b6b3b69d244f66ed4c47299222ba7139d467399ba667d400d9cf5c5fd1284  ll_E.jwpub  https://cfp2.jw-cdn.org/a/33502e/2/o/ll_E.jwpub
+# Reader fixtures (berean-core/tests/reader.rs): the New World Translation
+# Bible in English and Spanish (37 MB each), and a Book with nested
+# table-of-contents headings ("Listening to the Great Teacher").
+0b8cf25cc56c6e56caba0b4443019adf92141dc1b89f567445a17f1e384aeea5  nwt_E.jwpub  https://cfp2.jw-cdn.org/a/a2a925/4/o/nwt_E.jwpub
+9fa76bf347ddbb09992ade2bbdebf74131ff5c0e1059ebfc0c94b3b67060b93e  nwt_S.jwpub  https://cfp2.jw-cdn.org/a/03c55e4/3/o/nwt_S.jwpub
+9ecdd3e7e5bf347e34512dc5448bf88d613d97dee8197dce7ddb9bb3f438c74c  te_E.jwpub  https://cfp2.jw-cdn.org/a/e59ecb2/2/o/te_E.jwpub
 # The publication catalog snapshot. Its GUID rotates with every new catalog
 # and the CDN may drop old snapshots. Re-pinning means updating this line and
 # the expectations in berean-core/tests/catalog.rs (revision level, titles,

@@ -134,6 +134,54 @@ pub struct ParagraphCommentaryMap {
     pub paragraph_commentary_id: i64,
 }
 
+/// One row of `PublicationView`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublicationView {
+    pub publication_view_id: i64,
+    pub name: Option<String>,
+    pub symbol: String,
+}
+
+/// One row of `PublicationViewItem`: a table-of-contents entry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublicationViewItem {
+    pub publication_view_item_id: i64,
+    /// -1 for a top-level item.
+    pub parent_publication_view_item_id: i64,
+    pub title: String,
+    /// The local `DocumentId` the item opens; -1 for a heading.
+    pub default_document_id: i64,
+}
+
+/// One row of `BibleBook`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BibleBook {
+    /// The book number, 1 (Genesis) to 66 (Revelation).
+    pub bible_book_id: i64,
+    /// The local `DocumentId` of the book's document.
+    pub book_document_id: i64,
+    /// e.g. `Psalm`, `According to John`.
+    pub chapter_display_title: Option<String>,
+}
+
+/// One row of `BibleChapter`. `content` is the raw encrypted blob.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BibleChapterRow {
+    pub bible_chapter_id: i64,
+    pub content: Option<Vec<u8>>,
+    pub first_verse_id: i64,
+    pub last_verse_id: i64,
+}
+
+/// One row of `BibleVerse`. `content` is the raw encrypted blob.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BibleVerse {
+    pub bible_verse_id: i64,
+    /// HTML, e.g. `<span class="vl">16</span>`.
+    pub label: String,
+    pub content: Vec<u8>,
+}
+
 #[derive(Deserialize)]
 struct Manifest {
     hash: String,
@@ -493,6 +541,140 @@ impl Publication {
                 paragraph_commentary_id: r.get(2)?,
                 begin_paragraph_ordinal: r.get(3)?,
                 end_paragraph_ordinal: r.get(4)?,
+            })
+        })
+    }
+
+    /// All `PublicationView` rows, by `PublicationViewId`.
+    pub fn publication_views(&self) -> Result<Vec<PublicationView>, CoreError> {
+        let Some(sql) = select_sql(
+            &self.conn,
+            "PublicationView",
+            &["PublicationViewId", "Symbol"],
+            &["Name"],
+            " FROM PublicationView ORDER BY PublicationViewId",
+        )?
+        else {
+            return Ok(Vec::new());
+        };
+        self.query(&sql, [], |r| {
+            Ok(PublicationView {
+                publication_view_id: r.get(0)?,
+                symbol: r.get(1)?,
+                name: r.get(2)?,
+            })
+        })
+    }
+
+    /// The `PublicationViewItem` rows of one view, by `PublicationViewItemId`.
+    pub fn publication_view_items(
+        &self,
+        publication_view_id: i64,
+    ) -> Result<Vec<PublicationViewItem>, CoreError> {
+        let Some(sql) = select_sql(
+            &self.conn,
+            "PublicationViewItem",
+            &[
+                "PublicationViewItemId",
+                "ParentPublicationViewItemId",
+                "Title",
+                "DefaultDocumentId",
+            ],
+            &[],
+            " FROM PublicationViewItem WHERE PublicationViewId = ?1 \
+             ORDER BY PublicationViewItemId",
+        )?
+        else {
+            return Ok(Vec::new());
+        };
+        self.query(&sql, [publication_view_id], |r| {
+            Ok(PublicationViewItem {
+                publication_view_item_id: r.get(0)?,
+                parent_publication_view_item_id: r.get(1)?,
+                title: r.get(2)?,
+                default_document_id: r.get(3)?,
+            })
+        })
+    }
+
+    /// All `BibleBook` rows, by `BibleBookId`; empty if this is not a Bible.
+    pub fn bible_books(&self) -> Result<Vec<BibleBook>, CoreError> {
+        let Some(sql) = select_sql(
+            &self.conn,
+            "BibleBook",
+            &["BibleBookId", "BookDocumentId"],
+            &["ChapterDisplayTitle"],
+            " FROM BibleBook ORDER BY BibleBookId",
+        )?
+        else {
+            return Ok(Vec::new());
+        };
+        self.query(&sql, [], |r| {
+            Ok(BibleBook {
+                bible_book_id: r.get(0)?,
+                book_document_id: r.get(1)?,
+                chapter_display_title: r.get(2)?,
+            })
+        })
+    }
+
+    /// The `BibleChapter` row for `book` `chapter`; `None` if there is none
+    /// (or this is not a Bible).
+    pub fn bible_chapter(
+        &self,
+        book: u32,
+        chapter: u32,
+    ) -> Result<Option<BibleChapterRow>, CoreError> {
+        let Some(sql) = select_sql(
+            &self.conn,
+            "BibleChapter",
+            &[
+                "BibleChapterId",
+                "Content",
+                "FirstVerseId",
+                "LastVerseId",
+                "BookNumber",
+                "ChapterNumber",
+            ],
+            &[],
+            " FROM BibleChapter WHERE BookNumber = ?1 AND ChapterNumber = ?2",
+        )?
+        else {
+            return Ok(None);
+        };
+        let mut rows = self.query(&sql, [book, chapter], |r| {
+            Ok(BibleChapterRow {
+                bible_chapter_id: r.get(0)?,
+                content: r.get(1)?,
+                first_verse_id: r.get(2)?,
+                last_verse_id: r.get(3)?,
+            })
+        })?;
+        match rows.len() {
+            0 => Ok(None),
+            1 => Ok(rows.pop()),
+            _ => Err(CoreError::Corrupt),
+        }
+    }
+
+    /// `BibleVerse` rows `first..=last`, by `BibleVerseId`. A verse without
+    /// a label or content => `Corrupt`.
+    pub fn bible_verses(&self, first: i64, last: i64) -> Result<Vec<BibleVerse>, CoreError> {
+        let Some(sql) = select_sql(
+            &self.conn,
+            "BibleVerse",
+            &["BibleVerseId", "Label", "Content"],
+            &[],
+            " FROM BibleVerse WHERE BibleVerseId BETWEEN ?1 AND ?2 ORDER BY BibleVerseId",
+        )?
+        else {
+            return Ok(Vec::new());
+        };
+        self.query(&sql, [first, last], |r| {
+            Ok(BibleVerse {
+                bible_verse_id: r.get(0)?,
+                label: r.get(1)?,
+                content: r.get(2)?,
             })
         })
     }

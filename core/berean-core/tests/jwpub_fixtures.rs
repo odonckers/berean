@@ -3,40 +3,14 @@
 
 mod common;
 
-use std::io::Read;
-
 use berean_core::jwpub::{Publication, PublicationMeta};
-use common::fixture;
+use common::{fixture, raw_db};
 use rusqlite::Connection;
 
 const ALL: [&str; 3] = ["w_E_202608.jwpub", "w_S_202608.jwpub", "ll_E.jwpub"];
 
 fn open(name: &str) -> Publication {
     Publication::open(fixture(name)).unwrap_or_else(|e| panic!("open {name}: {e:?}"))
-}
-
-/// Extract the fixture's database independently of `jwpub`, for cross-checks.
-fn raw_db(name: &str) -> (tempfile::TempDir, Connection) {
-    let mut outer = zip::ZipArchive::new(std::fs::File::open(fixture(name)).unwrap()).unwrap();
-    let mut contents = Vec::new();
-    outer
-        .by_name("contents")
-        .unwrap()
-        .read_to_end(&mut contents)
-        .unwrap();
-    let mut inner = zip::ZipArchive::new(std::io::Cursor::new(contents)).unwrap();
-    let db_name = name.replace(".jwpub", ".db");
-    let mut db = Vec::new();
-    inner
-        .by_name(&db_name)
-        .unwrap()
-        .read_to_end(&mut db)
-        .unwrap();
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join(db_name);
-    std::fs::write(&path, db).unwrap();
-    let conn = Connection::open(&path).unwrap();
-    (dir, conn)
 }
 
 fn count(conn: &Connection, sql: &str, params: impl rusqlite::Params) -> usize {
