@@ -1,11 +1,23 @@
-import { useEffect, useState } from 'react';
-import { AccessibilityInfo, Pressable, StyleSheet, View } from 'react-native';
+import { type ComponentRef, useEffect, useRef, useState } from 'react';
+import {
+  AccessibilityInfo,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  findNodeHandle,
+  useWindowDimensions,
+} from 'react-native';
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import Animated, {
   FadeIn,
   FadeOut,
   ReduceMotion,
+  clamp,
+  useAnimatedStyle,
   useReducedMotion,
+  useSharedValue,
   withSpring,
   withTiming,
   type EntryAnimationsValues,
@@ -17,20 +29,15 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { UIText } from '@/components/text';
 import { useBerean } from '@/design/theme';
 import { hairline, radii, spacing } from '@/design/tokens';
+import { rememberTab, rememberedTab } from '@/reader/session';
 
-type TabKey = 'notes' | 'crossRefs' | 'research' | 'footnotes';
+export type PaneTab = 'studyNotes' | 'crossRefs' | 'research' | 'footnotes';
 
-// The core does not provide study content yet, so every tab shows its
-// honest empty line. Hiding empty tabs (spec §2) waits on that content.
-const TABS: { key: TabKey; label: string; empty: string }[] = [
-  { key: 'notes', label: 'Study notes', empty: 'No study notes for this verse yet.' },
-  { key: 'crossRefs', label: 'Cross refs', empty: 'No cross references for this verse yet.' },
-  {
-    key: 'research',
-    label: 'Research',
-    empty: "Research Guide references aren't available in the app yet.",
-  },
-  { key: 'footnotes', label: 'Footnotes', empty: 'No footnotes for this verse yet.' },
+const TABS: { key: PaneTab; label: string }[] = [
+  { key: 'studyNotes', label: 'Study notes' },
+  { key: 'crossRefs', label: 'Cross refs' },
+  { key: 'research', label: 'Research' },
+  { key: 'footnotes', label: 'Footnotes' },
 ];
 
 // Spec §5: open is a spring (response 0.38 s, damping 0.9), close a spring
@@ -38,8 +45,14 @@ const TABS: { key: TabKey; label: string; empty: string }[] = [
 export const OPEN_SPRING = { duration: 380, dampingRatio: 0.9 } as const;
 const CLOSE_SPRING = { duration: 300, dampingRatio: 1 } as const;
 
-// The swipe-down-to-dismiss thresholds on the header.
-const DISMISS_DISTANCE = 60;
+// Pane height as a fraction of the window (spec §4, §7): it starts at 40%
+// (60% at accessibility text sizes), drags between 25% and 85%, and settles
+// on the nearest detent.
+const MIN_HEIGHT = 0.25;
+const MAX_HEIGHT = 0.85;
+const LARGE_TEXT_SCALE = 1.5;
+
+// A fast flick down on the header dismisses the pane.
 const DISMISS_VELOCITY = 800;
 
 function growOpen(values: EntryAnimationsValues): LayoutAnimation {
@@ -70,8 +83,19 @@ const fadeOpen = FadeIn.duration(200).reduceMotion(ReduceMotion.Never);
 const fadeClosed = FadeOut.duration(150).reduceMotion(ReduceMotion.Never);
 const tabFade = FadeIn.duration(150).reduceMotion(ReduceMotion.Never);
 
+/** Moves VoiceOver / TalkBack focus to a mounted element, if any. */
+export function moveAccessibilityFocus(node: ComponentRef<typeof Text> | null | undefined) {
+  const tag = node ? findNodeHandle(node) : undefined;
+  if (tag != null) AccessibilityInfo.setAccessibilityFocus(tag);
+}
+
 type StudyPaneProps = {
   reference: string;
+  pubKey: string;
+  /** The tabs that have content for this verse. Empty shows the Empty state. */
+  available: readonly PaneTab[];
+  /** Re-opened after a remount: no opening animation or announcement (spec §8). */
+  restored: boolean;
   onClose: () => void;
 };
 
@@ -82,26 +106,80 @@ type StudyPaneProps = {
  * primary tabs. iOS look: an offset-background card with hairlines and a
  * segmented control.
  */
-export function StudyPane({ reference, onClose }: StudyPaneProps) {
-  const { look, colors, m3 } = useBerean();
+export function StudyPane({ reference, pubKey, available, restored, onClose }: StudyPaneProps) {
+  const { look, colors, m3, type } = useBerean();
   const reducedMotion = useReducedMotion();
-  const [active, setActive] = useState<TabKey>('notes');
-  const tab = TABS.find((t) => t.key === active) ?? TABS[0];
+  const { height: windowHeight, fontScale } = useWindowDimensions();
   const material = look === 'material';
 
-  // The pane remounts per verse, so it always opens on the first tab.
-  useEffect(() => {
-    AccessibilityInfo.announceForAccessibility(`Study pane, ${reference}, ${TABS[0].label}`);
-  }, [reference]);
+  // Tabs with no content are hidden; at least one tab always shows.
+  const shown = available.length > 0 ? TABS.filter((t) => available.includes(t.key)) : [TABS[0]];
+  const [openedOn] = useState(() => {
+    const remembered = rememberedTab(pubKey);
+    return shown.find((t) => t.key === remembered) ?? shown[0];
+  });
+  const [active, setActive] = useState(openedOn.key);
+  const tab = shown.find((t) => t.key === active) ?? shown[0];
+  const select = (key: PaneTab) => {
+    setActive(key);
+    if (available.includes(key)) rememberTab(pubKey, key);
+  };
 
-  const swipeDown = usePanGesture({
-    activeOffsetY: 10,
+  // The pane remounts per verse, so this runs once per open.
+  const headerRef = useRef<ComponentRef<typeof Text>>(null);
+  useEffect(() => {
+    if (!restored) {
+      AccessibilityInfo.announceForAccessibility(`Study pane, ${reference}, ${openedOn.label}`);
+    }
+    const frame = requestAnimationFrame(() => moveAccessibilityFocus(headerRef.current));
+    return () => cancelAnimationFrame(frame);
+  }, [reference, restored, openedOn]);
+
+  const largeText = fontScale >= LARGE_TEXT_SCALE;
+  const detents = largeText ? [0.25, 0.4, 0.6, 0.85] : [0.25, 0.4, 0.85];
+  const [fraction, setFraction] = useState(largeText ? 0.6 : 0.4);
+  // The live height while dragging, as a fraction so rotation keeps it.
+  const height = useSharedValue(fraction);
+  const dragStart = useSharedValue(fraction);
+  const animatedHeight = useAnimatedStyle(() => ({ height: height.get() * windowHeight }));
+
+  // Settle on a detent; Reduce Motion settles with no overshoot.
+  const settle = (target: number) => {
+    'worklet';
+    return reducedMotion
+      ? withTiming(target, { duration: 200, reduceMotion: ReduceMotion.Never })
+      : withSpring(target, OPEN_SPRING);
+  };
+  const moveTo = (target: number | undefined) => {
+    if (target === undefined) return;
+    setFraction(target);
+    height.set(settle(target));
+  };
+
+  const resize = usePanGesture({
+    activeOffsetY: [-10, 10],
     failOffsetX: [-20, 20],
+    onBegin: () => {
+      'worklet';
+      dragStart.set(height.get());
+    },
+    onUpdate: (e) => {
+      'worklet';
+      height.set(clamp(dragStart.get() - e.translationY / windowHeight, MIN_HEIGHT, MAX_HEIGHT));
+    },
     onDeactivate: (e) => {
       'worklet';
-      if (e.translationY > DISMISS_DISTANCE || e.velocityY > DISMISS_VELOCITY) {
+      const dragged = dragStart.get() - e.translationY / windowHeight;
+      if (e.velocityY > DISMISS_VELOCITY || dragged < MIN_HEIGHT) {
         scheduleOnRN(onClose);
+        return;
       }
+      const current = height.get();
+      const target = detents.reduce((best, d) =>
+        Math.abs(d - current) < Math.abs(best - current) ? d : best,
+      );
+      height.set(settle(target));
+      scheduleOnRN(setFraction, target);
     },
   });
 
@@ -110,11 +188,12 @@ export function StudyPane({ reference, onClose }: StudyPaneProps) {
 
   return (
     <Animated.View
-      entering={reducedMotion ? fadeOpen : growOpen}
+      entering={restored ? undefined : reducedMotion ? fadeOpen : growOpen}
       exiting={reducedMotion ? fadeClosed : collapseClosed}
       accessibilityLabel={`Study pane, ${reference}, ${tab.label}`}
       style={[
         styles.pane,
+        animatedHeight,
         material
           ? { backgroundColor: m3.surfaceContainer, borderRadius: radii.materialPane }
           : {
@@ -126,9 +205,23 @@ export function StudyPane({ reference, onClose }: StudyPaneProps) {
             },
       ]}
     >
-      <GestureDetector gesture={swipeDown}>
+      <GestureDetector gesture={resize}>
         <View>
-          <View style={styles.grabberRow}>
+          <View
+            accessible
+            accessibilityRole="adjustable"
+            accessibilityLabel="Pane height"
+            accessibilityValue={{ text: `${Math.round(fraction * 100)} percent` }}
+            accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+            onAccessibilityAction={(e) => {
+              if (e.nativeEvent.actionName === 'increment') {
+                moveTo(detents.find((d) => d > fraction));
+              } else if (e.nativeEvent.actionName === 'decrement') {
+                moveTo(detents.findLast((d) => d < fraction));
+              }
+            }}
+            style={styles.grabberRow}
+          >
             <View
               style={[
                 material ? styles.grabberMaterial : styles.grabberIos,
@@ -137,9 +230,14 @@ export function StudyPane({ reference, onClose }: StudyPaneProps) {
             />
           </View>
           <View style={styles.header}>
-            <UIText variant="title" accessibilityRole="header" style={styles.reference}>
+            {/* A plain Text so it can take the ref that receives focus on open. */}
+            <Text
+              ref={headerRef}
+              accessibilityRole="header"
+              style={[type.ui.title, { color: colors.text }, styles.reference]}
+            >
               {reference}
-            </UIText>
+            </Text>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Close study pane"
@@ -162,14 +260,14 @@ export function StudyPane({ reference, onClose }: StudyPaneProps) {
           accessibilityRole="tablist"
           style={[styles.materialTabs, { borderBottomColor: separator }]}
         >
-          {TABS.map((t) => {
-            const selected = t.key === active;
+          {shown.map((t) => {
+            const selected = t.key === tab.key;
             return (
               <Pressable
                 key={t.key}
                 accessibilityRole="tab"
                 accessibilityState={{ selected }}
-                onPress={() => setActive(t.key)}
+                onPress={() => select(t.key)}
                 style={({ pressed }) => [styles.materialTab, { opacity: pressed ? 0.6 : 1 }]}
               >
                 <View>
@@ -197,14 +295,14 @@ export function StudyPane({ reference, onClose }: StudyPaneProps) {
           accessibilityRole="tablist"
           style={[styles.segmentTrack, { backgroundColor: colors.separator }]}
         >
-          {TABS.map((t) => {
-            const selected = t.key === active;
+          {shown.map((t) => {
+            const selected = t.key === tab.key;
             return (
               <Pressable
                 key={t.key}
                 accessibilityRole="tab"
                 accessibilityState={{ selected }}
-                onPress={() => setActive(t.key)}
+                onPress={() => select(t.key)}
                 hitSlop={{ top: 6, bottom: 6 }}
                 style={({ pressed }) => [
                   styles.segment,
@@ -225,12 +323,24 @@ export function StudyPane({ reference, onClose }: StudyPaneProps) {
         </View>
       )}
 
-      <Animated.View key={active} entering={tabFade} style={styles.body}>
-        <UIText secondary>{tab.empty}</UIText>
-      </Animated.View>
+      <ScrollView
+        nestedScrollEnabled
+        style={styles.body}
+        contentContainerStyle={styles.bodyContent}
+      >
+        <Animated.View key={tab.key} entering={tabFade}>
+          {/* Tab content arrives with the core's per-verse study content;
+              until then only the Empty state (spec §2) has anything to say. */}
+          {available.length === 0 && <UIText secondary>No study notes for this verse</UIText>}
+        </Animated.View>
+      </ScrollView>
 
       <View style={[styles.myNotes, { borderTopColor: separator }]}>
-        <UIText variant="label" accessibilityRole="header">
+        <UIText
+          variant={material ? 'label' : 'caption'}
+          accessibilityRole="header"
+          style={!material && styles.myNotesLabelIos}
+        >
           My notes
         </UIText>
         <UIText secondary>Notes for this verse appear here.</UIText>
@@ -297,6 +407,10 @@ const styles = StyleSheet.create({
     borderRadius: radii.chip,
   },
   segmentSelectedLabel: { fontWeight: '600' },
-  body: { paddingVertical: spacing.lg },
+  // The body scrolls on its own between the tabs and My notes.
+  body: { flex: 1 },
+  bodyContent: { paddingVertical: spacing.lg },
   myNotes: { borderTopWidth: hairline, paddingTop: spacing.md, gap: spacing.xs },
+  // 13 pt caption, semibold: the 10 pt tab-bar label is below the minimum.
+  myNotesLabelIos: { fontWeight: '600' },
 });
