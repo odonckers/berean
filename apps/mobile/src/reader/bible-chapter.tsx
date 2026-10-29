@@ -8,9 +8,10 @@ import { ScriptureText, UIText } from '@/components/text';
 import { TextButton } from '@/components/text-button';
 import { useBerean } from '@/design/theme';
 import { radii, spacing } from '@/design/tokens';
+import { useTopAppBarFill } from '@/design/use-top-app-bar-fill';
 import { reader } from '@/ffi/core';
 import { load } from '@/library/load';
-import { CONTENT_PADDING_TOP, ReadingColumn } from '@/reader/reading-column';
+import { ReadingColumn, useColumnPaddingTop } from '@/reader/reading-column';
 import { forgetVerse, rememberVerse, restoredVerse } from '@/reader/session';
 import {
   OPEN_SPRING,
@@ -50,6 +51,10 @@ export function BibleChapterView({
 }) {
   const { colors, type } = useBerean();
   const reducedMotion = useReducedMotion();
+  // The Read tab's root: the material top app bar's tonal fill, and the
+  // status bar padding where the look hides the native header.
+  const fill = useTopAppBarFill();
+  const columnTop = useColumnPaddingTop(true);
   // A synchronous FFI call on the JS thread; agreed for now.
   const loaded = useMemo(
     () => load(() => reader().bibleChapter(pubKey, book, chapter)),
@@ -98,7 +103,7 @@ export function BibleChapterView({
     const rowTop = rowTops.current.get(verse);
     const { offset, insetTop, height } = viewport.current;
     if (rowTop === undefined || height === 0) return;
-    const verseTop = CONTENT_PADDING_TOP + listTop.current + rowTop;
+    const verseTop = columnTop + listTop.current + rowTop;
     const visible = height - insetTop;
     if (verseTop - offset - insetTop > visible * SCROLL_ZONE) {
       scrollRef.current?.scrollTo({
@@ -148,7 +153,7 @@ export function BibleChapterView({
 
   if (!loaded.ok) {
     return (
-      <ReadingColumn>
+      <ReadingColumn tabRoot>
         <UIText secondary>{loaded.message}</UIText>
         <View style={styles.navRow}>{previous}</View>
       </ReadingColumn>
@@ -160,9 +165,12 @@ export function BibleChapterView({
 
   return (
     <ReadingColumn
+      tabRoot
       ref={scrollRef}
       scrollEventThrottle={16}
+      {...fill}
       onScroll={(e) => {
+        fill.onScroll(e);
         const { contentOffset, contentInset } = e.nativeEvent;
         viewport.current.offset = contentOffset.y;
         viewport.current.insetTop = contentInset.top;

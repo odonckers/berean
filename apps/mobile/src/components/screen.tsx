@@ -1,17 +1,12 @@
 import { useNavigation } from 'expo-router';
-import { useLayoutEffect, useState, type ReactNode } from 'react';
-import {
-  ScrollView,
-  StyleSheet,
-  View,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-} from 'react-native';
+import { useLayoutEffect, type ReactNode } from 'react';
+import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppBarSearchBar, DockedSearchBar } from '@/components/search-bar';
 import { UIText } from '@/components/text';
 import { useContentInsets, useHeaderHidden } from '@/design/tab-chrome';
 import { useBerean } from '@/design/theme';
+import { useTopAppBarFill } from '@/design/use-top-app-bar-fill';
 import { useWindowClass } from '@/design/use-window-class';
 
 type ScreenProps = {
@@ -27,10 +22,10 @@ type ScreenProps = {
 
 // Scroll content on a solid surface.
 export function Screen({ title, children, search = false, measure }: ScreenProps) {
-  const { look, colors, m3, spacing } = useBerean();
+  const { look, colors, spacing } = useBerean();
   const windowClass = useWindowClass();
   const navigation = useNavigation();
-  const [scrolled, setScrolled] = useState(false);
+  const fill = useTopAppBarFill();
   const insets = useContentInsets();
 
   const material = look === 'material';
@@ -40,18 +35,10 @@ export function Screen({ title, children, search = false, measure }: ScreenProps
   const inlineLargeTitle = useHeaderHidden();
 
   useLayoutEffect(() => {
-    // M3: the top app bar picks up a tonal fill once content scrolls under it.
-    // Cleared again in the iOS look so a runtime Look switch leaves nothing behind.
     navigation.setOptions({
-      headerStyle: material
-        ? { backgroundColor: scrolled ? m3.surfaceContainer : m3.surface }
-        : undefined,
       headerRight: appBarSearch ? () => <AppBarSearchBar /> : undefined,
     });
-  }, [navigation, material, scrolled, appBarSearch, m3]);
-
-  const updateScrolled = (e: NativeSyntheticEvent<NativeScrollEvent>) =>
-    setScrolled(e.nativeEvent.contentOffset.y > 0);
+  }, [navigation, appBarSearch]);
 
   return (
     <>
@@ -65,12 +52,7 @@ export function Screen({ title, children, search = false, measure }: ScreenProps
           gap: spacing.md,
         }}
         scrollEventThrottle={16}
-        // Tracked in both looks so the fill is right after a Look switch.
-        // Also re-checked when a drag or fling ends: the last throttled
-        // onScroll of a fast fling to the top can still report y > 0.
-        onScroll={updateScrolled}
-        onScrollEndDrag={updateScrolled}
-        onMomentumScrollEnd={updateScrolled}
+        {...fill}
       >
         {inlineLargeTitle &&
           (measure ? (

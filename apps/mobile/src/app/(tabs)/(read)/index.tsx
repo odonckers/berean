@@ -2,13 +2,15 @@ import { PubKind } from 'berean-ffi-rn';
 import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 
+import { Screen } from '@/components/screen';
 import { UIText } from '@/components/text';
 import { TextButton } from '@/components/text-button';
+import { useBerean } from '@/design/theme';
+import { useStackOptions } from '@/design/use-stack-options';
 import { library } from '@/ffi/core';
 import { displayTitle } from '@/library/labels';
 import { load, type Loaded } from '@/library/load';
 import { BibleChapterView } from '@/reader/bible-chapter';
-import { ReadingColumn } from '@/reader/reading-column';
 import { type BibleLocation, rememberBible, rememberedBible } from '@/reader/session';
 
 type ReadParams = { pubKey?: string; title?: string; book?: string; chapter?: string };
@@ -27,6 +29,8 @@ function firstInstalledBible(): Loaded<BibleLocation | undefined> {
 // session, else the first installed one.
 export default function ReadScreen() {
   const params = useLocalSearchParams<ReadParams>();
+  const { look } = useBerean();
+  const stackOptions = useStackOptions();
   const fromParams: BibleLocation | undefined =
     params.pubKey === undefined
       ? undefined
@@ -58,10 +62,14 @@ export default function ReadScreen() {
   }, [pubKey, title, book, chapter]);
 
   if (bible === undefined) {
+    // Titled like other tab roots: the material top app bar, the iOS
+    // look's large title (drawn inline by Screen where the header is hidden).
     return (
       <>
-        <Stack.Screen options={{ title: 'Read' }} />
-        <ReadingColumn>
+        <Stack.Screen
+          options={{ title: 'Read', headerLargeTitleEnabled: stackOptions.headerLargeTitleEnabled }}
+        />
+        <Screen title="Read">
           {installed.ok ? (
             <>
               <UIText>No Bible installed yet.</UIText>
@@ -74,14 +82,23 @@ export default function ReadScreen() {
           ) : (
             <UIText secondary>{installed.message}</UIText>
           )}
-        </ReadingColumn>
+        </Screen>
       </>
     );
   }
 
+  // Per the reader frames: the material top app bar is titled with the
+  // chapter reference (the chapter heading's text); the iOS look has no
+  // navigation title, the chapter heading in the content is the title.
+  // Pending, as their features don't exist yet: Aa, bookmark, menu, overflow.
   return (
     <>
-      <Stack.Screen options={{ title: bible.title }} />
+      <Stack.Screen
+        options={{
+          title: look === 'material' ? `Chapter ${bible.chapter}` : '',
+          headerLargeTitleEnabled: false,
+        }}
+      />
       <BibleChapterView
         pubKey={bible.pubKey}
         title={bible.title}
