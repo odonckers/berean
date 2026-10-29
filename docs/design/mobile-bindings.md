@@ -163,13 +163,14 @@ iOS targets are unverified. They go through EAS.
 - They keep the `(…, progress, cancel)` argument order, and `CancelToken` stays the cancellation channel. That matches ubrn's advice to cancel through the library, not the future ([promises][ubrn-promises]).
 - `berean-core` stays synchronous.
 - Inside `berean-ffi`, each call runs the existing synchronous body on a dedicated thread behind a small hand-written future. No new crates and no async runtime.
+- `Search.query` and `Search.rebuild_index` are async too. `query` is async because a common word can take ~60 ms on a desktop over a large index, too long for the JS thread. Apps debounce typing and drop stale results.
 
 ### 7.3 No core lock held during `on_progress` (owner: Echo)
 
 **Rule:** `ProgressSink::on_progress` never fires while a core lock is held (the DB connection or the publication cache). This prevents the `invokeBlocking` deadlock in §5.
 
 - Echo confirms `Library::install` and `Catalog::ingest_file` already follow the rule.
-- The search index builder (#19) reports progress while holding a lock. **Fixing it is a precondition for the search export PR**, and Echo does it in that PR.
+- The search index builder (#19) reported its last progress step while holding the DB connection. Fixed: it now releases the connection first. Lands in the search export PR, with a test whose progress sink calls back into the core.
 - Separately, index-kind publications are no longer indexed (a #19 fix in progress). That doesn't affect the bindings.
 
 ### 7.4 `bigint` for `u64`/`i64` (owner: Otter)
@@ -184,7 +185,7 @@ These must land before the app wires in the core:
 | --- | --- | --- |
 | uniffi 0.31 trial on a scratch branch, then the workspace pin change (§7.1) | Echo | Landed (#23) |
 | Async FFI for `ingest_file` and `install` (§7.2) | Echo | Landed (#22) |
-| Search progress outside the lock (§7.3) | Echo | Pending; lands in the search export PR, not needed for the first wiring |
+| Search progress outside the lock (§7.3) | Echo | Fixed. Lands in the search export PR |
 | Time `Core.open` and `Catalog.publications` on a mid-range Android device (§5) | Otter | Pending |
 
 Until then, the app scaffold and the Android dev build proceed with no generated bindings.

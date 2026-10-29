@@ -4,9 +4,10 @@
 
 mod common;
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{mpsc, Arc, OnceLock};
+use std::time::{Duration, Instant};
 
 use berean_core::library::PubKind;
 use berean_core::reader::Location;
@@ -603,4 +604,99 @@ fn index_publications_are_not_indexed() {
     assert!(calls.windows(2).all(|w| w[0].0 <= w[1].0), "{calls:?}");
     assert_eq!(*calls.last().unwrap(), (total, total));
     check();
+}
+
+/// A progress sink may call back into the core: progress is never reported
+/// while a core lock is held (over the bindings, a progress call blocks on
+/// the caller's thread, which may be making that call).
+#[test]
+fn progress_can_call_back_into_the_core() {
+    let (core, _) = new_core("search-reentrant", &[(LL_E, "ll_E.jwpub")]);
+    let core = Arc::new(core);
+    type Work = fn(&Core, &dyn Fn(u64, u64)) -> Result<(), CoreError>;
+    // Runs `work` on its own thread, so a deadlock fails the test instead of
+    // hanging it.
+    let run = |name: &str, work: Work| {
+        let (tx, rx) = mpsc::channel();
+        let core = core.clone();
+        std::thread::spawn(move || {
+            let calls = Cell::new(0);
+            let sink = |_, _| {
+                calls.set(calls.get() + 1);
+                core.library().installed().unwrap();
+                core.search()
+                    .query("Jehovah", &SearchScope::default(), 10)
+                    .unwrap();
+            };
+            let result = work(&core, &sink);
+            let _ = tx.send(result.map(|()| calls.get()));
+        });
+        let calls = rx
+            .recv_timeout(Duration::from_secs(120))
+            .unwrap_or_else(|e| panic!("{name}: no result ({e}); deadlocked?"))
+            .unwrap_or_else(|e| panic!("{name}: {e:?}"));
+        assert!(calls > 1, "{name}: {calls} progress calls");
+    };
+    run("rebuild_index", |core, sink| {
+        core.search().rebuild_index(&sink, &CancelToken::new())
+    });
+    run("install", |core, sink| {
+        core.library()
+            .install(W_E, fixture("w_E_202608.jwpub"), &sink, &CancelToken::new())
+    });
+}
+
+/// Query and rebuild timings over the big set. Run in release:
+/// `cargo test --release -p berean-core --test search query_timings -- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn query_timings() {
+    let (core, _) = new_core(
+        "search-timings",
+        &[
+            (NWT_E, "nwt_E.jwpub"),
+            (NWT_S, "nwt_S.jwpub"),
+            (W_E, "w_E_202608.jwpub"),
+            (W_S, "w_S_202608.jwpub"),
+            (LL_E, "ll_E.jwpub"),
+            (IT_E, "it_E.jwpub"),
+        ],
+    );
+    let search = core.search();
+    let at = |offset| SearchScope {
+        offset,
+        ..SearchScope::default()
+    };
+    let cases = [
+        ("love", at(0), 50),
+        ("Jehovah", at(0), 500),
+        ("\"loved the world\"", at(0), 50),
+        ("the", at(0), 500),
+        ("the", at(400), 50),
+        ("God", in_pubs(&[NWT_E]), 50),
+        ("zzqxj", at(0), 50),
+    ];
+    for (text, scope, limit) in &cases {
+        let mut ms = Vec::new();
+        let mut hits = 0;
+        for _ in 0..5 {
+            let start = Instant::now();
+            hits = search.query(text, scope, *limit).unwrap().len();
+            ms.push(start.elapsed().as_secs_f64() * 1000.0);
+        }
+        ms.sort_by(f64::total_cmp);
+        eprintln!(
+            "query {text:?} pub_keys={:?} offset={} limit={limit}: {hits} hits, \
+             min {:.2} ms, median {:.2} ms",
+            scope.pub_keys, scope.offset, ms[0], ms[2]
+        );
+    }
+    let start = Instant::now();
+    search
+        .rebuild_index(&|_, _| {}, &CancelToken::new())
+        .unwrap();
+    eprintln!(
+        "rebuild_index: {:.0} ms",
+        start.elapsed().as_secs_f64() * 1000.0
+    );
 }
