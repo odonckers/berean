@@ -21,6 +21,7 @@ const W_E: &str = "w26:0:20260800";
 const W_S: &str = "w26:1:20260800";
 const LL_E: &str = "ll:0:0";
 const IT_E: &str = "it:0:0";
+const RSG_E: &str = "rsg:0:0";
 
 /// Index rows of the pinned fixtures: verses, and paragraphs of the Bible's
 /// other documents (in how many documents).
@@ -553,4 +554,53 @@ fn insight() {
         assert!(document.paragraphs.iter().any(|p| p.paragraph == paragraph));
     }
     assert_eq!(hits[0].title, "Melchizedek");
+}
+
+#[test]
+fn index_publications_are_not_indexed() {
+    let (core, db) = new_core("search-index-kind", &[(W_E, "w_E_202608.jwpub")]);
+    let lib = core.library();
+    let search = core.search();
+    let calls = RefCell::new(Vec::new());
+    lib.install(
+        RSG_E,
+        fixture("rsg_E.jwpub"),
+        &|d, t| calls.borrow_mut().push((d, t)),
+        &CancelToken::new(),
+    )
+    .unwrap();
+    let calls = calls.into_inner();
+    let total = calls[0].1;
+    assert!(calls.windows(2).all(|w| w[0].0 <= w[1].0), "{calls:?}");
+    assert_eq!(*calls.last().unwrap(), (total, total));
+    assert!(lib
+        .installed()
+        .unwrap()
+        .iter()
+        .any(|p| p.pub_key == RSG_E && p.kind == PubKind::Index));
+
+    let check = || {
+        assert_eq!(rows(&db, RSG_E, ""), 0);
+        assert!(search
+            .query("Jehovah", &in_pubs(&[RSG_E]), MAX_LIMIT)
+            .unwrap()
+            .is_empty());
+        let hits = search
+            .query("Jehovah", &SearchScope::default(), MAX_LIMIT)
+            .unwrap();
+        assert!(!hits.is_empty());
+        assert!(hits.iter().all(|h| h.location.pub_key == W_E));
+        assert_eq!(rows(&db, W_E, ""), W_E_PARAGRAPHS);
+    };
+    check();
+
+    let calls = RefCell::new(Vec::new());
+    search
+        .rebuild_index(&|d, t| calls.borrow_mut().push((d, t)), &CancelToken::new())
+        .unwrap();
+    let calls = calls.into_inner();
+    let total = calls[0].1;
+    assert!(calls.windows(2).all(|w| w[0].0 <= w[1].0), "{calls:?}");
+    assert_eq!(*calls.last().unwrap(), (total, total));
+    check();
 }

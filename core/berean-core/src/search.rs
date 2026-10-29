@@ -18,6 +18,8 @@
 //!   content: the plain text of the paragraph's whole element, titled with
 //!   the document's title, at `{pub_key, doc_id, paragraph}`. Paragraphs the
 //!   publication gives no position for, or with no text, are skipped.
+//! - An index ([`PubKind::Index`], e.g. the Research Guide): no rows. It
+//!   points into other publications rather than holding text to find.
 //!
 //! [`Library::install`](crate::library::Library::install) indexes a
 //! publication as part of installing it (in the transaction that records
@@ -257,10 +259,14 @@ pub(crate) fn index_rows(
     total: u64,
     cancel: &CancelToken,
 ) -> Result<Vec<IndexRow>, CoreError> {
+    let kind = PubKind::from_publication_type(&publication.meta().publication_type);
+    if kind == PubKind::Index {
+        progress.on_progress(base + INDEX_STEPS, total);
+        return Ok(Vec::new());
+    }
     let pub_key = publication.meta().pub_key();
     let documents = reader::documents_by_id(publication)?;
-    let is_bible =
-        PubKind::from_publication_type(&publication.meta().publication_type) == PubKind::Bible;
+    let is_bible = kind == PubKind::Bible;
     let (books, chapters) = if is_bible {
         (
             publication.bible_books()?,
