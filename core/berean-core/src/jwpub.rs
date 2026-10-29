@@ -103,6 +103,18 @@ pub struct BibleCitation {
     pub paragraph_ordinal: Option<i64>,
 }
 
+/// One row of `Footnote`. `content` is the raw encrypted blob.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Footnote {
+    pub footnote_id: i64,
+    pub document_id: i64,
+    /// The footnote's number in its document: the `data-fnid` of its marker.
+    pub footnote_index: i64,
+    /// The verse it is on, for a Bible book's footnote.
+    pub bible_verse_id: Option<i64>,
+    pub content: Option<Vec<u8>>,
+}
+
 /// One row of `VerseCommentary` or `ParagraphCommentary` (same shape).
 /// `content` is the raw encrypted blob; pass it to [`Publication::decrypt`].
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -541,6 +553,29 @@ impl Publication {
         })
     }
 
+    /// `Footnote` rows for one document, by `FootnoteIndex`.
+    pub fn footnotes(&self, document_id: i64) -> Result<Vec<Footnote>, CoreError> {
+        let Some(sql) = select_sql(
+            &self.conn,
+            "Footnote",
+            &["FootnoteId", "DocumentId", "FootnoteIndex"],
+            &["BibleVerseId", "Content"],
+            " FROM Footnote WHERE DocumentId = ?1 ORDER BY FootnoteIndex",
+        )?
+        else {
+            return Ok(Vec::new());
+        };
+        self.query(&sql, [document_id], |r| {
+            Ok(Footnote {
+                footnote_id: r.get(0)?,
+                document_id: r.get(1)?,
+                footnote_index: r.get(2)?,
+                bible_verse_id: r.get(3)?,
+                content: r.get(4)?,
+            })
+        })
+    }
+
     /// All `VerseCommentary` rows.
     pub fn verse_commentaries(&self) -> Result<Vec<Commentary>, CoreError> {
         self.commentaries("VerseCommentary", "VerseCommentaryId")
@@ -783,6 +818,29 @@ impl Publication {
             return Ok(Vec::new());
         };
         self.query(&sql, [], |r| Ok((r.get(0)?, r.get(1)?)))
+    }
+
+    /// The chapter holding verse `bible_verse_id`, as `(book, chapter)`;
+    /// `None` if no chapter does (or this is not a Bible).
+    pub(crate) fn bible_chapter_of_verse(
+        &self,
+        bible_verse_id: i64,
+    ) -> Result<Option<(u32, u32)>, CoreError> {
+        let Some(sql) = select_sql(
+            &self.conn,
+            "BibleChapter",
+            &["BookNumber", "ChapterNumber", "FirstVerseId", "LastVerseId"],
+            &[],
+            " FROM BibleChapter WHERE ?1 BETWEEN FirstVerseId AND LastVerseId",
+        )?
+        else {
+            return Ok(None);
+        };
+        let mut rows = self.query(&sql, [bible_verse_id], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        match rows.len() {
+            0 | 1 => Ok(rows.pop()),
+            _ => Err(CoreError::Corrupt),
+        }
     }
 
     /// `BibleVerse` rows `first..=last`, by `BibleVerseId`. A verse without

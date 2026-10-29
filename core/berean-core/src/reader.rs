@@ -73,6 +73,33 @@
 //! anything else => `Corrupt`. A link's target is the first paragraph of its
 //! first `$`-separated `jwpub://p/` target, in the publication its
 //! `Extract` row's `RefPublication` names.
+//!
+//! # Verse study
+//!
+//! [`Reader::verse_study`] gives a Bible verse's footnotes, cross references
+//! and study notes; [`Reader::chapter_study_markers`] counts them for each
+//! verse of a chapter, for its "has content" margin markers.
+//!
+//! Footnotes and cross references come from the Bible being read. A
+//! chapter's HTML marks them in the verse text with `<span class="fn">a…`
+//! and `<span class="m">a…` (also `fn pr`, `m pr`), the letters
+//! [`VerseRun`] lists. A footnote marker's `data-fnid` is the
+//! `FootnoteIndex` of a `Footnote` row of the book's document, which holds
+//! its text. A cross-reference marker's `data-mid` is the `BlockNumber` of
+//! one or more `BibleCitation` rows of the book's document, one per target
+//! (by `ElementNumber`): `FirstBibleVerseId` through `LastBibleVerseId`, in
+//! the same Bible, never across books. Each row's `BibleVerseId` (the
+//! footnote's too) must be the marked verse; a marker without its rows, or
+//! rows for another verse => `Corrupt`.
+//!
+//! Study notes come from the NWT Study Edition (symbol `nwtsty`): the Bible
+//! being read if it is one, otherwise the installed one in the Bible's
+//! language (taken first in key order). Like the Research Guide, it has one
+//! `VerseCommentary` entry per verse, mapped from its own `BibleVerseId` (so
+//! the verse is looked up there by number) and checked against its header's
+//! `jwpub://b/` link. An entry is a run of `<p>` elements; a paragraph that
+//! opens with a bold lemma (`<strong>loved:</strong>`) starts a note, the
+//! lemma being its label, and most others continue the note before it.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -93,8 +120,14 @@ const ONE_BOOK: &str = "a span must stay within one book";
 const NOT_A_VERSE: &str =
     "study references need a Bible verse: a Bible's key, book, chapter and verse, no paragraph";
 
+const NOT_A_STUDY_VERSE: &str =
+    "verse study needs a Bible verse: a Bible's key, book, chapter and verse, no paragraph";
+
 /// The Research Guide's publication symbol.
 const GUIDE: &str = "rsg";
+
+/// The NWT Study Edition's publication symbol.
+const STUDY_BIBLE: &str = "nwtsty";
 
 /// A point in a publication: a document, optionally a paragraph of it, or a
 /// Bible book, chapter and optionally verse.
@@ -258,14 +291,83 @@ pub struct VerseAnchor {
     pub end: u32,
 }
 
-/// Whether the Research Guide in a Bible's language is installed.
+/// Whether the study publication a call draws on, in the Bible's language,
+/// is installed: the Research Guide (`rsg`) for
+/// [`Reader::study_references`], the NWT Study Edition (`nwtsty`) for
+/// [`Reader::verse_study`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StudyAvailability {
     Installed,
-    /// Not installed; the catalog lists it as `pub_key`, to download.
+    /// Not installed; the catalog lists it as `pub_key` (its newest in the
+    /// language), to download.
     NotInstalled {
         pub_key: String,
     },
+}
+
+/// The study content for one Bible verse; see the module docs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerseStudy {
+    /// From the NWT Study Edition, in its order. Empty when it is not
+    /// installed or has no notes on the verse.
+    pub study_notes: Vec<StudyNote>,
+    /// From the Bible being read: one per target of each of the verse's
+    /// cross-reference markers, in marker order and then target order (a
+    /// marker with three targets gives three, all with its letter).
+    pub cross_refs: Vec<CrossRef>,
+    /// From the Bible being read: one per footnote marker in the verse, in
+    /// order.
+    pub footnotes: Vec<Footnote>,
+    /// Whether the NWT Study Edition in the Bible's language is installed.
+    pub availability: StudyAvailability,
+}
+
+/// One study note of the NWT Study Edition (a `VerseCommentary` entry holds
+/// all of a verse's notes).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StudyNote {
+    /// The note's lemma, the words of the verse it explains, as plain text
+    /// without its closing `:` (`loved`, `only-begotten Son`); empty for a
+    /// note that has none (a note on manuscripts that add a verse).
+    pub label: String,
+    /// The note's body as plain text. A note of several paragraphs has them
+    /// on separate lines.
+    pub text: String,
+}
+
+/// One target of a cross-reference (marginal reference) marker, from the
+/// Bible's `BibleCitation` table.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CrossRef {
+    /// The marker's letter, as the verse shows it (`p`): the same letters
+    /// as [`VerseRun::cross_refs`].
+    pub label: String,
+    /// The verse or verses it points to, in the same Bible (possibly across
+    /// chapters, never across books).
+    pub target: LocationSpan,
+    /// The target verses as plain text, separated by spaces; `None` when the
+    /// Bible has no text for them.
+    pub snippet: Option<String>,
+}
+
+/// One footnote on a verse, from the Bible's `Footnote` table.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Footnote {
+    /// The marker's letter, as the verse shows it (`a`): the same letters as
+    /// [`VerseRun::footnotes`].
+    pub marker: String,
+    /// The footnote as plain text.
+    pub text: String,
+}
+
+/// How much study content one verse has, for a chapter's margin markers:
+/// the lengths of what [`Reader::verse_study`] returns for it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerseStudyCounts {
+    pub verse: u32,
+    pub study_notes: u32,
+    pub cross_refs: u32,
+    pub footnotes: u32,
 }
 
 /// What the Research Guide cites for one verse.
@@ -505,6 +607,149 @@ impl Reader {
             availability: StudyAvailability::Installed,
             items,
         })
+    }
+
+    /// The footnotes, cross references and study notes of the verse at
+    /// `location`; see the module docs.
+    ///
+    /// `location` must name a verse of an installed Bible: its key, `book`,
+    /// `chapter` and verse, and no `paragraph` (`doc_id` is not read).
+    /// Anything else => `Invalid`; a Bible that is not installed, or an
+    /// unknown chapter or verse => `NotFound`. When the NWT Study Edition in
+    /// the Bible's language is not installed, the catalog's newest `nwtsty`
+    /// in the language is returned as [`StudyAvailability::NotInstalled`]
+    /// with no study notes; if the catalog lists none (or there is no
+    /// catalog) => `NotFound`, as for [`Reader::study_references`], even
+    /// though the footnotes and cross references are there. Data not shaped
+    /// as described => `Corrupt`.
+    pub fn verse_study(&self, location: &Location) -> Result<VerseStudy, CoreError> {
+        let (Some(book), Some(chapter), Some(verse), None) = (
+            location.book,
+            location.chapter,
+            location.verse,
+            location.paragraph,
+        ) else {
+            return Err(CoreError::Invalid(format!(
+                "{NOT_A_STUDY_VERSE}: {location:?}"
+            )));
+        };
+        let bible_key = &location.pub_key;
+        let library = self.library();
+        let (study_bible, language, footnotes, cross_refs) =
+            library.with_publication(bible_key, |bible| {
+                let study_bible = study_bible(&library, bible, bible_key)?;
+                let markers = chapter_markers(bible, book, chapter)?
+                    .into_iter()
+                    .find(|m| m.verse == verse)
+                    .ok_or(CoreError::NotFound)?;
+                let footnotes = markers
+                    .footnotes
+                    .into_iter()
+                    .map(|(marker, row)| {
+                        let html =
+                            bible.decrypt(row.content.as_deref().ok_or(CoreError::Corrupt)?)?;
+                        Ok(Footnote {
+                            marker,
+                            text: plain_text(&html).trim().to_string(),
+                        })
+                    })
+                    .collect::<Result<_, CoreError>>()?;
+                let books = bible.bible_books()?;
+                let documents = documents_by_id(bible)?;
+                let cross_refs = markers
+                    .cross_refs
+                    .into_iter()
+                    .map(|(label, row)| {
+                        let (target, snippet) =
+                            cross_ref_target(bible, bible_key, &books, &documents, &row)?;
+                        Ok(CrossRef {
+                            label,
+                            target,
+                            snippet,
+                        })
+                    })
+                    .collect::<Result<_, CoreError>>()?;
+                Ok((
+                    study_bible,
+                    bible.meta().meps_language,
+                    footnotes,
+                    cross_refs,
+                ))
+            })?;
+
+        let Some(study_bible) = study_bible else {
+            let filter = CatalogFilter {
+                meps_language: Some(language),
+                key_symbol: Some(STUDY_BIBLE.into()),
+                ..CatalogFilter::default()
+            };
+            let listed = self
+                .catalog()
+                .publications(&filter)?
+                .into_iter()
+                .find(|p| p.symbol == STUDY_BIBLE)
+                .ok_or(CoreError::NotFound)?;
+            return Ok(VerseStudy {
+                study_notes: Vec::new(),
+                cross_refs,
+                footnotes,
+                availability: StudyAvailability::NotInstalled {
+                    pub_key: listed.pub_key,
+                },
+            });
+        };
+        let study_notes = library.with_publication(&study_bible, |sty| {
+            Ok(chapter_study_notes(sty, book, chapter)?
+                .remove(&verse)
+                .unwrap_or_default())
+        })?;
+        Ok(VerseStudy {
+            study_notes,
+            cross_refs,
+            footnotes,
+            availability: StudyAvailability::Installed,
+        })
+    }
+
+    /// How many study notes, cross references and footnotes
+    /// [`Reader::verse_study`] gives for each verse of chapter `chapter` of
+    /// book `book` of the installed Bible `bible`: one entry per verse that
+    /// has any, in verse order. Study notes count as none when the NWT Study
+    /// Edition in the Bible's language is not installed; the catalog is not
+    /// read. Malformed key, or not a Bible => `Invalid`; not installed, or
+    /// no such chapter => `NotFound`; data not shaped as described =>
+    /// `Corrupt`.
+    pub fn chapter_study_markers(
+        &self,
+        bible: &str,
+        book: u32,
+        chapter: u32,
+    ) -> Result<Vec<VerseStudyCounts>, CoreError> {
+        let library = self.library();
+        let (study_bible, markers) = library.with_publication(bible, |publication| {
+            let study_bible = study_bible(&library, publication, bible)?;
+            Ok((study_bible, chapter_markers(publication, book, chapter)?))
+        })?;
+        let notes = match study_bible {
+            Some(key) => {
+                library.with_publication(&key, |sty| chapter_study_notes(sty, book, chapter))?
+            }
+            None => HashMap::new(),
+        };
+        let count = |n: usize| u32::try_from(n).map_err(|_| CoreError::Corrupt);
+        let mut counts = Vec::new();
+        for m in markers {
+            let entry = VerseStudyCounts {
+                verse: m.verse,
+                study_notes: count(notes.get(&m.verse).map_or(0, Vec::len))?,
+                cross_refs: count(m.cross_refs.len())?,
+                footnotes: count(m.footnotes.len())?,
+            };
+            if entry.study_notes + entry.cross_refs + entry.footnotes > 0 {
+                counts.push(entry);
+            }
+        }
+        Ok(counts)
     }
 
     fn resolve_citation(&self, reference: &str) -> Result<LocationSpan, CoreError> {
@@ -880,6 +1125,316 @@ fn study_target(guide: &Publication, link: &StudyLink) -> Result<Option<Location
         verse: None,
         paragraph: paragraphs.map(|p| p.0),
     }))
+}
+
+/// The key of the NWT Study Edition to take `bible`'s study notes from:
+/// `bible` itself if it is one, else the first installed in its language;
+/// `None` if there is none. `bible` (installed as `bible_key`) not a Bible
+/// => `Invalid`.
+fn study_bible(
+    library: &Library,
+    bible: &Publication,
+    bible_key: &str,
+) -> Result<Option<String>, CoreError> {
+    let installed = library.installed()?;
+    if !installed
+        .iter()
+        .any(|p| p.pub_key == bible_key && p.kind == PubKind::Bible)
+    {
+        return Err(CoreError::Invalid(format!("not a Bible: {bible_key:?}")));
+    }
+    if bible.meta().symbol == STUDY_BIBLE {
+        return Ok(Some(bible_key.to_string()));
+    }
+    let language = bible.meta().meps_language;
+    Ok(installed
+        .into_iter()
+        .find(|p| p.symbol == STUDY_BIBLE && p.meps_language == language)
+        .map(|p| p.pub_key))
+}
+
+/// The footnote and cross-reference markers of one verse, with the rows
+/// they open.
+struct VerseMarkers {
+    verse: u32,
+    /// Each footnote marker's letter and its `Footnote` row.
+    footnotes: Vec<(String, jwpub::Footnote)>,
+    /// Each cross-reference marker's letter with each of its `BibleCitation`
+    /// rows, by `ElementNumber`.
+    cross_refs: Vec<(String, jwpub::BibleCitation)>,
+}
+
+/// The markers of every verse of a chapter of `bible`, in verse order; see
+/// the module docs. No such chapter => `NotFound`; a marker without its
+/// rows, or with rows for another verse => `Corrupt`.
+fn chapter_markers(
+    bible: &Publication,
+    book: u32,
+    chapter: u32,
+) -> Result<Vec<VerseMarkers>, CoreError> {
+    let row = bible
+        .bible_chapter(book, chapter)?
+        .ok_or(CoreError::NotFound)?;
+    let html = bible.decrypt(&row.content.ok_or(CoreError::NotFound)?)?;
+    let document_id = bible
+        .bible_books()?
+        .into_iter()
+        .find(|b| b.bible_book_id == i64::from(book))
+        .ok_or(CoreError::Corrupt)?
+        .book_document_id;
+    let footnotes: HashMap<i64, jwpub::Footnote> = bible
+        .footnotes(document_id)?
+        .into_iter()
+        .map(|f| (f.footnote_index, f))
+        .collect();
+    let mut citations: HashMap<i64, Vec<jwpub::BibleCitation>> = HashMap::new();
+    for c in bible.bible_citations(document_id)? {
+        if let Some(block) = c.block_number {
+            citations.entry(block).or_default().push(c);
+        }
+    }
+    for rows in citations.values_mut() {
+        rows.sort_by_key(|c| c.element_number);
+    }
+
+    let ids = verse_ids(bible, book, chapter)?;
+    let mut verses: Vec<VerseMarkers> = ids
+        .iter()
+        .map(|&(verse, _)| VerseMarkers {
+            verse,
+            footnotes: Vec::new(),
+            cross_refs: Vec::new(),
+        })
+        .collect();
+    for (verse, begin, end) in verse_parts(&html, book, chapter)? {
+        let at = ids
+            .iter()
+            .position(|v| v.0 == verse)
+            .ok_or(CoreError::Corrupt)?;
+        let verse_id = Some(ids[at].1);
+        for (cross_ref, id, letter) in markers(&html[begin..end])? {
+            if cross_ref {
+                let rows = citations.get(&id).ok_or(CoreError::Corrupt)?;
+                if rows.iter().any(|r| r.bible_verse_id != verse_id) {
+                    return Err(CoreError::Corrupt);
+                }
+                let mine = rows.iter().map(|r| (letter.clone(), r.clone()));
+                verses[at].cross_refs.extend(mine);
+            } else {
+                let row = footnotes.get(&id).ok_or(CoreError::Corrupt)?;
+                if row.bible_verse_id != verse_id {
+                    return Err(CoreError::Corrupt);
+                }
+                verses[at].footnotes.push((letter, row.clone()));
+            }
+        }
+    }
+    Ok(verses)
+}
+
+/// The footnote (`fn`) and cross-reference (`m`) markers in a verse part's
+/// HTML, the ones [`inline_run`] takes out, in order: whether it is a cross
+/// reference, its `data-fnid` or `data-mid`, and its letter. A marker
+/// without its id, or an unclosed `<span>` => `Corrupt`.
+fn markers(html: &str) -> Result<Vec<(bool, i64, String)>, CoreError> {
+    let mut found = Vec::new();
+    let mut at = 0;
+    while let Some(i) = html[at..].find("<span ") {
+        let begin = at + i;
+        let tag = &html[begin..begin + html[begin..].find('>').ok_or(CoreError::Corrupt)? + 1];
+        let (cross_ref, id) = match attribute(tag, "class") {
+            Some("fn" | "fn pr") => (false, "data-fnid"),
+            Some("m" | "m pr") => (true, "data-mid"),
+            _ => {
+                at = begin + tag.len();
+                continue;
+            }
+        };
+        let id = attribute(tag, id)
+            .and_then(number)
+            .ok_or(CoreError::Corrupt)?;
+        let end = element_end(html, begin, "span").ok_or(CoreError::Corrupt)?;
+        found.push((
+            cross_ref,
+            id,
+            plain_text(&html[begin..end]).trim().to_string(),
+        ));
+        at = end;
+    }
+    Ok(found)
+}
+
+/// The verses of a chapter of `bible` as `(verse, BibleVerseId)`, in
+/// order. No such chapter => `NotFound`.
+fn verse_ids(bible: &Publication, book: u32, chapter: u32) -> Result<Vec<(u32, i64)>, CoreError> {
+    let row = bible
+        .bible_chapter(book, chapter)?
+        .ok_or(CoreError::NotFound)?;
+    bible
+        .bible_verses(row.first_verse_id, row.last_verse_id)?
+        .into_iter()
+        .map(|v| {
+            let content = bible.decrypt(&v.content)?;
+            let verse = verse_number(&content, book, chapter).ok_or(CoreError::Corrupt)?;
+            Ok((verse, v.bible_verse_id))
+        })
+        .collect()
+}
+
+/// Where a cross reference's `BibleCitation` row points in `bible`
+/// (installed as `pub_key`), from its `FirstBibleVerseId` through its
+/// `LastBibleVerseId`, and the text of those verses. A verse the Bible does
+/// not have, or a range that is reversed or crosses books => `Corrupt`.
+fn cross_ref_target(
+    bible: &Publication,
+    pub_key: &str,
+    books: &[jwpub::BibleBook],
+    documents: &HashMap<i64, DocumentSummary>,
+    row: &jwpub::BibleCitation,
+) -> Result<(LocationSpan, Option<String>), CoreError> {
+    let (Some(first), Some(last)) = (row.first_bible_verse_id, row.last_bible_verse_id) else {
+        return Err(CoreError::Corrupt);
+    };
+    if last < first {
+        return Err(CoreError::Corrupt);
+    }
+    let rows = bible.bible_verses(first, last)?;
+    if i64::try_from(rows.len()).ok() != Some(last - first + 1) {
+        return Err(CoreError::Corrupt);
+    }
+    let contents = rows
+        .iter()
+        .map(|v| bible.decrypt(&v.content))
+        .collect::<Result<Vec<_>, _>>()?;
+    let point = |id: i64, content: &str| -> Result<Location, CoreError> {
+        let (book, chapter) = bible
+            .bible_chapter_of_verse(id)?
+            .ok_or(CoreError::Corrupt)?;
+        let verse = verse_number(content, book, chapter).ok_or(CoreError::Corrupt)?;
+        let doc = books
+            .iter()
+            .find(|b| b.bible_book_id == i64::from(book))
+            .and_then(|b| documents.get(&b.book_document_id))
+            .ok_or(CoreError::Corrupt)?;
+        Ok(bible_point(pub_key, doc, book, chapter, Some(verse)))
+    };
+    let start = point(first, &contents[0])?;
+    let end = point(last, &contents[contents.len() - 1])?;
+    if start.book != end.book {
+        return Err(CoreError::Corrupt);
+    }
+    let snippet = contents
+        .iter()
+        .map(|c| plain_text(c).trim().to_string())
+        .filter(|t| !t.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    Ok((
+        LocationSpan { start, end },
+        (!snippet.is_empty()).then_some(snippet),
+    ))
+}
+
+/// The study notes on the verses of a chapter of the NWT Study Edition
+/// `sty`, by verse number (verses without notes left out); none if it has
+/// no such chapter. An entry whose header names another verse, or one not
+/// shaped as described => `Corrupt`.
+fn chapter_study_notes(
+    sty: &Publication,
+    book: u32,
+    chapter: u32,
+) -> Result<HashMap<u32, Vec<StudyNote>>, CoreError> {
+    let ids = match verse_ids(sty, book, chapter) {
+        Err(CoreError::NotFound) => return Ok(HashMap::new()),
+        ids => ids?,
+    };
+    let mut notes = HashMap::new();
+    for (verse, verse_id) in ids {
+        let mut mine = Vec::new();
+        for entry in sty.verse_commentaries_for(verse_id)? {
+            let header = entry.label.as_deref().ok_or(CoreError::Corrupt)?;
+            if entry_verse(header) != Some((book, chapter, verse)) {
+                return Err(CoreError::Corrupt);
+            }
+            let html = sty.decrypt(entry.content.as_deref().ok_or(CoreError::Corrupt)?)?;
+            mine.extend(study_notes(&html)?);
+        }
+        if !mine.is_empty() {
+            notes.insert(verse, mine);
+        }
+    }
+    Ok(notes)
+}
+
+/// The notes of a Study Edition entry's content: `<p>` elements with only
+/// whitespace between them. A paragraph that opens with a lemma (see
+/// [`lemma`]) starts a note, the lemma its label and the rest its text; so
+/// does a `p.sn` heading (`7:53`, a verse the Bible omits), with the
+/// heading as its label. Any other paragraph continues the note before it
+/// on a new line, or starts one with an empty label. Anything but a `<p>`,
+/// or an unclosed one => `Corrupt`.
+fn study_notes(html: &str) -> Result<Vec<StudyNote>, CoreError> {
+    let mut notes: Vec<StudyNote> = Vec::new();
+    let mut at = 0;
+    loop {
+        at = html.len() - html[at..].trim_start().len();
+        if at == html.len() {
+            return Ok(notes);
+        }
+        let rest = &html[at..];
+        if !rest.starts_with("<p ") && !rest.starts_with("<p>") {
+            return Err(CoreError::Corrupt);
+        }
+        let tag = &rest[..rest.find('>').ok_or(CoreError::Corrupt)? + 1];
+        let end = element_end(html, at, "p").ok_or(CoreError::Corrupt)?;
+        let content = &html[at + tag.len()..end - "</p>".len()];
+        match lemma(content) {
+            Some((label, body)) => notes.push(StudyNote {
+                label,
+                text: plain_text(body).trim().to_string(),
+            }),
+            None if attribute(tag, "class") == Some("sn") => notes.push(StudyNote {
+                label: plain_text(content).trim().to_string(),
+                text: String::new(),
+            }),
+            None => {
+                let text = plain_text(content).trim().to_string();
+                match notes.last_mut() {
+                    _ if text.is_empty() => {}
+                    Some(note) if !note.text.is_empty() => {
+                        note.text.push('\n');
+                        note.text.push_str(&text);
+                    }
+                    Some(note) => note.text = text,
+                    None => notes.push(StudyNote {
+                        label: String::new(),
+                        text,
+                    }),
+                }
+            }
+        }
+        at = end;
+    }
+}
+
+/// A study-note paragraph's lemma, as plain text without its closing `:`,
+/// and the rest of the paragraph. The paragraph must open with `<strong>`
+/// (after any zero-width space); the lemma runs through the first
+/// `</strong>` its text ends with `:` at, so a lemma split across bold runs
+/// (`<strong>He is</strong> . . . <strong>the firstborn:</strong>`) is kept
+/// whole. `None` without one: a quotation that opens with a bold verse
+/// number is not a lemma.
+fn lemma(content: &str) -> Option<(String, &str)> {
+    let content = content.trim_start_matches(|c: char| c.is_whitespace() || c == '\u{200b}');
+    if !content.starts_with("<strong>") {
+        return None;
+    }
+    content.match_indices("</strong>").find_map(|(i, close)| {
+        let end = i + close.len();
+        let text = plain_text(&content[..end]);
+        let label = text.trim_end().strip_suffix(':')?;
+        Some((label.trim().to_string(), &content[end..]))
+    })
 }
 
 /// Append the entries under `parent`, and their descendants, to `out`.
@@ -1792,6 +2347,62 @@ mod tests {
                 matches!(blocks(&html, post), Err(CoreError::Corrupt)),
                 "{html}"
             );
+        }
+    }
+
+    #[test]
+    fn markers_are_the_letters_inline_run_takes_out() {
+        assert_eq!(
+            markers(VERSE).unwrap(),
+            [(false, 1, "a".into()), (true, 5, "c".into())]
+        );
+        let run = inline_run(VERSE, 2).unwrap();
+        assert_eq!(
+            (run.footnotes, run.cross_refs),
+            (vec!["a".into()], vec!["c".into()])
+        );
+        let no_id = VERSE.replace(" data-mid=\"5\"", "");
+        assert!(matches!(markers(&no_id), Err(CoreError::Corrupt)));
+    }
+
+    fn note(label: &str, text: &str) -> StudyNote {
+        StudyNote {
+            label: label.into(),
+            text: text.into(),
+        }
+    }
+
+    #[test]
+    fn study_notes_start_at_lemmas() {
+        let p = |class: &str, content: &str| {
+            format!("<p id=\"p1\" data-pid=\"1\" class=\"{class}\">{content}</p>\r\n")
+        };
+        let html = [
+            p("s5", "Some manuscripts add &amp; read."),
+            p("s5", "<strong>loved:</strong> The <em>verb</em>."),
+            p("s5", "More on it."),
+            p("s5", "<strong><sup>19</sup></strong> A quoted verse."),
+            p(
+                "s5",
+                "\u{200b}<strong>He is</strong> . . . <strong>first:</strong> Body.",
+            ),
+            p("sn", "<strong>7:53</strong>"),
+            p("s5", "On the passage."),
+            p("s5", ""),
+        ]
+        .concat();
+        assert_eq!(
+            study_notes(&html).unwrap(),
+            [
+                note("", "Some manuscripts add & read."),
+                note("loved", "The verb.\nMore on it.\n19 A quoted verse."),
+                note("He is . . . first", "Body."),
+                note("7:53", "On the passage."),
+            ]
+        );
+        assert!(study_notes("").unwrap().is_empty());
+        for bad in ["text", "<div>x</div>", "<p>unclosed"] {
+            assert!(matches!(study_notes(bad), Err(CoreError::Corrupt)), "{bad}");
         }
     }
 

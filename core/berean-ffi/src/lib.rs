@@ -789,6 +789,113 @@ impl From<berean_core::reader::LocationSpan> for LocationSpan {
     }
 }
 
+/// The FFI mirror of [`berean_core::reader::StudyAvailability`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum StudyAvailability {
+    Installed,
+    NotInstalled { pub_key: String },
+}
+
+impl From<berean_core::reader::StudyAvailability> for StudyAvailability {
+    fn from(a: berean_core::reader::StudyAvailability) -> Self {
+        use berean_core::reader::StudyAvailability as A;
+        match a {
+            A::Installed => StudyAvailability::Installed,
+            A::NotInstalled { pub_key } => StudyAvailability::NotInstalled { pub_key },
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::reader::StudyNote`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct StudyNote {
+    pub label: String,
+    pub text: String,
+}
+
+impl From<berean_core::reader::StudyNote> for StudyNote {
+    fn from(n: berean_core::reader::StudyNote) -> Self {
+        StudyNote {
+            label: n.label,
+            text: n.text,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::reader::CrossRef`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct CrossRef {
+    pub label: String,
+    pub target: LocationSpan,
+    pub snippet: Option<String>,
+}
+
+impl From<berean_core::reader::CrossRef> for CrossRef {
+    fn from(c: berean_core::reader::CrossRef) -> Self {
+        CrossRef {
+            label: c.label,
+            target: c.target.into(),
+            snippet: c.snippet,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::reader::Footnote`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct Footnote {
+    pub marker: String,
+    pub text: String,
+}
+
+impl From<berean_core::reader::Footnote> for Footnote {
+    fn from(f: berean_core::reader::Footnote) -> Self {
+        Footnote {
+            marker: f.marker,
+            text: f.text,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::reader::VerseStudy`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct VerseStudy {
+    pub study_notes: Vec<StudyNote>,
+    pub cross_refs: Vec<CrossRef>,
+    pub footnotes: Vec<Footnote>,
+    pub availability: StudyAvailability,
+}
+
+impl From<berean_core::reader::VerseStudy> for VerseStudy {
+    fn from(s: berean_core::reader::VerseStudy) -> Self {
+        VerseStudy {
+            study_notes: mirror(s.study_notes),
+            cross_refs: mirror(s.cross_refs),
+            footnotes: mirror(s.footnotes),
+            availability: s.availability.into(),
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::reader::VerseStudyCounts`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct VerseStudyCounts {
+    pub verse: u32,
+    pub study_notes: u32,
+    pub cross_refs: u32,
+    pub footnotes: u32,
+}
+
+impl From<berean_core::reader::VerseStudyCounts> for VerseStudyCounts {
+    fn from(c: berean_core::reader::VerseStudyCounts) -> Self {
+        VerseStudyCounts {
+            verse: c.verse,
+            study_notes: c.study_notes,
+            cross_refs: c.cross_refs,
+            footnotes: c.footnotes,
+        }
+    }
+}
+
 /// The reader, exposed to callers as an object.
 #[derive(uniffi::Object)]
 pub struct Reader {
@@ -837,6 +944,25 @@ impl Reader {
     /// Resolve a citation or `jwpub://` link to the span it names.
     pub fn resolve(&self, reference: String) -> Result<LocationSpan, CoreError> {
         Ok(self.inner.resolve(&reference)?.into())
+    }
+
+    /// The footnotes, cross references and (from the NWT Study Edition)
+    /// study notes of the Bible verse at `location`.
+    pub fn verse_study(&self, location: Location) -> Result<VerseStudy, CoreError> {
+        Ok(self.inner.verse_study(&location.into())?.into())
+    }
+
+    /// For each verse of a chapter of the installed Bible `bible` with any
+    /// study content, how much `verse_study` gives for it.
+    pub fn chapter_study_markers(
+        &self,
+        bible: String,
+        book: u32,
+        chapter: u32,
+    ) -> Result<Vec<VerseStudyCounts>, CoreError> {
+        Ok(mirror(
+            self.inner.chapter_study_markers(&bible, book, chapter)?,
+        ))
     }
 }
 
@@ -2019,7 +2145,11 @@ mod tests {
         let core = open_core(&dir);
         let library = core.library();
         let reader = core.reader();
-        for (key, file) in [("ll:0:0", "ll_E.jwpub"), ("nwt:0:0", "nwt_E.jwpub")] {
+        for (key, file) in [
+            ("ll:0:0", "ll_E.jwpub"),
+            ("nwt:0:0", "nwt_E.jwpub"),
+            ("nwtsty:0:0", "nwtsty_E.jwpub"),
+        ] {
             let progress = Arc::new(Recorder {
                 calls: Mutex::new(Vec::new()),
             });
@@ -2097,6 +2227,45 @@ mod tests {
         );
         assert!(matches!(
             reader.resolve("John 3:18-16".into()),
+            Err(CoreError::Invalid(_))
+        ));
+
+        let study = reader.verse_study(john(16)).unwrap();
+        assert_eq!(study.availability, StudyAvailability::Installed);
+        assert_eq!(study.study_notes.len(), 4);
+        assert_eq!(study.study_notes[0].label, "loved");
+        let labels: Vec<&str> = study.cross_refs.iter().map(|c| c.label.as_str()).collect();
+        assert_eq!(labels, ["p", "p", "p", "p", "q", "q", "q", "q", "q"]);
+        assert_eq!(
+            study.cross_refs[0].target,
+            reader.resolve("Romans 5:8".into()).unwrap()
+        );
+        assert!(study.cross_refs[0].snippet.is_some());
+        assert_eq!(
+            reader.verse_study(john(3)).unwrap().footnotes,
+            [Footnote {
+                marker: "a".into(),
+                text: "Or possibly, “born from above.”".into(),
+            }]
+        );
+        let markers = reader
+            .chapter_study_markers("nwt:0:0".into(), 43, 3)
+            .unwrap();
+        assert_eq!(markers.len(), 27);
+        assert_eq!(
+            markers[2],
+            VerseStudyCounts {
+                verse: 3,
+                study_notes: 2,
+                cross_refs: 5,
+                footnotes: 1,
+            }
+        );
+        assert!(matches!(
+            reader.verse_study(Location {
+                verse: None,
+                ..john(16)
+            }),
             Err(CoreError::Invalid(_))
         ));
         assert!(matches!(
