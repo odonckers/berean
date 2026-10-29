@@ -708,18 +708,23 @@ impl Search {
     /// key in the scope => `Invalid`.
     /// Index publications (e.g. the Research Guide) have no rows;
     /// pronunciation marks (`Abʹsa·lom`) are ignored.
-    pub fn query(
+    /// The work runs on its own thread; the call resolves when it is done.
+    /// Callers should debounce typing and drop stale results.
+    pub async fn query(
         &self,
         text: String,
         scope: SearchScope,
         limit: u32,
     ) -> Result<Vec<Hit>, CoreError> {
-        Ok(self
-            .inner
-            .query(&text, &scope.into(), limit)?
-            .into_iter()
-            .map(Into::into)
-            .collect())
+        let inner = self.inner.clone();
+        run_on_thread(move || {
+            Ok(inner
+                .query(&text, &scope.into(), limit)?
+                .into_iter()
+                .map(Into::into)
+                .collect())
+        })
+        .await
     }
 
     /// Rebuild every installed publication's index rows from its files. On
@@ -1830,9 +1835,7 @@ mod tests {
         .unwrap();
 
         let phrase = "What tactic does Satan use to try to break the integrity";
-        let hits = search
-            .query(phrase.into(), SearchScope::default(), 5)
-            .unwrap();
+        let hits = block_on(search.query(phrase.into(), SearchScope::default(), 5)).unwrap();
         let hit = &hits[0];
         assert_eq!(
             hit.location,
@@ -1851,20 +1854,22 @@ mod tests {
             kinds: vec![PubKind::Bible],
             ..Default::default()
         };
-        assert!(search.query(phrase.into(), bibles, 5).unwrap().is_empty());
-        let all = search
-            .query("Jehovah".into(), SearchScope::default(), 10)
-            .unwrap();
+        assert!(block_on(search.query(phrase.into(), bibles, 5))
+            .unwrap()
+            .is_empty());
+        let all = block_on(search.query("Jehovah".into(), SearchScope::default(), 10)).unwrap();
         assert_eq!(all.len(), 10);
         let paged = SearchScope {
             offset: 1,
             ..Default::default()
         };
-        assert_eq!(search.query("Jehovah".into(), paged, 9).unwrap(), all[1..]);
+        assert_eq!(
+            block_on(search.query("Jehovah".into(), paged, 9)).unwrap(),
+            all[1..]
+        );
         for (text, limit) in [("", 5), ("Jehovah", 0)] {
-            let err = search
-                .query(text.into(), SearchScope::default(), limit)
-                .unwrap_err();
+            let err =
+                block_on(search.query(text.into(), SearchScope::default(), limit)).unwrap_err();
             assert!(matches!(err, CoreError::Invalid(_)), "{err:?}");
         }
 
@@ -1876,10 +1881,12 @@ mod tests {
         impl ProgressSink for Reentrant {
             fn on_progress(&self, done: u64, total: u64) {
                 self.core.library().installed().unwrap();
-                self.core
-                    .search()
-                    .query("Jehovah".into(), SearchScope::default(), 1)
-                    .unwrap();
+                block_on(
+                    self.core
+                        .search()
+                        .query("Jehovah".into(), SearchScope::default(), 1),
+                )
+                .unwrap();
                 self.calls.lock().unwrap().push((done, total));
             }
         }
@@ -1892,9 +1899,7 @@ mod tests {
         let (done, total) = *calls.last().unwrap();
         assert_eq!(done, total);
         assert_eq!(
-            search
-                .query(phrase.into(), SearchScope::default(), 5)
-                .unwrap(),
+            block_on(search.query(phrase.into(), SearchScope::default(), 5)).unwrap(),
             hits
         );
 

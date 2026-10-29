@@ -163,6 +163,7 @@ iOS targets are unverified. They go through EAS.
 - They keep the `(…, progress, cancel)` argument order, and `CancelToken` stays the cancellation channel. That matches ubrn's advice to cancel through the library, not the future ([promises][ubrn-promises]).
 - `berean-core` stays synchronous.
 - Inside `berean-ffi`, each call runs the existing synchronous body on a dedicated thread behind a small hand-written future. No new crates and no async runtime.
+- `Search.query` and `Search.rebuild_index` are async too. `query` is async because a common word can take ~60 ms on a desktop over a large index, too long for the JS thread. Apps debounce typing and drop stale results.
 
 ### 7.3 No core lock held during `on_progress` (owner: Echo)
 
