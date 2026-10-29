@@ -6,6 +6,7 @@
 //! later consumes the downloaded files from disk.
 
 pub mod catalog;
+mod instant;
 pub mod jwpub;
 pub mod languages;
 pub mod library;

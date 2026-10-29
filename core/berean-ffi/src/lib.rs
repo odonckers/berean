@@ -496,6 +496,13 @@ impl Library {
             .collect())
     }
 
+    /// The keys of installed publications the catalog has a newer version
+    /// of, ordered by key. Never fails: any catalog or library error gives
+    /// an empty list, and a key that cannot be compared is left out.
+    pub fn updates_available(&self) -> Vec<String> {
+        self.inner.updates_available()
+    }
+
     /// Uninstall a publication.
     pub fn remove(&self, pub_key: String) -> Result<(), CoreError> {
         Ok(self.inner.remove(&pub_key)?)
@@ -1761,11 +1768,42 @@ mod tests {
             library.download_request("ll:0:0".into()),
             Err(CoreError::NotFound)
         ));
+        let ll = fixture("ll_E.jwpub").display().to_string();
+        block_on(library.install("ll:0:0".into(), ll, recorder.clone(), CancelToken::new()))
+            .unwrap();
+        // No catalog: no updates.
+        assert!(library.updates_available().is_empty());
 
         block_on(catalog.ingest_file(path, recorder.clone(), CancelToken::new())).unwrap();
         let calls = recorder.calls.lock().unwrap().clone();
         let (done, total) = *calls.last().unwrap();
         assert_eq!(done, total);
+
+        // The installed copy is the catalog's current one...
+        assert!(library.updates_available().is_empty());
+        // ...until it is older than the catalog's row.
+        let store = dir.path().join("data/publications");
+        let installed = std::fs::read_dir(&store)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .find(|p| {
+                p.file_name()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .starts_with("ll_0_0")
+            })
+            .unwrap();
+        let manifest = installed.join("manifest.json");
+        let json = std::fs::read_to_string(&manifest).unwrap();
+        // The value of `"timestamp"`, between the quotes after its colon.
+        let key = json.find("\"timestamp\"").unwrap() + "\"timestamp\"".len();
+        let start = key + json[key..].find('"').unwrap() + 1;
+        let end = start + json[start..].find('"').unwrap();
+        assert!(json[key..start].trim_start().starts_with(':'), "{json}");
+        let older = format!("{}2000-01-01T00:00:00Z{}", &json[..start], &json[end..]);
+        std::fs::write(&manifest, older).unwrap();
+        assert_eq!(library.updates_available(), vec!["ll:0:0".to_string()]);
 
         let languages = catalog.languages().unwrap();
         assert_eq!(

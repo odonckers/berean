@@ -85,7 +85,7 @@ const COPY_STEPS: u64 = 100;
 const TOTAL: u64 = COPY_STEPS + 3;
 /// How much of the file is copied between cancellation checks.
 const CHUNK: usize = 64 * 1024;
-/// How many keys one issue-title lookup matches (three parameters each),
+/// How many keys one batched lookup matches (three parameters each),
 /// well under SQLite's limit on parameters per statement.
 const KEYS_PER_QUERY: usize = 1000;
 
@@ -507,6 +507,29 @@ impl Catalog {
         &self,
         pub_keys: &[&str],
     ) -> Result<HashMap<String, String>, CoreError> {
+        self.resolved_column(pub_keys, "p.IssueTitle")
+    }
+
+    /// The `PublicationAsset.LastModified` of the row each of `pub_keys`
+    /// resolves to, by key, as stored (ISO-8601). Keys the catalog lacks, and
+    /// NULL or empty values, are left out; with no catalog the map is empty.
+    /// Malformed key => `Invalid`.
+    pub(crate) fn last_modified(
+        &self,
+        pub_keys: &[&str],
+    ) -> Result<HashMap<String, String>, CoreError> {
+        self.resolved_column(pub_keys, "a.LastModified")
+    }
+
+    /// `column` (of `p`, the `Publication`, or `a`, its `PublicationAsset`)
+    /// of the row each of `pub_keys` resolves to, by key, in batched
+    /// queries. Keys the catalog lacks, and NULL or empty values, are left
+    /// out; with no catalog the map is empty. Malformed key => `Invalid`.
+    fn resolved_column(
+        &self,
+        pub_keys: &[&str],
+        column: &str,
+    ) -> Result<HashMap<String, String>, CoreError> {
         let mut out = HashMap::new();
         let Some(conn) = self.open()? else {
             return Ok(out);
@@ -522,7 +545,7 @@ impl Catalog {
             }
             let sql = format!(
                 "WITH k (lang, symbol, issue) AS (VALUES {}) \
-                 SELECT p.Symbol, p.MepsLanguageId, p.IssueTagNumber, p.IssueTitle \
+                 SELECT p.Symbol, p.MepsLanguageId, p.IssueTagNumber, {column} \
                  FROM k JOIN Publication p \
                    ON p.MepsLanguageId = k.lang AND p.Symbol = k.symbol \
                   AND p.IssueTagNumber = k.issue \
@@ -536,9 +559,9 @@ impl Catalog {
                 Ok((key, r.get::<_, Option<String>>(3)?))
             })?;
             for row in rows {
-                let (key, title) = row?;
-                if let Some(title) = title.filter(|t| !t.is_empty()) {
-                    out.insert(key, title);
+                let (key, value) = row?;
+                if let Some(value) = value.filter(|v| !v.is_empty()) {
+                    out.insert(key, value);
                 }
             }
         }

@@ -208,7 +208,7 @@ struct ManifestPublication {
 
 /// Name of the manifest inside a `.jwpub`, and of the copy kept beside an
 /// unpacked publication.
-const MANIFEST: &str = "manifest.json";
+pub(crate) const MANIFEST: &str = "manifest.json";
 
 /// A `.jwpub` whose `contents` hash has been checked against its manifest
 /// and whose `contents` zip holds the database the manifest names. The
