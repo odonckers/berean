@@ -17,7 +17,7 @@ The Expo app in `apps/mobile` reads publications, the catalog, and the library t
 
 ### In scope
 
-The berean-ffi surface as it stands at the top of the core stack (#12 → #14–#19): `Core`, `Library`, `Catalog`, `Reader`, `CancelToken`, `ProgressSink`, and their records (§4).
+The berean-ffi surface as it stands at the top of the core stack (#12 → #14–#19): `Core`, `Library`, `Catalog`, `Reader`, `CancelToken`, `ProgressSink`, and their records (§3).
 
 ### Out of scope
 
