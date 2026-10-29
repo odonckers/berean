@@ -233,51 +233,53 @@ impl Reader {
     /// Titles are trimmed of surrounding whitespace. Malformed key =>
     /// `Invalid`; not installed => `NotFound`.
     pub fn toc(&self, pub_key: &str) -> Result<Vec<TocEntry>, CoreError> {
-        let publication = self.library().publication(pub_key)?;
-        let view = publication
-            .publication_views()?
-            .into_iter()
-            .find(|v| v.symbol == TOC_VIEW)
-            .ok_or(CoreError::Corrupt)?;
-        let items = publication.publication_view_items(view.publication_view_id)?;
-        let documents = documents_by_id(&publication)?;
+        self.library().with_publication(pub_key, |publication| {
+            let view = publication
+                .publication_views()?
+                .into_iter()
+                .find(|v| v.symbol == TOC_VIEW)
+                .ok_or(CoreError::Corrupt)?;
+            let items = publication.publication_view_items(view.publication_view_id)?;
+            let documents = documents_by_id(publication)?;
 
-        let mut children: HashMap<i64, Vec<&PublicationViewItem>> = HashMap::new();
-        for item in &items {
-            if item.publication_view_item_id == -1 {
+            let mut children: HashMap<i64, Vec<&PublicationViewItem>> = HashMap::new();
+            for item in &items {
+                if item.publication_view_item_id == -1 {
+                    return Err(CoreError::Corrupt);
+                }
+                children
+                    .entry(item.parent_publication_view_item_id)
+                    .or_default()
+                    .push(item);
+            }
+            let mut entries = Vec::with_capacity(items.len());
+            toc_walk(&children, &documents, -1, 0, &mut entries)?;
+            // Items not reached from the top level would be silently lost.
+            if entries.len() != items.len() {
                 return Err(CoreError::Corrupt);
             }
-            children
-                .entry(item.parent_publication_view_item_id)
-                .or_default()
-                .push(item);
-        }
-        let mut entries = Vec::with_capacity(items.len());
-        toc_walk(&children, &documents, -1, 0, &mut entries)?;
-        // Items not reached from the top level would be silently lost.
-        if entries.len() != items.len() {
-            return Err(CoreError::Corrupt);
-        }
-        Ok(entries)
+            Ok(entries)
+        })
     }
 
     /// The document with MEPS id `doc_id` in the installed publication
     /// `pub_key`. Malformed key => `Invalid`; not installed, or no such
     /// document (or one without content) => `NotFound`.
     pub fn document(&self, pub_key: &str, doc_id: i64) -> Result<Document, CoreError> {
-        let publication = self.library().publication(pub_key)?;
-        let summary = find_document(&publication, doc_id)?.ok_or(CoreError::NotFound)?;
-        let html = publication.document_html(summary.document_id)?;
-        let paragraphs = publication
-            .document_paragraphs(summary.document_id)?
-            .into_iter()
-            .map(|p| paragraph_anchor(&html, p))
-            .collect::<Result<_, _>>()?;
-        Ok(Document {
-            doc_id,
-            title: summary.title,
-            html,
-            paragraphs,
+        self.library().with_publication(pub_key, |publication| {
+            let summary = find_document(publication, doc_id)?.ok_or(CoreError::NotFound)?;
+            let html = publication.document_html(summary.document_id)?;
+            let paragraphs = publication
+                .document_paragraphs(summary.document_id)?
+                .into_iter()
+                .map(|p| paragraph_anchor(&html, p))
+                .collect::<Result<_, _>>()?;
+            Ok(Document {
+                doc_id,
+                title: summary.title,
+                html,
+                paragraphs,
+            })
         })
     }
 
@@ -290,8 +292,9 @@ impl Reader {
         book: u32,
         chapter: u32,
     ) -> Result<BibleChapter, CoreError> {
-        let publication = self.library().publication(bible)?;
-        read_chapter(&publication, bible, book, chapter)
+        self.library().with_publication(bible, |publication| {
+            read_chapter(publication, bible, book, chapter)
+        })
     }
 
     /// Resolve a citation or `jwpub://` link to the span of locations it
@@ -334,17 +337,20 @@ impl Reader {
         ) else {
             return Err(CoreError::Invalid(format!("{NOT_A_VERSE}: {location:?}")));
         };
-        let bible = self.library().publication(&location.pub_key)?;
-        let installed = self.library().installed()?;
-        if !installed
-            .iter()
-            .any(|p| p.pub_key == location.pub_key && p.kind == PubKind::Bible)
-        {
-            return Err(CoreError::Invalid(format!("{NOT_A_VERSE}: {location:?}")));
-        }
-        let verse_id = bible_verse_id(&bible, book, chapter, verse)?;
+        let library = self.library();
+        let (installed, verse_id, language) =
+            library.with_publication(&location.pub_key, |bible| {
+                let installed = library.installed()?;
+                if !installed
+                    .iter()
+                    .any(|p| p.pub_key == location.pub_key && p.kind == PubKind::Bible)
+                {
+                    return Err(CoreError::Invalid(format!("{NOT_A_VERSE}: {location:?}")));
+                }
+                let verse_id = bible_verse_id(bible, book, chapter, verse)?;
+                Ok((installed, verse_id, bible.meta().meps_language))
+            })?;
 
-        let language = bible.meta().meps_language;
         let guide = installed
             .iter()
             .find(|p| p.symbol == GUIDE && p.meps_language == language);
@@ -368,22 +374,24 @@ impl Reader {
             });
         };
 
-        let guide = self.library().publication(&guide.pub_key)?;
-        let mut items = Vec::new();
-        for entry in guide.verse_commentaries_for(verse_id)? {
-            let header = entry.label.as_deref().ok_or(CoreError::Corrupt)?;
-            if entry_verse(header) != Some((book, chapter, verse)) {
-                return Err(CoreError::Corrupt);
+        let items = library.with_publication(&guide.pub_key, |guide| {
+            let mut items = Vec::new();
+            for entry in guide.verse_commentaries_for(verse_id)? {
+                let header = entry.label.as_deref().ok_or(CoreError::Corrupt)?;
+                if entry_verse(header) != Some((book, chapter, verse)) {
+                    return Err(CoreError::Corrupt);
+                }
+                let html = guide.decrypt(entry.content.as_deref().ok_or(CoreError::Corrupt)?)?;
+                for link in study_links(&html)? {
+                    items.push(StudyReference {
+                        label: plain_text(link.text).trim().to_string(),
+                        html: html[link.begin..link.end].to_string(),
+                        target: study_target(guide, &link)?,
+                    });
+                }
             }
-            let html = guide.decrypt(entry.content.as_deref().ok_or(CoreError::Corrupt)?)?;
-            for link in study_links(&html)? {
-                items.push(StudyReference {
-                    label: plain_text(link.text).trim().to_string(),
-                    html: html[link.begin..link.end].to_string(),
-                    target: study_target(&guide, &link)?,
-                });
-            }
-        }
+            Ok(items)
+        })?;
         Ok(StudyReferences {
             availability: StudyAvailability::Installed,
             items,
@@ -393,57 +401,73 @@ impl Reader {
     fn resolve_citation(&self, reference: &str) -> Result<LocationSpan, CoreError> {
         let citation = parse_citation(reference)?;
         for summary in self.installed(|p| p.kind == PubKind::Bible)? {
-            let publication = self.library().publication(&summary.pub_key)?;
-            let documents = documents_by_id(&publication)?;
-            for book in publication.bible_books()? {
-                let doc = documents
-                    .get(&book.book_document_id)
-                    .ok_or(CoreError::Corrupt)?;
-                let single_word = book
-                    .chapter_display_title
-                    .as_deref()
-                    .filter(|t| t.split_whitespace().count() == 1);
-                let matches = std::iter::once(doc.title.as_str())
-                    .chain(single_word)
-                    .any(|name| fold(name) == citation.book);
-                if !matches {
-                    continue;
-                }
-                let number = u32::try_from(book.bible_book_id).map_err(|_| CoreError::Corrupt)?;
-                let (mut start, mut end) = (citation.start, citation.end);
-                // In a book of one chapter a lone number is a verse.
-                if start.1.is_none() && publication.bible_chapter(number, 2)?.is_none() {
-                    start = (1, Some(start.0));
-                    end = (1, Some(end.0));
-                }
-                if start.1.is_none() && start != end {
-                    // A chapter range: the first verse of the first chapter
-                    // through the last verse of the last.
-                    let edge = |chapter, last: bool| -> Result<Location, CoreError> {
-                        let read = read_chapter(&publication, &summary.pub_key, number, chapter)?;
-                        let verse = if last {
-                            read.verses.last()
-                        } else {
-                            read.verses.first()
+            let found = self
+                .library()
+                .with_publication(&summary.pub_key, |publication| {
+                    let documents = documents_by_id(publication)?;
+                    for book in publication.bible_books()? {
+                        let doc = documents
+                            .get(&book.book_document_id)
+                            .ok_or(CoreError::Corrupt)?;
+                        let single_word = book
+                            .chapter_display_title
+                            .as_deref()
+                            .filter(|t| t.split_whitespace().count() == 1);
+                        let matches = std::iter::once(doc.title.as_str())
+                            .chain(single_word)
+                            .any(|name| fold(name) == citation.book);
+                        if !matches {
+                            continue;
+                        }
+                        let number =
+                            u32::try_from(book.bible_book_id).map_err(|_| CoreError::Corrupt)?;
+                        let (mut start, mut end) = (citation.start, citation.end);
+                        // In a book of one chapter a lone number is a verse.
+                        if start.1.is_none() && publication.bible_chapter(number, 2)?.is_none() {
+                            start = (1, Some(start.0));
+                            end = (1, Some(end.0));
+                        }
+                        if start.1.is_none() && start != end {
+                            // A chapter range: the first verse of the first chapter
+                            // through the last verse of the last.
+                            let edge = |chapter, last: bool| -> Result<Location, CoreError> {
+                                let read =
+                                    read_chapter(publication, &summary.pub_key, number, chapter)?;
+                                let verse = if last {
+                                    read.verses.last()
+                                } else {
+                                    read.verses.first()
+                                };
+                                let verse = verse.ok_or(CoreError::Corrupt)?.verse;
+                                Ok(bible_point(
+                                    &summary.pub_key,
+                                    doc,
+                                    number,
+                                    chapter,
+                                    Some(verse),
+                                ))
+                            };
+                            return Ok(Some(LocationSpan {
+                                start: edge(start.0, false)?,
+                                end: edge(end.0, true)?,
+                            }));
+                        }
+                        let at = |(chapter, verse): (u32, Option<u32>)| {
+                            bible_location(
+                                publication,
+                                &summary.pub_key,
+                                &book,
+                                doc,
+                                chapter,
+                                verse,
+                            )
                         };
-                        let verse = verse.ok_or(CoreError::Corrupt)?.verse;
-                        Ok(bible_point(
-                            &summary.pub_key,
-                            doc,
-                            number,
-                            chapter,
-                            Some(verse),
-                        ))
-                    };
-                    return Ok(LocationSpan {
-                        start: edge(start.0, false)?,
-                        end: edge(end.0, true)?,
-                    });
-                }
-                let at = |(chapter, verse): (u32, Option<u32>)| {
-                    bible_location(&publication, &summary.pub_key, &book, doc, chapter, verse)
-                };
-                return span(at(start)?, || at(end), start == end);
+                        return span(at(start)?, || at(end), start == end).map(Some);
+                    }
+                    Ok(None)
+                })?;
+            if let Some(found) = found {
+                return Ok(found);
             }
         }
         Err(CoreError::NotFound)
@@ -467,27 +491,29 @@ impl Reader {
             .into_iter()
             .next()
             .ok_or(CoreError::NotFound)?;
-        let publication = self.library().publication(&summary.pub_key)?;
-        let books = publication.bible_books()?;
-        let documents = documents_by_id(&publication)?;
-        let at = |(book, chapter, verse): (u32, u32, u32)| {
-            let book_row = books
-                .iter()
-                .find(|b| b.bible_book_id == i64::from(book))
-                .ok_or(CoreError::NotFound)?;
-            let doc = documents
-                .get(&book_row.book_document_id)
-                .ok_or(CoreError::Corrupt)?;
-            bible_location(
-                &publication,
-                &summary.pub_key,
-                book_row,
-                doc,
-                chapter,
-                Some(verse),
-            )
-        };
-        span(at(start)?, || at(end), start == end)
+        self.library()
+            .with_publication(&summary.pub_key, |publication| {
+                let books = publication.bible_books()?;
+                let documents = documents_by_id(publication)?;
+                let at = |(book, chapter, verse): (u32, u32, u32)| {
+                    let book_row = books
+                        .iter()
+                        .find(|b| b.bible_book_id == i64::from(book))
+                        .ok_or(CoreError::NotFound)?;
+                    let doc = documents
+                        .get(&book_row.book_document_id)
+                        .ok_or(CoreError::Corrupt)?;
+                    bible_location(
+                        publication,
+                        &summary.pub_key,
+                        book_row,
+                        doc,
+                        chapter,
+                        Some(verse),
+                    )
+                };
+                span(at(start)?, || at(end), start == end)
+            })
     }
 
     fn resolve_document_link(&self, link: &str, rest: &str) -> Result<LocationSpan, CoreError> {
@@ -498,17 +524,25 @@ impl Reader {
         }
         let language = languages::by_code(code).ok_or(CoreError::NotFound)?;
         for summary in self.installed(|p| p.meps_language == language.meps_id)? {
-            let publication = self.library().publication(&summary.pub_key)?;
-            let Some(doc) = find_document(&publication, doc_id)? else {
+            let doc = self
+                .library()
+                .with_publication(&summary.pub_key, |publication| {
+                    let Some(doc) = find_document(publication, doc_id)? else {
+                        return Ok(None);
+                    };
+                    if let Some((first, last)) = paragraphs {
+                        let rows = publication.document_paragraphs(doc.document_id)?;
+                        let exists =
+                            |p: u32| rows.iter().any(|r| r.paragraph_index == i64::from(p));
+                        if !exists(first) || !exists(last) {
+                            return Err(CoreError::NotFound);
+                        }
+                    }
+                    Ok(Some(doc))
+                })?;
+            let Some(doc) = doc else {
                 continue;
             };
-            if let Some((first, last)) = paragraphs {
-                let rows = publication.document_paragraphs(doc.document_id)?;
-                let exists = |p: u32| rows.iter().any(|r| r.paragraph_index == i64::from(p));
-                if !exists(first) || !exists(last) {
-                    return Err(CoreError::NotFound);
-                }
-            }
             let at = |paragraph| Location {
                 pub_key: summary.pub_key.clone(),
                 doc_id: Some(doc.meps_document_id),
@@ -778,7 +812,9 @@ fn toc_walk(
 }
 
 /// The publication's documents by local `DocumentId`.
-fn documents_by_id(publication: &Publication) -> Result<HashMap<i64, DocumentSummary>, CoreError> {
+pub(crate) fn documents_by_id(
+    publication: &Publication,
+) -> Result<HashMap<i64, DocumentSummary>, CoreError> {
     Ok(publication
         .documents()?
         .into_iter()
@@ -791,18 +827,17 @@ fn find_document(
     publication: &Publication,
     doc_id: i64,
 ) -> Result<Option<DocumentSummary>, CoreError> {
-    let mut found = publication
-        .documents()?
-        .into_iter()
-        .filter(|d| d.meps_document_id == doc_id);
-    let doc = found.next();
-    if found.next().is_some() {
+    let mut found = publication.documents_with_meps_id(doc_id)?;
+    if found.len() > 1 {
         return Err(CoreError::Corrupt);
     }
-    Ok(doc)
+    Ok(found.pop())
 }
 
-fn paragraph_anchor(html: &str, p: DocumentParagraph) -> Result<ParagraphAnchor, CoreError> {
+pub(crate) fn paragraph_anchor(
+    html: &str,
+    p: DocumentParagraph,
+) -> Result<ParagraphAnchor, CoreError> {
     let paragraph = u32::try_from(p.paragraph_index).map_err(|_| CoreError::Corrupt)?;
     let (begin, end) = match (p.begin_position, p.end_position) {
         (Some(begin), Some(end)) => {
@@ -923,7 +958,7 @@ fn bible_point(
     }
 }
 
-fn read_chapter(
+pub(crate) fn read_chapter(
     publication: &Publication,
     pub_key: &str,
     book: u32,
@@ -1027,7 +1062,7 @@ fn verse_number(content: &str, book: u32, chapter: u32) -> Option<u32> {
 }
 
 /// HTML as plain text: tags dropped, character references decoded.
-fn plain_text(html: &str) -> String {
+pub(crate) fn plain_text(html: &str) -> String {
     let mut text = String::new();
     let mut rest = html;
     while let Some(i) = rest.find('<') {

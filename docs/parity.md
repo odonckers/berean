@@ -74,9 +74,9 @@ Only features that a cited source describes are listed. Rows marked **to verify*
 ## Search
 | ID | Feature | JW Library behavior | Status | Layer | UI | Board row / PR | Notes |
 |---|---|---|---|---|---|---|---|
-| SR-1 | Search in a Bible | Word/phrase, with suggestions while typing. Top Verses / All Verses (book order) / Articles; Match Exact Phrase. [S7] | Not started | both | Kiwi/Moss | Core: FTS5 search (Holding) | |
-| SR-2 | Search in a publication | Word/phrase, suggestions, Match Exact Phrase. [S7] | Not started | both | Kiwi/Moss | Core: FTS5 search (Holding) | |
-| SR-3 | Insight topic search | With *Insight on the Scriptures* downloaded, matching Insight topics appear in suggestions. [S7] | Not started | both | Kiwi/Moss | Core: FTS5 search (Holding) | jwpubs have `Topic`/`TopicDocument` tables (seen in rsg_E) [S13]: **to verify** for Insight. |
+| SR-1 | Search in a Bible | Word/phrase, with suggestions while typing. Top Verses / All Verses (book order) / Articles; Match Exact Phrase. [S7] | Core in progress | both | Kiwi/Moss | Core: FTS5 search — #19 | Core: ranked verse hits (Location to the verse, verse 0 superscriptions), Match Exact Phrase, case/diacritic-insensitive (en/es), scope by pub/kind/language, paging. **Not built:** suggestions while typing, Top Verses / All Verses / Articles grouping. Search FFI shape pending approval (#19). |
+| SR-2 | Search in a publication | Word/phrase, suggestions, Match Exact Phrase. [S7] | Core in progress | both | Kiwi/Moss | Core: FTS5 search — #19 | Core: ranked paragraph hits (Location doc + paragraph) with snippets, exact phrase, scope by pub. **Not built:** suggestions. FFI pending (#19). |
+| SR-3 | Insight topic search | With *Insight on the Scriptures* downloaded, matching Insight topics appear in suggestions. [S7] | Not started | both | Kiwi/Moss | Core: FTS5 search — #19 | Insight fixture (it_E, both volumes, `it:0:0`) pinned in #19; its paragraphs are searchable. `Topic`/`TopicDocument` topic suggestions not built yet. |
 
 ## Notes / highlights / tags / bookmarks / history
 | ID | Feature | JW Library behavior | Status | Layer | UI | Board row / PR | Notes |

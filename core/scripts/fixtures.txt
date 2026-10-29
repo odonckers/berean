@@ -26,6 +26,10 @@ c55762f49cc53f8d6af06115a542d63021633161a974b23c163b8183ef00ee45  catalog-v5-ffa
 1f057e75cf10072d05c175a3dd5803acc23ff2054fd5e3a231a3ca6ba50d643a  pubmedia-w_E_202608.json  https://b.jw-cdn.org/apis/pub-media/GETPUBMEDIALINKS?output=json&fileformat=JWPUB&pub=w&langwritten=E&issue=202608
 9a103b79e5555ac1ea449c54b8311e7536cc7b324d6e422c46acf55c5f3f4814  pubmedia-w_S_202608.json  https://b.jw-cdn.org/apis/pub-media/GETPUBMEDIALINKS?output=json&fileformat=JWPUB&pub=w&langwritten=S&issue=202608
 36c107335bf866f346078075221eea620d4f9a64054237e3b6771c088d3bbf40  pubmedia-ll_E.json  https://b.jw-cdn.org/apis/pub-media/GETPUBMEDIALINKS?output=json&fileformat=JWPUB&pub=ll&langwritten=E
-# The Research Guide (berean-core/tests/study.rs): study references for
-# Bible verses (112 MB).
+# The Research Guide (berean-core/tests/study.rs, search.rs): study
+# references for Bible verses; an Index, so never searched (112 MB).
 5ef3c5916f3ee7bae12101ef5aacc8ac301e42044f365df7e416c224b4c08593  rsg_E.jwpub  https://cfp2.jw-cdn.org/a/8e227c9/1/o/rsg_E.jwpub
+# Insight on the Scriptures (berean-core/tests/study.rs, search.rs): one
+# .jwpub holds both volumes; it installs as `it:0:0`, and the Research Guide
+# cites it most (352 MB).
+bbc02a7c8797430d67983ca5ac3a91ac124a1ca518572c24f54a924c1e364ba3  it_E.jwpub  https://cfp2.jw-cdn.org/a/d74b90/2/o/it_E.jwpub

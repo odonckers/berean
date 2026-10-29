@@ -100,6 +100,22 @@ fn migration_list() -> Vec<M<'static>> {
                 installed_at INTEGER NOT NULL
             );",
         ),
+        // The search index (see `search`): one row per verse or paragraph of
+        // an installed publication. Only `text` is searched; the rest says
+        // where the row is.
+        M::up(
+            "CREATE VIRTUAL TABLE search_index USING fts5(
+                text,
+                title UNINDEXED,
+                pub_key UNINDEXED,
+                doc_id UNINDEXED,
+                book UNINDEXED,
+                chapter UNINDEXED,
+                verse UNINDEXED,
+                paragraph UNINDEXED,
+                tokenize = 'unicode61 remove_diacritics 2'
+            );",
+        ),
     ]
 }
 
@@ -156,14 +172,32 @@ pub struct Core {
 }
 
 /// State shared by `Core` and the handles it gives out.
+///
+/// Lock order: a publication's lock, then `publications`, then `conn`. A
+/// thread holds at most one publication lock at a time, and never waits on
+/// one while holding `publications` or `conn`.
 pub(crate) struct Inner {
     conn: Mutex<Connection>,
+    /// Recently opened publications, least recently used first, keyed by
+    /// their store directory (a reinstall gets a new one). See
+    /// `Library::with_publication`.
+    publications: Mutex<Vec<(String, Arc<Mutex<jwpub::Publication>>)>>,
     pub(crate) data_dir: PathBuf,
 }
 
 impl Inner {
     pub(crate) fn conn(&self) -> MutexGuard<'_, Connection> {
         self.conn.lock().expect("core connection mutex poisoned")
+    }
+
+    pub(crate) fn publications(
+        &self,
+    ) -> MutexGuard<'_, Vec<(String, Arc<Mutex<jwpub::Publication>>)>> {
+        // The cache is only ever left consistent, so a panic elsewhere while
+        // it was held does not make it unusable.
+        self.publications
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 
@@ -184,6 +218,7 @@ impl Core {
 
         let inner = Arc::new(Inner {
             conn: Mutex::new(conn),
+            publications: Mutex::new(Vec::new()),
             data_dir: data_dir.to_path_buf(),
         });
         library::Library::new(inner.clone()).prepare_store()?;
@@ -204,6 +239,11 @@ impl Core {
     /// The reader.
     pub fn reader(&self) -> reader::Reader {
         reader::Reader::new(self.inner.clone())
+    }
+
+    /// Full-text search over the installed publications.
+    pub fn search(&self) -> search::Search {
+        search::Search::new(self.inner.clone())
     }
 
     /// The user DB's actual schema version, read from `PRAGMA user_version`.
@@ -229,6 +269,7 @@ mod tests {
         assert_send_sync::<Core>();
         assert_send_sync::<library::Library>();
         assert_send_sync::<reader::Reader>();
+        assert_send_sync::<search::Search>();
     }
 
     #[test]

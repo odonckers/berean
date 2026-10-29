@@ -19,7 +19,8 @@
 //! the directory the current record points at. The `installed_publication`
 //! row is the commit point: an install unpacks into `publications/.staging/`,
 //! moves the finished directory into `publications/`, then switches the row
-//! to it in one transaction; only then is the replaced directory moved to
+//! to it, and its search index rows to the new copy's, in one transaction;
+//! only then is the replaced directory moved to
 //! `publications/.trash/` and deleted. Opening the core empties `.staging`
 //! and `.trash` and deletes any directory no row points at, so a crash at any
 //! point leaves either the old or the new publication installed, never a
@@ -29,7 +30,7 @@
 //! `w26:0:20260800` or `ll:0:0`, taken from its own `Publication` row.
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::{params, OptionalExtension};
@@ -39,12 +40,15 @@ use tempfile::TempDir;
 use crate::catalog::{Catalog, CatalogEntry};
 use crate::jwpub::{Container, Publication, PublicationMeta};
 use crate::languages;
+use crate::search::{self, IndexRow, INDEX_STEPS};
 use crate::{CancelToken, CoreError, Inner, ProgressSink};
 
 const STORE: &str = "publications";
 const STAGING: &str = ".staging";
 const TRASH: &str = ".trash";
 const PUB_MEDIA: &str = "https://b.jw-cdn.org/apis/pub-media/GETPUBMEDIALINKS";
+/// How many open publications [`Library::with_publication`] keeps.
+pub(crate) const OPEN_PUBLICATIONS: usize = 8;
 
 /// The broad kind of a publication, from its `PublicationType`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,7 +64,7 @@ pub enum PubKind {
 }
 
 impl PubKind {
-    fn from_publication_type(t: &str) -> Self {
+    pub(crate) fn from_publication_type(t: &str) -> Self {
         match t {
             "Bible" => PubKind::Bible,
             "Book" => PubKind::Book,
@@ -139,13 +143,15 @@ impl Library {
     }
 
     /// Verify the `.jwpub` at `file_path`, check it is the publication
-    /// `pub_key` names, unpack it into the store and record it, replacing any
-    /// installed copy. Progress counts opening and verifying the file, each
-    /// unpacked entry, checking the unpacked copy, and committing.
+    /// `pub_key` names, unpack it into the store, index it for search and
+    /// record it, replacing any installed copy and its index rows. Progress
+    /// counts opening and verifying the file, each unpacked entry, checking
+    /// the unpacked copy, a fixed 100 steps for indexing it, and committing.
     ///
     /// A malformed key, or a file that is a different publication =>
-    /// `Invalid`; a damaged file => `Corrupt`; cancelled => `Cancelled`. On
-    /// any error the store is unchanged.
+    /// `Invalid`; a damaged file (including content the reader cannot read)
+    /// => `Corrupt`; cancelled => `Cancelled`. On any error the store and
+    /// the search index are unchanged.
     pub fn install(
         &self,
         pub_key: &str,
@@ -164,7 +170,7 @@ impl Library {
 
         let mut container = Container::open(file_path, staging.path())?;
         let entries = container.len() as u64;
-        let total = entries + 3;
+        let total = entries + 3 + INDEX_STEPS;
         progress.on_progress(1, total);
 
         container.write_manifest(&unpacked)?;
@@ -176,7 +182,8 @@ impl Library {
         drop(container);
 
         cancel.check()?;
-        let meta = Publication::open_dir(&unpacked)?.meta().clone();
+        let publication = Publication::open_dir(&unpacked)?;
+        let meta = publication.meta().clone();
         let key = meta.pub_key();
         if key != pub_key {
             return Err(CoreError::Invalid(format!(
@@ -184,6 +191,9 @@ impl Library {
             )));
         }
         progress.on_progress(entries + 2, total);
+
+        let rows = search::index_rows(&publication, progress, entries + 2, total, cancel)?;
+        drop(publication);
 
         cancel.check()?;
         // `.tmpXXXXXX`: unique within `.staging`, and in practice in the store.
@@ -196,7 +206,7 @@ impl Library {
         let installed_dir = store.join(&dir);
         std::fs::rename(&unpacked, &installed_dir)?;
 
-        let replaced = match self.record(pub_key, &meta, &dir) {
+        let replaced = match self.record(pub_key, &meta, &dir, &rows) {
             Ok(replaced) => replaced,
             Err(e) => {
                 // Not recorded: the new directory is an orphan; drop it.
@@ -205,6 +215,7 @@ impl Library {
             }
         };
         if let Some(old) = replaced {
+            self.evict(&old);
             self.discard(&old);
         }
         progress.on_progress(total, total);
@@ -232,7 +243,8 @@ impl Library {
         Ok(rows.collect::<Result<_, _>>()?)
     }
 
-    /// Uninstall a publication: drop its record and delete its directory.
+    /// Uninstall a publication: drop its record and search index rows, and
+    /// delete its directory.
     /// Malformed key => `Invalid`; not installed => `NotFound`.
     pub fn remove(&self, pub_key: &str) -> Result<(), CoreError> {
         dir_name(pub_key)?;
@@ -248,9 +260,11 @@ impl Library {
                 "DELETE FROM installed_publication WHERE pub_key = ?1",
                 [pub_key],
             )?;
+            search::delete_rows(&tx, pub_key)?;
             tx.commit()?;
             dir
         };
+        self.evict(&dir);
         self.discard(&dir);
         Ok(())
     }
@@ -316,13 +330,78 @@ impl Library {
     /// Open an installed publication from the store. Malformed key =>
     /// `Invalid`; not installed => `NotFound`.
     pub fn publication(&self, pub_key: &str) -> Result<Publication, CoreError> {
+        Ok(self.publication_and_dir(pub_key)?.1)
+    }
+
+    /// [`publication`](Self::publication), opened afresh (not from the
+    /// cache), with the store directory it was opened from.
+    pub(crate) fn publication_and_dir(
+        &self,
+        pub_key: &str,
+    ) -> Result<(String, Publication), CoreError> {
         dir_name(pub_key)?;
         let dir: String = self.inner.conn().query_row(
             "SELECT dir FROM installed_publication WHERE pub_key = ?1",
             [pub_key],
             |r| r.get(0),
         )?;
-        Publication::open_dir(self.store().join(dir))
+        let publication = Publication::open_dir(self.store().join(&dir))?;
+        Ok((dir, publication))
+    }
+
+    /// Run `f` on the installed publication `pub_key`. The publication is
+    /// opened once and kept open (up to [`OPEN_PUBLICATIONS`], least
+    /// recently used dropped first) until it is removed or replaced, so
+    /// repeated reads skip reopening it. Calls on the same publication take
+    /// turns. `f` must not call `with_publication` itself (see the lock order
+    /// on `Inner`). Malformed key => `Invalid`; not installed => `NotFound`.
+    pub(crate) fn with_publication<T>(
+        &self,
+        pub_key: &str,
+        f: impl FnOnce(&Publication) -> Result<T, CoreError>,
+    ) -> Result<T, CoreError> {
+        let (_, publication) = self.open_cached(pub_key)?;
+        let publication = publication.lock().unwrap_or_else(PoisonError::into_inner);
+        f(&publication)
+    }
+
+    /// The cached publication `pub_key` and its store directory, opening and
+    /// caching it if needed. The directory is looked up with the cache held,
+    /// so a concurrent remove or reinstall (which evicts after committing)
+    /// can never leave a stale entry behind.
+    pub(crate) fn open_cached(
+        &self,
+        pub_key: &str,
+    ) -> Result<(String, Arc<Mutex<Publication>>), CoreError> {
+        dir_name(pub_key)?;
+        let mut cache = self.inner.publications();
+        let dir: String = self.inner.conn().query_row(
+            "SELECT dir FROM installed_publication WHERE pub_key = ?1",
+            [pub_key],
+            |r| r.get(0),
+        )?;
+        let publication = lru_get(&mut cache, &dir, OPEN_PUBLICATIONS, || {
+            Ok(Arc::new(Mutex::new(Publication::open_dir(
+                self.store().join(&dir),
+            )?)))
+        })?;
+        Ok((dir, publication))
+    }
+
+    /// The store directories of the open publications, least recently used
+    /// first.
+    #[cfg(test)]
+    fn open_dirs(&self) -> Vec<String> {
+        self.inner
+            .publications()
+            .iter()
+            .map(|(d, _)| d.clone())
+            .collect()
+    }
+
+    /// Drop the cached copy of the publication in store directory `dir`.
+    fn evict(&self, dir: &str) {
+        self.inner.publications().retain(|(d, _)| d != dir);
     }
 
     /// Create the store and clear out anything a crash or failed call left
@@ -355,13 +434,15 @@ impl Library {
         Ok(())
     }
 
-    /// Insert or replace the record for `pub_key`, pointing at `dir`.
-    /// Returns the directory the replaced record pointed at, if any.
+    /// Insert or replace the record for `pub_key`, pointing at `dir`, and
+    /// its search index rows with `rows`, in one transaction. Returns the
+    /// directory the replaced record pointed at, if any.
     fn record(
         &self,
         pub_key: &str,
         meta: &PublicationMeta,
         dir: &str,
+        rows: &[IndexRow],
     ) -> Result<Option<String>, CoreError> {
         let installed_at = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -392,6 +473,7 @@ impl Library {
                 installed_at,
             ],
         )?;
+        search::replace_rows(&tx, pub_key, rows)?;
         tx.commit()?;
         Ok(old)
     }
@@ -413,6 +495,30 @@ impl Library {
     fn catalog(&self) -> Catalog {
         Catalog::new(self.inner.clone())
     }
+}
+
+/// The value cached under `key`, made most recently used; on a miss, `open`
+/// makes it and it is added, dropping the least recently used entry if the
+/// cache already holds `cap`.
+fn lru_get<T: Clone>(
+    cache: &mut Vec<(String, T)>,
+    key: &str,
+    cap: usize,
+    open: impl FnOnce() -> Result<T, CoreError>,
+) -> Result<T, CoreError> {
+    let entry = match cache.iter().position(|(k, _)| k == key) {
+        Some(i) => cache.remove(i),
+        None => {
+            let value = open()?;
+            if cache.len() >= cap {
+                cache.remove(0);
+            }
+            (key.to_string(), value)
+        }
+    };
+    let value = entry.1.clone();
+    cache.push(entry);
+    Ok(value)
 }
 
 /// The JW code of a catalog row's language. Unmapped => `NotFound`.
@@ -494,6 +600,83 @@ pub(crate) fn remove_path(path: &Path) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lru_drops_the_least_recently_used() {
+        let mut cache = Vec::new();
+        let opened = std::cell::Cell::new(0);
+        let get = |cache: &mut Vec<(String, u32)>, key: &str| {
+            lru_get(cache, key, 3, || {
+                opened.set(opened.get() + 1);
+                Ok(opened.get())
+            })
+            .unwrap()
+        };
+        assert_eq!(get(&mut cache, "a"), 1);
+        assert_eq!(get(&mut cache, "b"), 2);
+        assert_eq!(get(&mut cache, "c"), 3);
+        // A hit does not reopen, and makes `a` the most recently used.
+        assert_eq!(get(&mut cache, "a"), 1);
+        assert_eq!(get(&mut cache, "d"), 4);
+        let keys: Vec<&str> = cache.iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(keys, ["c", "a", "d"]);
+        assert_eq!(get(&mut cache, "b"), 5);
+        assert_eq!(cache.len(), 3);
+        // A failed open adds nothing.
+        assert!(lru_get(&mut cache, "e", 3, || Err(CoreError::Corrupt)).is_err());
+        assert_eq!(cache.len(), 3);
+    }
+
+    #[test]
+    fn open_publications_follow_removes_and_reinstalls() {
+        let fixture = |name: &str| {
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../fixtures")
+                .join(name)
+        };
+        let tmp = tempfile::tempdir().unwrap();
+        let core = crate::Core::open(tmp.path().join("data"), tmp.path().join("cache")).unwrap();
+        let lib = core.library();
+        let install = |key: &str, file: &str| {
+            lib.install(key, fixture(file), &|_, _| {}, &CancelToken::new())
+                .unwrap()
+        };
+        let dir = |key: &str| -> String {
+            core.inner
+                .conn()
+                .query_row(
+                    "SELECT dir FROM installed_publication WHERE pub_key = ?1",
+                    [key],
+                    |r| r.get(0),
+                )
+                .unwrap()
+        };
+        let read = |key: &str| lib.with_publication(key, |p| Ok(p.meta().pub_key()));
+        let (w, ll) = ("w26:0:20260800", "ll:0:0");
+        install(w, "w_E_202608.jwpub");
+        install(ll, "ll_E.jwpub");
+        assert!(lib.open_dirs().is_empty());
+        assert_eq!(read(w).unwrap(), w);
+        assert_eq!(read(ll).unwrap(), ll);
+        assert_eq!(read(w).unwrap(), w);
+        assert_eq!(lib.open_dirs(), [dir(ll), dir(w)]);
+
+        // A reinstall drops the old copy; the next read opens the new one.
+        let old = dir(w);
+        install(w, "w_E_202608.jwpub");
+        assert_ne!(dir(w), old);
+        assert_eq!(lib.open_dirs(), [dir(ll)]);
+        assert_eq!(read(w).unwrap(), w);
+        assert_eq!(lib.open_dirs(), [dir(ll), dir(w)]);
+
+        // A remove drops it, and it can no longer be read.
+        let ll_dir = dir(ll);
+        lib.remove(ll).unwrap();
+        assert!(!lib.open_dirs().contains(&ll_dir));
+        assert!(matches!(read(ll), Err(CoreError::NotFound)));
+        assert!(matches!(read("ll"), Err(CoreError::Invalid(_))));
+        assert_eq!(lib.open_dirs(), [dir(w)]);
+    }
 
     #[test]
     fn dir_names() {

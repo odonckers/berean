@@ -398,16 +398,33 @@ impl Publication {
 
     /// All documents, ordered by `DocumentId`.
     pub fn documents(&self) -> Result<Vec<DocumentSummary>, CoreError> {
+        self.documents_where("", [])
+    }
+
+    /// The documents with MEPS id `meps_document_id`, ordered by
+    /// `DocumentId`.
+    pub(crate) fn documents_with_meps_id(
+        &self,
+        meps_document_id: i64,
+    ) -> Result<Vec<DocumentSummary>, CoreError> {
+        self.documents_where(" WHERE MepsDocumentId = ?1", [meps_document_id])
+    }
+
+    fn documents_where<P: rusqlite::Params>(
+        &self,
+        filter: &str,
+        params: P,
+    ) -> Result<Vec<DocumentSummary>, CoreError> {
         let sql = select_sql(
             &self.conn,
             "Document",
             &["DocumentId", "MepsDocumentId", "Class", "Type", "Title"],
             &["SectionNumber", "ChapterNumber"],
             // Avoid reading every content blob just to test for NULL.
-            ", Content IS NOT NULL FROM Document ORDER BY DocumentId",
+            &format!(", Content IS NOT NULL FROM Document{filter} ORDER BY DocumentId"),
         )?
         .ok_or(CoreError::Corrupt)?;
-        self.query(&sql, [], |r| {
+        self.query(&sql, params, |r| {
             Ok(DocumentSummary {
                 document_id: r.get(0)?,
                 meps_document_id: r.get(1)?,
@@ -442,17 +459,36 @@ impl Publication {
         &self,
         document_id: i64,
     ) -> Result<Vec<DocumentParagraph>, CoreError> {
+        self.paragraphs_where(
+            " WHERE DocumentId = ?1 ORDER BY ParagraphIndex",
+            [document_id],
+        )
+    }
+
+    /// Every `DocumentParagraph` row, by `DocumentId` then `ParagraphIndex`.
+    /// The table has no index on `DocumentId`, so this one scan is much
+    /// cheaper than [`document_paragraphs`](Self::document_paragraphs) for
+    /// each document.
+    pub(crate) fn all_document_paragraphs(&self) -> Result<Vec<DocumentParagraph>, CoreError> {
+        self.paragraphs_where(" ORDER BY DocumentId, ParagraphIndex", [])
+    }
+
+    fn paragraphs_where<P: rusqlite::Params>(
+        &self,
+        tail: &str,
+        params: P,
+    ) -> Result<Vec<DocumentParagraph>, CoreError> {
         let Some(sql) = select_sql(
             &self.conn,
             "DocumentParagraph",
             &["DocumentParagraphId", "DocumentId", "ParagraphIndex"],
             &["ParagraphNumberLabel", "BeginPosition", "EndPosition"],
-            " FROM DocumentParagraph WHERE DocumentId = ?1 ORDER BY ParagraphIndex",
+            &format!(" FROM DocumentParagraph{tail}"),
         )?
         else {
             return Ok(Vec::new());
         };
-        self.query(&sql, [document_id], |r| {
+        self.query(&sql, params, |r| {
             Ok(DocumentParagraph {
                 document_paragraph_id: r.get(0)?,
                 document_id: r.get(1)?,
@@ -720,6 +756,22 @@ impl Publication {
             1 => Ok(rows.pop()),
             _ => Err(CoreError::Corrupt),
         }
+    }
+
+    /// Every chapter as `(book, chapter)`, in Bible order; empty if this is
+    /// not a Bible.
+    pub(crate) fn bible_chapter_numbers(&self) -> Result<Vec<(u32, u32)>, CoreError> {
+        let Some(sql) = select_sql(
+            &self.conn,
+            "BibleChapter",
+            &["BookNumber", "ChapterNumber"],
+            &[],
+            " FROM BibleChapter ORDER BY BookNumber, ChapterNumber",
+        )?
+        else {
+            return Ok(Vec::new());
+        };
+        self.query(&sql, [], |r| Ok((r.get(0)?, r.get(1)?)))
     }
 
     /// `BibleVerse` rows `first..=last`, by `BibleVerseId`. A verse without
