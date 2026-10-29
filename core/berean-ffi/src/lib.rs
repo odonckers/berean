@@ -154,6 +154,13 @@ impl Core {
         })
     }
 
+    /// Full-text search over the installed publications.
+    pub fn search(&self) -> Arc<Search> {
+        Arc::new(Search {
+            inner: self.inner.search(),
+        })
+    }
+
     /// The user's notes, highlights, tags, favorites and bookmarks.
     pub fn userdata(&self) -> Arc<UserData> {
         Arc::new(UserData {
@@ -646,6 +653,86 @@ impl Reader {
     /// Resolve a citation or `jwpub://` link to the span it names.
     pub fn resolve(&self, reference: String) -> Result<LocationSpan, CoreError> {
         Ok(self.inner.resolve(&reference)?.into())
+    }
+}
+
+/// The FFI mirror of [`berean_core::search::SearchScope`].
+#[derive(Debug, Clone, Default, PartialEq, Eq, uniffi::Record)]
+pub struct SearchScope {
+    pub pub_keys: Vec<String>,
+    pub kinds: Vec<PubKind>,
+    pub languages: Vec<u32>,
+    pub offset: u32,
+}
+
+impl From<SearchScope> for berean_core::search::SearchScope {
+    fn from(s: SearchScope) -> Self {
+        berean_core::search::SearchScope {
+            pub_keys: s.pub_keys,
+            kinds: s.kinds.into_iter().map(Into::into).collect(),
+            languages: s.languages,
+            offset: s.offset,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::search::Hit`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct Hit {
+    pub location: Location,
+    pub title: String,
+    pub snippet: String,
+}
+
+impl From<berean_core::search::Hit> for Hit {
+    fn from(h: berean_core::search::Hit) -> Self {
+        Hit {
+            location: h.location.into(),
+            title: h.title,
+            snippet: h.snippet,
+        }
+    }
+}
+
+/// Full-text search, exposed to callers as an object.
+#[derive(uniffi::Object)]
+pub struct Search {
+    inner: berean_core::search::Search,
+}
+
+#[uniffi::export]
+impl Search {
+    /// Up to `limit` (at most 500, [`berean_core::search::MAX_LIMIT`]) hits
+    /// for `text` in the publications `scope` selects, best first, after
+    /// skipping `scope.offset`. Empty text, a `limit` of 0, or a malformed
+    /// key in the scope => `Invalid`.
+    /// Index publications (e.g. the Research Guide) have no rows;
+    /// pronunciation marks (`Abʹsa·lom`) are ignored.
+    pub fn query(
+        &self,
+        text: String,
+        scope: SearchScope,
+        limit: u32,
+    ) -> Result<Vec<Hit>, CoreError> {
+        Ok(self
+            .inner
+            .query(&text, &scope.into(), limit)?
+            .into_iter()
+            .map(Into::into)
+            .collect())
+    }
+
+    /// Rebuild every installed publication's index rows from its files. On
+    /// any error the index is unchanged. The work runs on its own thread;
+    /// the call resolves when it is done. Progress is never reported while a
+    /// core lock is held, so `progress` may call back into the core.
+    pub async fn rebuild_index(
+        &self,
+        progress: Arc<dyn ProgressSink>,
+        cancel: Arc<CancelToken>,
+    ) -> Result<(), CoreError> {
+        let inner = self.inner.clone();
+        run_on_thread(move || Ok(inner.rebuild_index(&Progress(progress), &cancel.inner)?)).await
     }
 }
 
@@ -1723,6 +1810,98 @@ mod tests {
     #[should_panic(expected = "core call panicked")]
     fn run_on_thread_resumes_a_panic() {
         block_on(run_on_thread(|| -> () { panic!("core call panicked") }));
+    }
+
+    #[test]
+    fn search_through_ffi() {
+        const W_E: &str = "w26:0:20260800";
+        let dir = tempfile::tempdir().unwrap();
+        let core = open_core(&dir);
+        let search = core.search();
+        let recorder = Arc::new(Recorder {
+            calls: Mutex::new(Vec::new()),
+        });
+        block_on(core.library().install(
+            W_E.into(),
+            fixture("w_E_202608.jwpub").display().to_string(),
+            recorder,
+            CancelToken::new(),
+        ))
+        .unwrap();
+
+        let phrase = "What tactic does Satan use to try to break the integrity";
+        let hits = search
+            .query(phrase.into(), SearchScope::default(), 5)
+            .unwrap();
+        let hit = &hits[0];
+        assert_eq!(
+            hit.location,
+            Location {
+                pub_key: W_E.into(),
+                doc_id: Some(2026520),
+                book: None,
+                chapter: None,
+                verse: None,
+                paragraph: Some(40),
+            }
+        );
+        assert!(hit.snippet.contains("<mark>"), "{}", hit.snippet);
+
+        let bibles = SearchScope {
+            kinds: vec![PubKind::Bible],
+            ..Default::default()
+        };
+        assert!(search.query(phrase.into(), bibles, 5).unwrap().is_empty());
+        let all = search
+            .query("Jehovah".into(), SearchScope::default(), 10)
+            .unwrap();
+        assert_eq!(all.len(), 10);
+        let paged = SearchScope {
+            offset: 1,
+            ..Default::default()
+        };
+        assert_eq!(search.query("Jehovah".into(), paged, 9).unwrap(), all[1..]);
+        for (text, limit) in [("", 5), ("Jehovah", 0)] {
+            let err = search
+                .query(text.into(), SearchScope::default(), limit)
+                .unwrap_err();
+            assert!(matches!(err, CoreError::Invalid(_)), "{err:?}");
+        }
+
+        // A sink that calls back into the core on every call.
+        struct Reentrant {
+            core: Arc<Core>,
+            calls: Mutex<Vec<(u64, u64)>>,
+        }
+        impl ProgressSink for Reentrant {
+            fn on_progress(&self, done: u64, total: u64) {
+                self.core.library().installed().unwrap();
+                self.core
+                    .search()
+                    .query("Jehovah".into(), SearchScope::default(), 1)
+                    .unwrap();
+                self.calls.lock().unwrap().push((done, total));
+            }
+        }
+        let sink = Arc::new(Reentrant {
+            core: core.clone(),
+            calls: Mutex::new(Vec::new()),
+        });
+        block_on(search.rebuild_index(sink.clone(), CancelToken::new())).unwrap();
+        let calls = sink.calls.lock().unwrap().clone();
+        let (done, total) = *calls.last().unwrap();
+        assert_eq!(done, total);
+        assert_eq!(
+            search
+                .query(phrase.into(), SearchScope::default(), 5)
+                .unwrap(),
+            hits
+        );
+
+        let cancelled = CancelToken::new();
+        cancelled.cancel();
+        let err = block_on(search.rebuild_index(sink, cancelled)).unwrap_err();
+        assert!(matches!(err, CoreError::Cancelled), "{err:?}");
     }
 
     #[test]

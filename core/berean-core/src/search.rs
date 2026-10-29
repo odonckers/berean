@@ -167,7 +167,8 @@ impl Search {
     /// new rows replace the old in one transaction at the end; cancelled (or
     /// failed) => `Cancelled` (or the error), and the index is unchanged. A
     /// publication removed or reinstalled while this runs keeps the rows its
-    /// remove or install left.
+    /// remove or install left. Progress is never reported while a core lock
+    /// is held, so `progress` may call back into the core.
     pub fn rebuild_index(
         &self,
         progress: &dyn ProgressSink,
@@ -192,26 +193,31 @@ impl Search {
         }
         cancel.check()?;
 
-        let mut conn = self.inner.conn();
-        let tx = conn.transaction()?;
-        tx.execute(
-            "DELETE FROM search_index \
-             WHERE pub_key NOT IN (SELECT pub_key FROM installed_publication)",
-            [],
-        )?;
-        for (pub_key, dir, rows) in &built {
-            let current: Option<String> = tx
-                .query_row(
-                    "SELECT dir FROM installed_publication WHERE pub_key = ?1",
-                    [pub_key],
-                    |r| r.get(0),
-                )
-                .optional()?;
-            if current.as_ref() == Some(dir) {
-                replace_rows(&tx, pub_key, rows)?;
+        // Progress is never reported with a core lock held (a sink may call
+        // back into the core), so the connection is released before the
+        // final step is.
+        {
+            let mut conn = self.inner.conn();
+            let tx = conn.transaction()?;
+            tx.execute(
+                "DELETE FROM search_index \
+                 WHERE pub_key NOT IN (SELECT pub_key FROM installed_publication)",
+                [],
+            )?;
+            for (pub_key, dir, rows) in &built {
+                let current: Option<String> = tx
+                    .query_row(
+                        "SELECT dir FROM installed_publication WHERE pub_key = ?1",
+                        [pub_key],
+                        |r| r.get(0),
+                    )
+                    .optional()?;
+                if current.as_ref() == Some(dir) {
+                    replace_rows(&tx, pub_key, rows)?;
+                }
             }
+            tx.commit()?;
         }
-        tx.commit()?;
         progress.on_progress(total, total);
         Ok(())
     }
