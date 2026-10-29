@@ -1,6 +1,6 @@
 # Markdown notes, folders and tags (core FFI shapes)
 
-Status: Proposed for Wren's decision (Oct 29, 2026). Row: Core: Markdown notes with folders and tags.
+Status: Decided by Wren (Oct 29, 2026); implementation follows in echo/mdnotes-impl. Row: Core: Markdown notes with folders and tags.
 
 UI reference: design guide §07.1 (Lumen, #29)
 
@@ -42,9 +42,9 @@ These are settled and not up for review here.
 | Folder menu: New Folder, New Note in folder, Rename, Move to…, Move Up / Move Down, Delete Folder… with confirm and an 8 s Undo | `create_folder`, `add_note(folder_id)`, `rename_folder`, `move_folder`, `delete_folder` + `restore_folder` |
 | Notes: drag onto a folder, Move to folder | `set_note_folder` |
 | Tags from inline #tags in the body and from the tag field in the note's info, in one Tags list; tag chips and search tokens combine | inline tag sync in `add_note` / `update_note`; `tag_note`; `NoteFilter.tag_ids` |
-| Write view: live-styled source with dimmed syntax | Not in this row's first PR; see Q7 |
+| Write view: live-styled source with dimmed syntax | `markdown_spans`, a follow-up Holding row (Core: markdown_spans for note editor syntax ranges, owner Echo) that lands before Expo 6 and Kiwi's notes editor; see Q7 |
 
-## 3. URL format for app links (proposed)
+## 3. URL format for app links
 
 The core parses and builds these. The visible link text is free: it's the human reference, e.g. "John 1:9".
 
@@ -59,12 +59,14 @@ The core parses and builds these. The visible link text is free: it's the human 
 - **Publication:** `berean://pub/{pub_key}[/{doc_id}[/{paragraph}]]` → a `Location`.
 - **Numbers, not book-name slugs**, so a link works in any UI language. The guide's
   `berean://bible/asv/john/1/9` was illustrative. See Q3.
-- **`missing`** = the link's `pub_key` isn't in the installed publications list. One query per render, not
-  per link.
+- **`missing`** = the link's `pub_key` isn't in the installed publications list. Both `Passage` and
+  `Publication` carry it: for a passage it means the linked Bible's jwpub isn't installed on the device; for a
+  publication it means that publication's jwpub isn't installed, and it drives the "Download this
+  publication" prompt. One query per render, not per link.
 - `http`, `https` and `mailto` → `External`. Anything else, or a malformed `berean://` URL → `Invalid`
   (rendered as its visible text, not tappable).
 
-## 4. Record shapes (sketch)
+## 4. Record shapes
 
 ```rust
 /// One rendered note body: the shared tree every app draws.
@@ -97,7 +99,10 @@ pub enum Inline {
 }
 
 pub enum LinkTarget {
+    /// `missing`: the linked Bible's jwpub (the span's pub_key) isn't installed on the device.
     Passage { span: LocationSpan, missing: bool },
+    /// `missing`: the linked publication's jwpub isn't installed on the device. The UI shows
+    /// "Download this publication" for it.
     Publication { location: Location, missing: bool },
     External { url: String },
     Invalid,
@@ -248,49 +253,52 @@ CREATE INDEX IF NOT EXISTS IX_BereanNoteFolder_FolderId ON BereanNoteFolder (Fol
 - Autolinks `<https://…>` are links. Bare URLs aren't linked (CommonMark); that's fine.
 - A paragraph whose only child is one passage link (ignoring surrounding whitespace) becomes `PassageCard`. A
   publication link alone stays a normal paragraph link: the guide only shows passage cards.
+- A link to a publication that isn't installed stays a `Publication` link with `missing = true`, not
+  `Invalid`, so it stays tappable and can offer the download.
 - `Note.Title` is never parsed.
 - Heading vs tag: `# Light` is a heading; `#light` at the start of a line is a paragraph with a tag
   (CommonMark requires the space for a heading).
 
-## 8. Open questions for Wren
+## 8. Decisions (Wren, Oct 29)
 
-**Q1. Folder delete semantics.** The guide shows "Its 5 notes move to Recently Deleted for 30 days."
-Recommendation: in this row, delete removes the folder subtree and its notes become unfiled (nothing is lost),
-with Undo through `restore_folder`. A Recently Deleted bin for notes (30 days) is a separate row: it needs a
-Berean-only trash table, because JW's schema has no soft delete. Ask Lumen/Owen whether the guide's copy
-should say "Its 5 notes move to All Notes" for now.
+**Q1. Folder delete semantics.** **Decided:** in this row, delete removes the folder subtree and its notes
+become unfiled (nothing is lost), with Undo through `restore_folder`. A Recently Deleted bin for notes (30
+days) is a Holding board row (Core: Recently Deleted for notes): it needs a Berean-only trash table, because
+JW's schema has no soft delete. Until that row lands, the guide's copy "Its notes move to Recently Deleted"
+needs to say "Its notes move to All Notes"; the UI owners adjust the copy.
 
-**Q2. Side table vs a `Note.FolderId` column.** Recommendation: side table, for the reasons in §6.
+**Q2. Side table vs a `Note.FolderId` column.** **Decided:** side table, for the reasons in §6.
 
-**Q3. URL format.** Recommendation: numbers + `pub_key`, not the guide's slugs. Also: if the linked Bible
-isn't installed but another Bible is, should the UI open the passage in the user's default Bible with a
-"linked in NWT" hint? Recommendation: the core reports `missing` for the linked `pub_key` only; the fallback
-is a UI choice.
+**Q3. URL format.** **Decided, with a condition:** numbers + `pub_key`. Book-name slugs are a display concern
+only and never appear in the URL. Both `LinkTarget::Passage` and `LinkTarget::Publication` carry `missing`,
+set when that jwpub (the linked Bible, or the linked publication) isn't installed on the device. For a
+publication, `missing` drives the "Download this publication" prompt Owen asked for. The core reports
+`missing` for the linked `pub_key` only; opening a passage in another installed Bible is a UI choice.
 
-**Q4. Soft breaks as line breaks.** Recommendation: yes, for all notes. Obsidian and Apple Notes users expect
-it, and it keeps legacy JW notes readable. It costs strict CommonMark rendering; the source is untouched.
+**Q4. Soft breaks as line breaks.** **Decided:** yes, for all notes. It keeps legacy JW notes readable and
+matches what Obsidian and Apple Notes users expect. Strict CommonMark rendering is given up; the source is
+untouched.
 
-**Q5. `NoteFilter.tag_id` → `tag_ids` (breaking).** Recommendation: do it now, while only #20's callers exist;
-Kiwi, Moss and Otter update in their next PR. Exclusion (`-#sermons`) belongs to note search later, not this
-filter.
+**Q5. `NoteFilter.tag_id` → `tag_ids` (breaking).** **Decided:** `tag_ids` now, as a breaking change; callers
+(Kiwi, Moss, Otter) update. Exclusion (`-#sermons`) belongs to note search later, not this filter.
 
-**Q6. Rename and remove vs inline tags.** Recommendation: `rename_tag` also rewrites `#old` to `#new` in the
+**Q6. Rename and remove vs inline tags.** **Decided:** `rename_tag` also rewrites `#old` to `#new` in the
 bodies of notes that carry the tag, when the new name is a valid inline tag (same transaction). `remove_tag`
 leaves bodies alone, so a remaining `#old` re-adds the tag on that note's next edit; the UI's remove confirm
-should say so. Alternative, rejected: strip `#old` from bodies on remove, which edits user text silently.
+says so. Stripping `#old` from bodies on remove is rejected: it edits user text silently.
 
-**Q7. Write-view styling.** The guide's Write view needs syntax ranges. Recommendation: a follow-up sync call
-`markdown_spans(markdown) -> Vec<SourceSpan { start, end, kind }>` with UTF-16 offsets (what `NSString` and JS
-strings use), from the same parser, so both apps dim the same syntax. Not in this row's first implementation PR
-unless Kiwi or Otter needs it now.
+**Q7. Write-view styling.** **Decided:** a sync call `markdown_spans(markdown) -> Vec<SourceSpan { start,
+end, kind }>` with UTF-16 offsets (what `NSString` and JS strings use), from the same parser, so both apps dim
+the same syntax. It's a follow-up Holding board row (Core: markdown_spans for note editor syntax ranges, owner
+Echo), not in this row's first implementation PR. It must land before Expo 6 and Kiwi's notes editor.
 
-**Q8. Tappable checkboxes in the Read view (`set_task`).** Recommendation: include it. It's small, and the
+**Q8. Tappable checkboxes in the Read view (`set_task`).** **Decided:** include `set_task` in this row. The
 shape (`Task.index`) is already in the tree.
 
-**Q9. `import_preview` cost.** It stages the whole backup once more. Recommendation: accept it (backups are
-MBs, and the call is async), rather than add a stateful preview handle.
+**Q9. `import_preview` cost.** **Decided:** accept staging the whole backup once more (backups are MBs, and
+the call is async). No stateful preview handle.
 
-**Q10. Sibling folder names unique, case-insensitive.** Recommendation: yes. It matches Finder and avoids two
+**Q10. Sibling folder names unique, case-insensitive.** **Decided:** yes. It matches Finder and avoids two
 "Psalms".
 
 ## 9. Not in this row
@@ -299,7 +307,8 @@ MBs, and the call is async), rather than add a stateful preview handle.
 - Recently Deleted (Q1).
 - Berean-native backup that keeps folders (Holding row).
 - Merge import.
-- Write-view spans (Q7).
+- Write-view spans: `markdown_spans` is a follow-up Holding row (Core: markdown_spans for note editor syntax
+  ranges, owner Echo). It must land before Expo 6 and Kiwi's notes editor (Q7).
 - Tables.
 
 ## 10. Implementation PR plan (after Wren decides)
