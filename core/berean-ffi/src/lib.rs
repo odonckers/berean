@@ -11,7 +11,8 @@ uniffi::setup_scaffolding!();
 
 /// Run the blocking `f` on its own thread; the returned future resolves to
 /// its result once it is done. The core stays synchronous; this is the only
-/// place a call is moved off the caller's thread.
+/// place a call is moved off the caller's thread. If `f` panics, polling the
+/// future resumes that panic, so it surfaces on the caller's side as before.
 fn run_on_thread<T: Send + 'static>(
     f: impl FnOnce() -> T + Send + 'static,
 ) -> impl Future<Output = T> {
@@ -21,7 +22,7 @@ fn run_on_thread<T: Send + 'static>(
     }));
     let thread_shared = shared.clone();
     std::thread::spawn(move || {
-        let result = f();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
         // Store the result and take the waker under one lock, so a poll can't
         // slip in between and miss the wake-up.
         let waker = {
@@ -38,7 +39,7 @@ fn run_on_thread<T: Send + 'static>(
 
 /// The state [`run_on_thread`]'s thread and future share.
 struct Slot<T> {
-    result: Option<T>,
+    result: Option<std::thread::Result<T>>,
     waker: Option<Waker>,
 }
 
@@ -52,12 +53,16 @@ impl<T> Future for OnThread<T> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<T> {
         let mut slot = self.shared.lock().unwrap();
-        match slot.result.take() {
-            Some(result) => Poll::Ready(result),
-            None => {
-                slot.waker = Some(cx.waker().clone());
-                Poll::Pending
-            }
+        let result = slot.result.take();
+        if result.is_none() {
+            slot.waker = Some(cx.waker().clone());
+        }
+        // Release the lock before a resumed panic unwinds through here.
+        drop(slot);
+        match result {
+            Some(Ok(result)) => Poll::Ready(result),
+            Some(Err(payload)) => std::panic::resume_unwind(payload),
+            None => Poll::Pending,
         }
     }
 }
@@ -905,5 +910,11 @@ mod tests {
         .unwrap_err();
         assert!(matches!(err, CoreError::Corrupt), "{err:?}");
         assert!(library.installed().unwrap().is_empty());
+    }
+
+    #[test]
+    #[should_panic(expected = "core call panicked")]
+    fn run_on_thread_resumes_a_panic() {
+        block_on(run_on_thread(|| -> () { panic!("core call panicked") }));
     }
 }
