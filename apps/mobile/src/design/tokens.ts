@@ -126,6 +126,7 @@ export type M3Roles = {
   onSurface: string;
   onSurfaceVariant: string;
   outline: string;
+  outlineVariant: string;
   scrim: string;
 };
 
@@ -143,6 +144,10 @@ export const m3Roles: Record<'light' | 'dark', M3Roles> = {
     onSurface: colorSets.light.text,
     onSurfaceVariant: colorSets.light.textSecondary,
     outline: colorSets.light.separator,
+    // Derived pending Lumen. Deliberately darker than the 'outline' separator so the
+    // unselected filter-chip edge stays visible (M3 baseline outlineVariant is ~1.6:1
+    // against surface).
+    outlineVariant: '#D2C5AA',
     scrim: 'rgba(0,0,0,0.32)',
   },
   dark: {
@@ -158,6 +163,10 @@ export const m3Roles: Record<'light' | 'dark', M3Roles> = {
     onSurface: colorSets.dark.text,
     onSurfaceVariant: colorSets.dark.textSecondary,
     outline: colorSets.dark.separator,
+    // Derived pending Lumen. Deliberately darker than the 'outline' separator so the
+    // unselected filter-chip edge stays visible (M3 baseline outlineVariant is ~1.6:1
+    // against surface).
+    outlineVariant: '#4E443B',
     scrim: 'rgba(0,0,0,0.32)',
   },
 };
@@ -175,6 +184,7 @@ export const spacing = {
 
 export const radii = {
   chip: 6,
+  materialChip: 8, // M3 assist/filter/input chips
   card: 12,
   studyPane: 18,
   materialPane: 16, // also the M3 FAB

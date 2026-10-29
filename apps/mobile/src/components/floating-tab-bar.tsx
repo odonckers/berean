@@ -9,8 +9,9 @@ import { TabChromeContext, destinations } from '@/design/tab-chrome';
 import { useBerean } from '@/design/theme';
 import { hairline } from '@/design/tokens';
 
-// The top bar pads for the status bar itself; nothing covers the bottom.
-const topBarChrome = { coversTop: true, coversBottom: false };
+// The top bar pads for the status bar itself; nothing covers the bottom or
+// the sides of the content below it.
+const topBarChrome = { coversTop: true, coversBottom: false, coversLeft: false };
 
 // Preview approximation of the iPad tab bar for the iOS look on Android
 // windows >= 600dp: a floating capsule at the top with a toolbar search field
