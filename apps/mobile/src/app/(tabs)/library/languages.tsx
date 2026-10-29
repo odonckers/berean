@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 
 import { UIText } from '@/components/text';
+import { useContentInsets } from '@/design/tab-chrome';
 import { useBerean } from '@/design/theme';
 import { hairline, spacing } from '@/design/tokens';
 import { catalog } from '@/ffi/core';
@@ -11,6 +12,9 @@ import { useSelectedLanguage } from '@/library/selected-language';
 
 export default function LanguagesScreen() {
   const { colors } = useBerean();
+  const insets = useContentInsets();
+  // The side insets the native header pads for; rows add spacing.lg inside.
+  const sides = { paddingLeft: insets.left, paddingRight: insets.right };
   const { mepsLanguage, setMepsLanguage } = useSelectedLanguage();
   const [languages] = useState(() => load(() => catalog().languages()));
   const [query, setQuery] = useState('');
@@ -28,7 +32,12 @@ export default function LanguagesScreen() {
 
   if (!languages.ok) {
     return (
-      <View style={styles.message}>
+      <View
+        style={[
+          styles.message,
+          { paddingLeft: insets.left + spacing.lg, paddingRight: insets.right + spacing.lg },
+        ]}
+      >
         {screen}
         <UIText style={[styles.name, { color: colors.accent }]}>{languages.message}</UIText>
       </View>
@@ -46,6 +55,7 @@ export default function LanguagesScreen() {
       <FlatList
         style={styles.list}
         contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={sides}
         data={shown}
         keyExtractor={(l) => String(l.mepsId)}
         ListEmptyComponent={

@@ -83,7 +83,14 @@ export default function LibraryScreen() {
         <FlatList
           style={styles.list}
           contentInsetAdjustmentBehavior="automatic"
-          contentContainerStyle={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
+          // The side insets keep rows under the header's leading edge; the
+          // rows add the spacing.lg content inset inside them.
+          contentContainerStyle={{
+            paddingTop: insets.top,
+            paddingBottom: insets.bottom,
+            paddingLeft: insets.left,
+            paddingRight: insets.right,
+          }}
           data={data.value.installed}
           keyExtractor={(pub) => pub.pubKey}
           ListHeaderComponent={
@@ -140,7 +147,16 @@ export default function LibraryScreen() {
           )}
         />
       ) : (
-        <View style={[styles.empty, { paddingTop: insets.top + spacing.lg }]}>
+        <View
+          style={[
+            styles.empty,
+            {
+              paddingTop: insets.top + spacing.lg,
+              paddingLeft: insets.left + spacing.lg,
+              paddingRight: insets.right + spacing.lg,
+            },
+          ]}
+        >
           <UIText style={{ color: colors.accent }}>{data.message}</UIText>
         </View>
       )}

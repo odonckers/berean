@@ -15,10 +15,14 @@ export const destinations = [
 
 // Which system bar insets the tabs layout's own chrome already covers, so
 // Screen pads only the rest. The default is NativeTabs: its bottom bar
-// reserves the navigation bar, nothing reserves the status bar.
-type TabChrome = { coversTop: boolean; coversBottom: boolean };
+// reserves the navigation bar, nothing reserves the status bar or the sides.
+type TabChrome = { coversTop: boolean; coversBottom: boolean; coversLeft: boolean };
 
-export const TabChromeContext = createContext<TabChrome>({ coversTop: false, coversBottom: true });
+export const TabChromeContext = createContext<TabChrome>({
+  coversTop: false,
+  coversBottom: true,
+  coversLeft: false,
+});
 
 // Preview approximation: the iOS look on Android hides the native header
 // (it has no large title) and Screen draws the title in the content.
@@ -26,13 +30,18 @@ export function useHeaderHidden(): boolean {
   return useBerean().look === 'ios' && Platform.OS === 'android';
 }
 
-// Content padding for the system bars nothing else covers.
-export function useContentInsets(): { top: number; bottom: number } {
+// Content padding for the system bars nothing else covers. Left and right
+// are the side insets (a landscape cutout or navigation bar): the native
+// header already pads for them, so content padding by the same amount keeps
+// its leading edge under the header's.
+export function useContentInsets(): { top: number; bottom: number; left: number; right: number } {
   const chrome = useContext(TabChromeContext);
   const insets = useSafeAreaInsets();
   const headerHidden = useHeaderHidden();
   return {
     top: headerHidden && !chrome.coversTop ? insets.top : 0,
     bottom: Platform.OS === 'android' && !chrome.coversBottom ? insets.bottom : 0,
+    left: chrome.coversLeft ? 0 : insets.left,
+    right: insets.right,
   };
 }

@@ -7,8 +7,9 @@ import { UIText } from '@/components/text';
 import { TabChromeContext, destinations } from '@/design/tab-chrome';
 import { useBerean } from '@/design/theme';
 
-// The rail covers neither system bar inset for the content beside it.
-const railChrome = { coversTop: false, coversBottom: false };
+// The rail covers neither system bar inset for the content beside it, but
+// takes the left inset into its own width.
+const railChrome = { coversTop: false, coversBottom: false, coversLeft: true };
 
 // M3 navigation rail: material look, Android windows >= 600dp. NativeTabs
 // has no rail on Android, so this is expo-router's headless tabs. Search

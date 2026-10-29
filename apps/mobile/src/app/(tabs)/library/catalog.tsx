@@ -5,6 +5,7 @@ import { FlatList, ScrollView, StyleSheet, View } from 'react-native';
 
 import { UIText } from '@/components/text';
 import { TextButton } from '@/components/text-button';
+import { useContentInsets } from '@/design/tab-chrome';
 import { useBerean } from '@/design/theme';
 import { spacing } from '@/design/tokens';
 import { catalog, library } from '@/ffi/core';
@@ -36,6 +37,14 @@ function loadInstalledKeys(): Loaded<ReadonlySet<string>> {
 
 export default function CatalogScreen() {
   const { colors } = useBerean();
+  const insets = useContentInsets();
+  // The side insets the native header pads for; rows and the list header add
+  // the spacing.lg content inset inside them.
+  const sides = { paddingLeft: insets.left, paddingRight: insets.right };
+  const messageSides = {
+    paddingLeft: insets.left + spacing.lg,
+    paddingRight: insets.right + spacing.lg,
+  };
   const { jobs } = useInstalls();
   const { mepsLanguage } = useSelectedLanguage();
   const { catalogVersion } = useCatalogUpdate();
@@ -99,7 +108,7 @@ export default function CatalogScreen() {
   const error = !meta.ok ? meta.message : publications?.ok === false ? publications.message : undefined;
   if (error !== undefined) {
     return (
-      <View style={styles.message}>
+      <View style={[styles.message, messageSides]}>
         {screen}
         <UIText style={{ color: colors.accent }}>{error}</UIText>
       </View>
@@ -108,7 +117,10 @@ export default function CatalogScreen() {
 
   if (empty) {
     return (
-      <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.message}>
+      <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={[styles.message, messageSides]}
+      >
         <UIText>The publication catalog hasn&apos;t been downloaded yet.</UIText>
         <CatalogUpdatePanel />
         {__DEV__ && <DevCatalogIngest onIngested={() => setMeta(loadMeta())} />}
@@ -123,18 +135,26 @@ export default function CatalogScreen() {
       <FlatList
         style={styles.list}
         contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={sides}
         data={publications?.ok ? publications.value : []}
         keyExtractor={(pub) => pub.pubKey}
         extraData={jobs}
         ListHeaderComponent={
           <View style={styles.filters}>
-            <CatalogUpdatePanel compact />
-            <TextButton
-              title={language?.name ?? 'All languages'}
-              accessibilityLabel={`Language: ${language?.name ?? 'All languages'}. Change language`}
-              onPress={() => router.push('/library/languages')}
-            />
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {/* Inset like the rows; the chips scroll edge to edge instead. */}
+            <View style={styles.inset}>
+              <CatalogUpdatePanel compact />
+              <TextButton
+                title={language?.name ?? 'All languages'}
+                accessibilityLabel={`Language: ${language?.name ?? 'All languages'}. Change language`}
+                onPress={() => router.push('/library/languages')}
+              />
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.chips}
+            >
               {KIND_FILTERS.map((filter) => (
                 <TextButton
                   key={filter.label}
@@ -146,7 +166,7 @@ export default function CatalogScreen() {
               ))}
             </ScrollView>
             {!installed.ok && (
-              <UIText style={{ color: colors.accent }}>{installed.message}</UIText>
+              <UIText style={[styles.inset, { color: colors.accent }]}>{installed.message}</UIText>
             )}
           </View>
         }
@@ -165,7 +185,9 @@ export default function CatalogScreen() {
 
 const styles = StyleSheet.create({
   list: { flex: 1 },
-  filters: { paddingVertical: spacing.sm, gap: spacing.sm, alignItems: 'flex-start' },
+  filters: { paddingVertical: spacing.sm, gap: spacing.sm },
+  inset: { paddingHorizontal: spacing.lg, gap: spacing.sm, alignItems: 'flex-start' },
+  chips: { paddingHorizontal: spacing.lg },
   message: { padding: spacing.lg, gap: spacing.md, alignItems: 'flex-start' },
   empty: { padding: spacing.lg },
 });
