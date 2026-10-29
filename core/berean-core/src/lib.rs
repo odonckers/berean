@@ -181,7 +181,6 @@ pub struct Core {
 pub(crate) struct Inner {
     conn: Mutex<Connection>,
     /// The user-data database, `userData.db` (see `userdata`).
-    #[allow(dead_code)] // Read by the user-data calls, which come next.
     userdata: Mutex<Connection>,
     /// Recently opened publications, least recently used first, keyed by
     /// their store directory (a reinstall gets a new one). See
@@ -193,6 +192,12 @@ pub(crate) struct Inner {
 impl Inner {
     pub(crate) fn conn(&self) -> MutexGuard<'_, Connection> {
         self.conn.lock().expect("core connection mutex poisoned")
+    }
+
+    pub(crate) fn userdata(&self) -> MutexGuard<'_, Connection> {
+        self.userdata
+            .lock()
+            .expect("user-data connection mutex poisoned")
     }
 
     pub(crate) fn publications(
@@ -254,6 +259,11 @@ impl Core {
         search::Search::new(self.inner.clone())
     }
 
+    /// The user's notes, highlights, tags, favorites and bookmarks.
+    pub fn userdata(&self) -> userdata::UserData {
+        userdata::UserData::new(self.inner.clone())
+    }
+
     /// The user DB's actual schema version, read from `PRAGMA user_version`.
     pub fn db_version(&self) -> Result<u32, CoreError> {
         let conn = self.inner.conn();
@@ -278,6 +288,7 @@ mod tests {
         assert_send_sync::<library::Library>();
         assert_send_sync::<reader::Reader>();
         assert_send_sync::<search::Search>();
+        assert_send_sync::<userdata::UserData>();
     }
 
     #[test]
