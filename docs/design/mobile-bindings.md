@@ -1,6 +1,6 @@
 # Mobile bindings: berean-ffi in the Expo app
 
-**Status:** Decided. Owen approved the decisions in §7 (relayed by Wren and Echo). The app wires in the core once the items in §8 land.
+**Status:** Decided, with §7.1 conditional on Echo's uniffi 0.31 trial. Owen approved the decisions in §7 (relayed by Wren and Echo). The app wires in the core once the items in §8 land.
 **Platforms:** Android and iOS, through an Expo dev build (React Native New Architecture).
 **Owner:** Mobile (Otter). Echo owns the core and reviews this note.
 
@@ -19,10 +19,16 @@ The Expo app in `apps/mobile` reads publications, the catalog, and the library t
 
 The berean-ffi surface as it stands at the top of the core stack (#12 → #14–#19): `Core`, `Library`, `Catalog`, `Reader`, `CancelToken`, `ProgressSink`, and their records (§3).
 
+### Coming; regenerate bindings when they land
+
+- **Search FFI** (approved by Wren): `SearchScope { pub_keys, kinds, languages, offset }`, `Hit { location, title, snippet }`, `query(text, scope, limit)`, and `rebuild_index(progress, cancel)`. `rebuild_index` is async at the FFI, like the long calls in §7.2. It lands as a separate core PR after the async change.
+- **Userdata** (#20, approved, being built). Its import and export are also async with `(progress, cancel)`.
+
+When either lands, the app regenerates bindings. No binding-layer design changes are expected.
+
 ### Out of scope
 
-- **Search** (#19) and the **Research Guide** (#18). Both are Rust-only until Owen approves their FFI record shapes. The app picks them up once they're exported, with no binding work beyond regeneration.
-- **Userdata** (#20). It's still a design.
+- The **Research Guide** (#18, `study_references`). It's still Rust-only.
 - Any UI. This note covers only the binding layer and the build.
 
 > The README puts future shells beside `apple/` (for example `android/`). This note follows the board's `apps/mobile` path. If Owen prefers a top-level `mobile/`, only paths change.
@@ -105,15 +111,22 @@ Because of a Babel limitation, the app matches errors with `CoreError.instanceOf
 
 Short calls (`toc`, `document`, `bible_chapter`, `resolve`, `installed`, `publications`) stay synchronous. The two long calls become async at the FFI (§7.2), so they never block the JS thread.
 
+**Action item:** time `Core.open` (it runs DB migrations) and `Catalog.publications(filter)` (it queries the 232 MB catalog) on a mid-range Android device before treating them as safe on the JS thread. If either is slow, take it to Echo as a candidate for async. Don't wrap it in JS.
+
 ## 6. Build
 
 | | Android | iOS |
 | --- | --- | --- |
 | Rust targets | `aarch64-linux-android` (arm64-v8a, devices) and `x86_64-linux-android` (emulator) | `aarch64-apple-ios` and `aarch64-apple-ios-sim` |
 | Tooling | `cargo-ndk` with the NDK. ubrn passes `apiLevel` as `--platform` ([config-yaml][ubrn-config]) | `ubrn build ios` makes an xcframework. Xcode only, so no Linux build |
-| Where | The shared Linux box (NDK r30, JDK 17, and the SDK command-line tools are under `/home/box/android`). An emulator AVD still needs a system image | [EAS Build][eas-build] on the **free plan only** ([pricing][expo-pricing]). Nothing paid. Rust isn't on the EAS image, so an `eas-build-pre-install` hook installs rustup and the two targets |
+| Where | The shared Linux box, under `/home/box/android` (paths below). No emulator or AVD yet | [EAS Build][eas-build] on the **free plan only** ([pricing][expo-pricing]). Nothing paid. Rust isn't on the EAS image, so an `eas-build-pre-install` hook installs rustup and the two targets |
 | Note | rusqlite `bundled` compiles SQLite's C with the NDK's clang. `cargo-ndk` sets `CC`/`AR` per target, so the NDK must be installed, not only the SDK | Owen's Mac (the self-hosted runner) stays an option for local iOS builds, but this note doesn't depend on it |
 
+- Android toolchain on the box:
+  - NDK r30 (30.0.16248370) at `/home/box/android/android-ndk-r30`.
+  - JDK 17 (OpenJDK 17.0.21) at `/home/box/android/jdk17`.
+  - Android SDK at `/home/box/android/sdk`, with only cmdline-tools 19.0 (`sdk/cmdline-tools/latest`) installed. platform-tools, the emulator, platforms, and system images aren't installed yet, and there's no AVD.
+  - `~/android/env.sh` sets `JAVA_HOME`, `ANDROID_HOME`/`ANDROID_SDK_ROOT`, and `PATH`.
 - Android limits ubrn to the two 64-bit targets (`android.targets: [arm64-v8a, x86_64]`). That keeps the edit-compile-run loop short.
 - A mobile CI workflow is separate from `apps.yml`, which runs only on the Mac. It would build Android and regenerate the bindings on `ubuntu-latest`.
 
@@ -135,7 +148,7 @@ iOS targets are unverified. They go through EAS.
 
 ## 7. Decisions
 
-### 7.1 UniFFI version: the whole workspace moves to 0.31 (owner: Echo)
+### 7.1 UniFFI version: the whole workspace moves to 0.31, conditional on Echo's trial (owner: Echo)
 
 - The repo pins `uniffi = "0.32"` (0.32.2 in `Cargo.lock`).
 - The latest ubrn release, [0.31.0-6][ubrn-rel], pins `uniffi = "=0.31"`, and so does ubrn `main`.
@@ -156,7 +169,8 @@ iOS targets are unverified. They go through EAS.
 **Rule:** `ProgressSink::on_progress` never fires while a core lock is held (the DB connection or the publication cache). This prevents the `invokeBlocking` deadlock in §5.
 
 - Echo confirms `Library::install` and `Catalog::ingest_file` already follow the rule.
-- The search index builder (#19) reports progress while holding a lock. It's Rust-only today. **Fixing it is a precondition for search crossing the FFI.**
+- The search index builder (#19) reports progress while holding a lock. **Fixing it is a precondition for the search export PR**, and Echo does it in that PR.
+- Separately, index-kind publications are no longer indexed (a #19 fix in progress). That doesn't affect the bindings.
 
 ### 7.4 `bigint` for `u64`/`i64` (owner: Otter)
 
@@ -170,7 +184,8 @@ These must land before the app wires in the core:
 | --- | --- | --- |
 | uniffi 0.31 trial on a scratch branch, then the workspace pin change (§7.1) | Echo | Pending |
 | Async FFI for `ingest_file` and `install` (§7.2) | Echo | Pending |
-| Search progress outside the lock (§7.3) | Echo | Pending; a precondition for search, not for the first wiring |
+| Search progress outside the lock (§7.3) | Echo | Pending; lands in the search export PR, not needed for the first wiring |
+| Time `Core.open` and `Catalog.publications` on a mid-range Android device (§5) | Otter | Pending |
 
 Until then, the app scaffold and the Android dev build proceed with no generated bindings.
 
