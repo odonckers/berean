@@ -168,14 +168,28 @@ export function downloadTarget(name: string): File {
   return new File(dir, name);
 }
 
+function abortError(cause: unknown): Error {
+  return Object.assign(new Error('The operation was aborted.'), { name: 'AbortError', cause });
+}
+
+/** Rethrows `e`, as an AbortError if `signal` has been aborted. */
+export function rethrowIfAborted(e: unknown, signal: AbortSignal): never {
+  throw signal.aborted ? abortError(e) : e;
+}
+
 /** fetch, with a network failure or a non-2xx reply as a readable error. */
 export async function fetchOk(url: string, signal: AbortSignal): Promise<Response> {
   let res: Response;
   try {
     res = await fetch(url, { signal });
   } catch (e) {
-    // fetch rejects with a TypeError when the network fails.
-    throw e instanceof TypeError ? new Error(NETWORK_ERROR) : e;
+    // expo/fetch rejects with a plain FetchError for every failure, aborts
+    // included, never a TypeError or an AbortError; its message is the raw
+    // native exception, so tell an abort apart by the signal instead.
+    if (signal.aborted) {
+      throw abortError(e);
+    }
+    throw new Error(NETWORK_ERROR, { cause: e });
   }
   if (!res.ok) {
     throw new Error(`Server returned HTTP ${res.status}`);
@@ -205,18 +219,23 @@ async function run(pub: PublicationSummary, ctl: Controls): Promise<boolean> {
 
   const target = downloadTarget(`${pubKey.replace(/[^A-Za-z0-9._-]/g, '_')}.jwpub`);
   try {
-    const file = await File.downloadFileAsync(plan.url, target, {
-      idempotent: true,
-      signal: ctl.abort.signal,
-      onProgress: ({ bytesWritten, totalBytes }) => {
-        update(pubKey, ctl, {
-          state: 'downloading',
-          pub,
-          bytesWritten,
-          totalBytes: totalBytes > 0 ? totalBytes : planned,
-        });
-      },
-    });
+    let file: File;
+    try {
+      file = await File.downloadFileAsync(plan.url, target, {
+        idempotent: true,
+        signal: ctl.abort.signal,
+        onProgress: ({ bytesWritten, totalBytes }) => {
+          update(pubKey, ctl, {
+            state: 'downloading',
+            pub,
+            bytesWritten,
+            totalBytes: totalBytes > 0 ? totalBytes : planned,
+          });
+        },
+      });
+    } catch (e) {
+      rethrowIfAborted(e, ctl.abort.signal);
+    }
     if (ctl.cancelled) {
       return false;
     }

@@ -14,6 +14,7 @@ import {
   failure,
   fetchOk,
   isCancellation,
+  rethrowIfAborted,
   THROTTLE_MS,
 } from '@/library/installs';
 
@@ -181,13 +182,18 @@ export function checkForUpdate() {
 async function run(update: CatalogUpdate, ctl: Controls): Promise<boolean> {
   const target = downloadTarget('catalog.db.gz');
   try {
-    const file = await File.downloadFileAsync(update.url, target, {
-      idempotent: true,
-      signal: ctl.abort.signal,
-      onProgress: ({ bytesWritten, totalBytes }) => {
-        progress(ctl, { state: 'downloading', update, bytesWritten, totalBytes });
-      },
-    });
+    let file: File;
+    try {
+      file = await File.downloadFileAsync(update.url, target, {
+        idempotent: true,
+        signal: ctl.abort.signal,
+        onProgress: ({ bytesWritten, totalBytes }) => {
+          progress(ctl, { state: 'downloading', update, bytesWritten, totalBytes });
+        },
+      });
+    } catch (e) {
+      rethrowIfAborted(e, ctl.abort.signal);
+    }
     if (ctl.cancelled) {
       return false;
     }
