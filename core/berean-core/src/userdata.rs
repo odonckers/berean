@@ -40,7 +40,7 @@
 //! keeping the previous database as `userData.prev.db` (and its media as
 //! `userData.prev.media/`) so that [`UserData::undo_import`] can put it back.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -98,6 +98,9 @@ const IMPORT_STEPS: u64 = 6;
 /// header for where it comes from.
 const SCHEMA_V16: &str = include_str!("userdata_v16.sql");
 
+/// Berean's own tables (note folders), beside JW's; see the file's header.
+const BEREAN_TABLES: &str = include_str!("userdata_berean.sql");
+
 /// The path of the user-data database under `data_dir`.
 pub(crate) fn db_path(data_dir: &Path) -> PathBuf {
     data_dir.join(DB_FILE)
@@ -106,8 +109,10 @@ pub(crate) fn db_path(data_dir: &Path) -> PathBuf {
 /// Open the user-data database under `data_dir`, first creating it from the
 /// vendored v16 DDL if it is missing. The new file is built under a
 /// temporary name and renamed into place, so a failed creation leaves no
-/// half-made database behind. Foreign keys are enforced on the connection.
-/// A file that isn't a database => `Corrupt`.
+/// half-made database behind. Foreign keys are enforced on the connection,
+/// and Berean's own tables are created if missing (every open, so also after
+/// an import or undo swaps the file). A file that isn't a database =>
+/// `Corrupt`.
 pub(crate) fn open(data_dir: &Path) -> Result<Connection, CoreError> {
     let path = db_path(data_dir);
     if !path.exists() {
@@ -127,6 +132,7 @@ pub(crate) fn open(data_dir: &Path) -> Result<Connection, CoreError> {
     // SQLite opens lazily: read the schema so a damaged file fails here, as
     // `Corrupt`, rather than on the first call that uses it.
     conn.query_row("SELECT count(*) FROM sqlite_master", [], |_| Ok(()))?;
+    conn.execute_batch(BEREAN_TABLES)?;
     Ok(conn)
 }
 
@@ -258,6 +264,8 @@ pub struct Note {
     pub tag_ids: Vec<i64>,
     pub created: String,
     pub modified: String,
+    /// The Berean folder the note is filed in; `None` = not in a folder.
+    pub folder_id: Option<i64>,
 }
 
 /// Which notes [`UserData::notes`] lists; every field set must match.
@@ -266,8 +274,52 @@ pub struct NoteFilter {
     /// Notes at this location or inside it: a document's include its
     /// paragraphs', a chapter's its verses', a publication's all of its own.
     pub location: Option<Location>,
-    /// Notes with this tag.
-    pub tag_id: Option<i64>,
+    /// Notes with every one of these tags; empty = any.
+    pub tag_ids: Vec<i64>,
+    /// Notes in this folder (or none).
+    pub folder: Option<FolderScope>,
+}
+
+/// Which folder [`NoteFilter::folder`] picks notes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FolderScope {
+    /// Notes in no folder.
+    Unfiled,
+    /// Notes in folder `id`, and in its subfolders if `include_subfolders`.
+    Folder { id: i64, include_subfolders: bool },
+}
+
+/// A Berean note folder, as [`UserData::folders`] lists it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Folder {
+    pub id: i64,
+    /// `None` = top level.
+    pub parent_id: Option<i64>,
+    pub name: String,
+    /// Order among its siblings: 0-based and dense.
+    pub position: u32,
+    /// 0 = top level.
+    pub depth: u32,
+    /// Notes in the folder and all its subfolders.
+    pub note_count: u32,
+    /// Direct children.
+    pub subfolder_count: u32,
+}
+
+/// What [`UserData::delete_folder`] removed, so
+/// [`UserData::restore_folder`] can put it back exactly: the folders in
+/// tree order (the deleted one first), and the notes that were filed in them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeletedFolder {
+    pub folders: Vec<Folder>,
+    pub notes: Vec<NoteFolder>,
+}
+
+/// A note (by `Guid`) filed in a folder.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoteFolder {
+    pub note_id: String,
+    pub folder_id: i64,
 }
 
 /// A user tag. Favorites is JW's built-in tag and has its own calls.
@@ -614,6 +666,148 @@ fn note_row(conn: &Connection, guid: &str) -> Result<i64, CoreError> {
     )
 }
 
+/// The trimmed folder name; empty => `Invalid`.
+fn folder_name(name: &str) -> Result<&str, CoreError> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(CoreError::Invalid("a folder name can't be empty".into()));
+    }
+    Ok(name)
+}
+
+/// `Invalid` if a folder under `parent` other than `except` is already
+/// called `name`, ignoring ASCII case as the unique index does.
+fn check_folder_name_free(
+    conn: &Connection,
+    parent: Option<i64>,
+    name: &str,
+    except: Option<i64>,
+) -> Result<(), CoreError> {
+    let taken: bool = conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM BereanFolder WHERE ParentId IS ?1 \
+         AND Name = ?2 COLLATE NOCASE AND FolderId IS NOT ?3)",
+        params![parent, name, except],
+        |r| r.get(0),
+    )?;
+    if taken {
+        return Err(CoreError::Invalid(format!(
+            "a folder called {name:?} is already there"
+        )));
+    }
+    Ok(())
+}
+
+/// The parent of folder `id`; `NotFound` if there is no such folder.
+fn folder_parent(conn: &Connection, id: i64) -> Result<Option<i64>, CoreError> {
+    Ok(conn.query_row(
+        "SELECT ParentId FROM BereanFolder WHERE FolderId = ?1",
+        [id],
+        |r| r.get(0),
+    )?)
+}
+
+/// Whether folder `id` exists.
+fn folder_exists(conn: &Connection, id: i64) -> Result<bool, CoreError> {
+    Ok(conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM BereanFolder WHERE FolderId = ?1)",
+        [id],
+        |r| r.get(0),
+    )?)
+}
+
+/// The folders under `parent`, in position order.
+fn sibling_ids(conn: &Connection, parent: Option<i64>) -> Result<Vec<i64>, CoreError> {
+    let ids = conn
+        .prepare(
+            "SELECT FolderId FROM BereanFolder WHERE ParentId IS ?1 ORDER BY Position, FolderId",
+        )?
+        .query_map([parent], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    Ok(ids)
+}
+
+/// Give the folders `ids` the positions 0..n in that order.
+fn set_positions(conn: &Connection, ids: &[i64]) -> Result<(), CoreError> {
+    let mut update = conn.prepare("UPDATE BereanFolder SET Position = ?2 WHERE FolderId = ?1")?;
+    for (position, id) in ids.iter().enumerate() {
+        update.execute(params![id, position as i64])?;
+    }
+    Ok(())
+}
+
+/// Folder `id` and every folder under it.
+fn subtree_ids(conn: &Connection, id: i64) -> Result<HashSet<i64>, CoreError> {
+    let ids = conn
+        .prepare(
+            // `UNION`, not `UNION ALL`: ends even on a cycle in a damaged file.
+            "WITH RECURSIVE sub (id) AS (SELECT ?1 UNION \
+             SELECT f.FolderId FROM BereanFolder f JOIN sub ON f.ParentId = sub.id) \
+             SELECT id FROM sub",
+        )?
+        .query_map([id], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    Ok(ids)
+}
+
+/// Every folder in tree order: depth-first, siblings by position, with
+/// depths and counts filled in.
+fn read_folders(conn: &Connection) -> Result<Vec<Folder>, CoreError> {
+    let rows: Vec<(i64, Option<i64>, String, i64)> = conn
+        .prepare(
+            "SELECT FolderId, ParentId, Name, Position FROM BereanFolder \
+             ORDER BY Position, FolderId",
+        )?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+        .collect::<Result<_, _>>()?;
+    let direct: HashMap<i64, u32> = conn
+        .prepare("SELECT FolderId, COUNT(*) FROM BereanNoteFolder GROUP BY FolderId")?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<_, _>>()?;
+    let mut children: HashMap<Option<i64>, Vec<usize>> = HashMap::new();
+    for (i, row) in rows.iter().enumerate() {
+        children.entry(row.1).or_default().push(i);
+    }
+
+    struct Tree<'a> {
+        rows: &'a [(i64, Option<i64>, String, i64)],
+        direct: &'a HashMap<i64, u32>,
+        children: &'a HashMap<Option<i64>, Vec<usize>>,
+    }
+    impl Tree<'_> {
+        /// Push `parent`'s subfolders (pre-order) and return how many notes
+        /// they hold, all levels down.
+        fn walk(&self, parent: Option<i64>, depth: u32, out: &mut Vec<Folder>) -> u32 {
+            let mut total = 0;
+            for &i in self.children.get(&parent).map_or(&[][..], Vec::as_slice) {
+                let (id, parent_id, name, position) = &self.rows[i];
+                let at = out.len();
+                out.push(Folder {
+                    id: *id,
+                    parent_id: *parent_id,
+                    name: name.clone(),
+                    position: u32::try_from(*position).unwrap_or(u32::MAX),
+                    depth,
+                    note_count: 0,
+                    subfolder_count: self.children.get(&Some(*id)).map_or(0, |c| c.len() as u32),
+                });
+                let count = self.direct.get(id).copied().unwrap_or(0)
+                    + self.walk(Some(*id), depth + 1, out);
+                out[at].note_count = count;
+                total += count;
+            }
+            total
+        }
+    }
+    let mut out = Vec::with_capacity(rows.len());
+    Tree {
+        rows: &rows,
+        direct: &direct,
+        children: &children,
+    }
+    .walk(None, 0, &mut out);
+    Ok(out)
+}
+
 /// The built-in Favorites tag (`Type` 0), if the database has one.
 fn favorites_tag(conn: &Connection) -> Result<Option<i64>, CoreError> {
     Ok(conn
@@ -721,22 +915,17 @@ fn read_highlight(conn: &Connection, mark: i64) -> Result<Option<Highlight>, Cor
 }
 
 /// The notes the typed reads see, in `NoteId` order: all of them, or the
-/// one `NoteId` names, or those with `tag`.
-fn read_notes(
-    conn: &Connection,
-    note: Option<i64>,
-    tag: Option<i64>,
-) -> Result<Vec<Note>, CoreError> {
+/// one `NoteId` names.
+fn read_notes(conn: &Connection, note: Option<i64>) -> Result<Vec<Note>, CoreError> {
     let mut stmt = conn.prepare(&format!(
         "SELECT n.NoteId, n.Guid, n.Title, n.Content, n.Created, n.LastModified, \
-         n.BlockType, n.BlockIdentifier, m.UserMarkGuid, n.LocationId, {LOC_COLS} \
+         n.BlockType, n.BlockIdentifier, m.UserMarkGuid, n.LocationId, {LOC_COLS}, nf.FolderId \
          FROM Note n LEFT JOIN UserMark m ON m.UserMarkId = n.UserMarkId \
          LEFT JOIN Location l ON l.LocationId = n.LocationId \
-         WHERE (?1 IS NULL OR n.NoteId = ?1) AND (?2 IS NULL OR EXISTS \
-         (SELECT 1 FROM TagMap t WHERE t.NoteId = n.NoteId AND t.TagId = ?2)) \
-         ORDER BY n.NoteId"
+         LEFT JOIN BereanNoteFolder nf ON nf.NoteId = n.NoteId \
+         WHERE (?1 IS NULL OR n.NoteId = ?1) ORDER BY n.NoteId"
     ))?;
-    let rows = stmt.query_map(params![note, tag], |r| {
+    let rows = stmt.query_map(params![note], |r| {
         let id: i64 = r.get(0)?;
         let location = match r.get::<_, Option<i64>>(9)? {
             None => Some(None),
@@ -761,6 +950,7 @@ fn read_notes(
                 tag_ids: Vec::new(),
                 created: r.get(4)?,
                 modified: r.get(5)?,
+                folder_id: r.get(20)?,
             }),
         ))
     })?;
@@ -875,7 +1065,7 @@ fn summary(conn: &Connection) -> Result<ImportSummary, CoreError> {
     let tags: i64 = conn.query_row("SELECT COUNT(*) FROM Tag WHERE Type = 1", [], |r| r.get(0))?;
     Ok(ImportSummary {
         highlights,
-        notes: read_notes(conn, None, None)?.len() as u64,
+        notes: read_notes(conn, None)?.len() as u64,
         tags: tags as u64,
         bookmarks: read_bookmarks(conn, None)?.len() as u64,
         favorites: read_favorites(conn)?.len() as u64,
@@ -1003,6 +1193,11 @@ fn stage_backup(
     {
         return Err(CoreError::Corrupt);
     }
+    // The checks above ran on the file as JW wrote it. The reads below join
+    // Berean's tables, which `open` would create on the swapped-in file
+    // anyway (empty: a JW backup has no folders).
+    conn.execute_batch(BEREAN_TABLES)
+        .map_err(|_| CoreError::Corrupt)?;
     // A database without JW's tables can't be read: corrupt as a backup.
     let summary = summary(&conn).map_err(|_| CoreError::Corrupt)?;
     drop(conn);
@@ -1202,7 +1397,7 @@ impl UserData {
     // Notes.
 
     /// The notes `filter` selects, in the order they were made. A malformed
-    /// filter location => `Invalid`.
+    /// filter location => `Invalid`; an unknown filter folder => `NotFound`.
     pub fn notes(&self, filter: &NoteFilter) -> Result<Vec<Note>, CoreError> {
         let location = match &filter.location {
             Some(loc) => {
@@ -1212,26 +1407,55 @@ impl UserData {
             None => None,
         };
         let conn = self.inner.userdata();
-        let mut notes = read_notes(&conn, None, filter.tag_id)?;
-        if let Some(filter) = location {
-            notes.retain(|n| n.location.as_ref().is_some_and(|l| within(l, &filter)));
-        }
+        // The folders a `FolderScope::Folder` filter takes notes from.
+        let scope = match filter.folder {
+            Some(FolderScope::Folder {
+                id,
+                include_subfolders,
+            }) => {
+                folder_parent(&conn, id)?;
+                if include_subfolders {
+                    subtree_ids(&conn, id)?
+                } else {
+                    HashSet::from([id])
+                }
+            }
+            _ => HashSet::new(),
+        };
+        let in_folder = |folder_id: Option<i64>| match (filter.folder, folder_id) {
+            (None, _) => true,
+            (Some(FolderScope::Unfiled), f) => f.is_none(),
+            (Some(FolderScope::Folder { .. }), f) => f.is_some_and(|f| scope.contains(&f)),
+        };
+        let mut notes = read_notes(&conn, None)?;
+        notes.retain(|n| {
+            filter.tag_ids.iter().all(|t| n.tag_ids.contains(t))
+                && in_folder(n.folder_id)
+                && location
+                    .as_ref()
+                    .is_none_or(|f| n.location.as_ref().is_some_and(|l| within(l, f)))
+        });
         Ok(notes)
     }
 
     /// Add a note at `location` (`None` for a free-standing one), on the
-    /// highlight `highlight_id` if given. An unknown highlight =>
-    /// `NotFound`; a malformed location => `Invalid`.
+    /// highlight `highlight_id` if given, filed in `folder_id` if given. An
+    /// unknown highlight or folder => `NotFound`; a malformed location =>
+    /// `Invalid`.
     pub fn add_note(
         &self,
         title: &str,
         content: &str,
         location: Option<&Location>,
         highlight_id: Option<&str>,
+        folder_id: Option<i64>,
     ) -> Result<Note, CoreError> {
         let place = location.map(split).transpose()?;
         let mut conn = self.inner.userdata();
         let tx = conn.transaction()?;
+        if let Some(folder) = folder_id {
+            folder_parent(&tx, folder)?;
+        }
         let mark: Option<i64> = highlight_id
             .map(|id| {
                 tx.query_row(
@@ -1255,8 +1479,14 @@ impl UserData {
             params![mark, location, title, content, block_type, block_id],
         )?;
         let id = tx.last_insert_rowid();
+        if let Some(folder) = folder_id {
+            tx.execute(
+                "INSERT INTO BereanNoteFolder (NoteId, FolderId) VALUES (?1, ?2)",
+                [id, folder],
+            )?;
+        }
         tx.commit()?;
-        read_notes(&conn, Some(id), None)?
+        read_notes(&conn, Some(id))?
             .pop()
             .ok_or_else(|| CoreError::Invalid("note not readable".into()))
     }
@@ -1277,7 +1507,8 @@ impl UserData {
         Ok(())
     }
 
-    /// Remove the note `id` and its tagging. Unknown => `NotFound`.
+    /// Remove the note `id` and its tagging (its filing goes by cascade).
+    /// Unknown => `NotFound`.
     pub fn remove_note(&self, id: &str) -> Result<(), CoreError> {
         let mut conn = self.inner.userdata();
         let tx = conn.transaction()?;
@@ -1300,6 +1531,221 @@ impl UserData {
             .query_map([], |r| r.get(0))?
             .collect::<Result<_, _>>()?;
         Ok(notes::render(markdown, &|key| installed.contains(key)))
+    }
+
+    // Folders. Berean-only: they live in their own tables beside JW's (see
+    // `userdata_berean.sql`). Names are trimmed and must be non-empty and
+    // unique among siblings, ignoring ASCII case.
+
+    /// Every folder, flat, in tree order: depth-first, siblings by position.
+    pub fn folders(&self) -> Result<Vec<Folder>, CoreError> {
+        read_folders(&self.inner.userdata())
+    }
+
+    /// Add a folder called `name` under `parent_id` (`None` = top level),
+    /// last among its siblings. A bad or taken name => `Invalid`; an
+    /// unknown parent => `NotFound`.
+    pub fn create_folder(&self, name: &str, parent_id: Option<i64>) -> Result<Folder, CoreError> {
+        let name = folder_name(name)?;
+        let mut conn = self.inner.userdata();
+        let tx = conn.transaction()?;
+        if let Some(parent) = parent_id {
+            folder_parent(&tx, parent)?;
+        }
+        check_folder_name_free(&tx, parent_id, name, None)?;
+        let position = sibling_ids(&tx, parent_id)?.len() as i64;
+        tx.execute(
+            "INSERT INTO BereanFolder (ParentId, Name, Position) VALUES (?1, ?2, ?3)",
+            params![parent_id, name, position],
+        )?;
+        let id = tx.last_insert_rowid();
+        let folder = read_folders(&tx)?
+            .into_iter()
+            .find(|f| f.id == id)
+            .ok_or(CoreError::NotFound)?;
+        tx.commit()?;
+        Ok(folder)
+    }
+
+    /// Rename folder `id` to `name`. Unknown => `NotFound`; a bad or taken
+    /// name => `Invalid`.
+    pub fn rename_folder(&self, id: i64, name: &str) -> Result<(), CoreError> {
+        let name = folder_name(name)?;
+        let mut conn = self.inner.userdata();
+        let tx = conn.transaction()?;
+        let parent = folder_parent(&tx, id)?;
+        check_folder_name_free(&tx, parent, name, Some(id))?;
+        tx.execute(
+            "UPDATE BereanFolder SET Name = ?2 WHERE FolderId = ?1",
+            params![id, name],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Move folder `id` under `parent_id` (`None` = top level) at
+    /// `position` among its new siblings, clamped to the end; within the
+    /// same parent this reorders. Siblings in the old and new parent are
+    /// renumbered densely. Unknown folder or parent => `NotFound`; a parent
+    /// that is the folder or under it, or a name taken there => `Invalid`.
+    pub fn move_folder(
+        &self,
+        id: i64,
+        parent_id: Option<i64>,
+        position: u32,
+    ) -> Result<(), CoreError> {
+        let mut conn = self.inner.userdata();
+        let tx = conn.transaction()?;
+        let old_parent = folder_parent(&tx, id)?;
+        // Cycle check: walk up from the new parent; meeting `id` means the
+        // new parent is the folder itself or one of its descendants.
+        let mut up = parent_id;
+        while let Some(at) = up {
+            if at == id {
+                return Err(CoreError::Invalid(
+                    "a folder can't move into itself or one of its subfolders".into(),
+                ));
+            }
+            up = folder_parent(&tx, at)?;
+        }
+        let name: String = tx.query_row(
+            "SELECT Name FROM BereanFolder WHERE FolderId = ?1",
+            [id],
+            |r| r.get(0),
+        )?;
+        check_folder_name_free(&tx, parent_id, &name, Some(id))?;
+
+        let mut old: Vec<i64> = sibling_ids(&tx, old_parent)?;
+        old.retain(|&f| f != id);
+        set_positions(&tx, &old)?;
+        tx.execute(
+            "UPDATE BereanFolder SET ParentId = ?2 WHERE FolderId = ?1",
+            params![id, parent_id],
+        )?;
+        let mut new: Vec<i64> = sibling_ids(&tx, parent_id)?;
+        new.retain(|&f| f != id);
+        new.insert((position as usize).min(new.len()), id);
+        set_positions(&tx, &new)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Delete folder `id` and all its subfolders. Their notes are kept and
+    /// become unfiled. Returns what was removed, for
+    /// [`restore_folder`](Self::restore_folder). Unknown => `NotFound`.
+    pub fn delete_folder(&self, id: i64) -> Result<DeletedFolder, CoreError> {
+        let mut conn = self.inner.userdata();
+        let tx = conn.transaction()?;
+        let all = read_folders(&tx)?;
+        let at = all
+            .iter()
+            .position(|f| f.id == id)
+            .ok_or(CoreError::NotFound)?;
+        // In pre-order the subtree is the run after `id` that is deeper.
+        let depth = all[at].depth;
+        let folders: Vec<Folder> = std::iter::once(&all[at])
+            .chain(all[at + 1..].iter().take_while(|f| f.depth > depth))
+            .cloned()
+            .collect();
+        let ids: HashSet<i64> = folders.iter().map(|f| f.id).collect();
+        let mut notes: Vec<NoteFolder> = tx
+            .prepare(
+                "SELECT n.Guid, nf.FolderId FROM BereanNoteFolder nf \
+                 JOIN Note n ON n.NoteId = nf.NoteId ORDER BY nf.NoteId",
+            )?
+            .query_map([], |r| {
+                Ok(NoteFolder {
+                    note_id: r.get(0)?,
+                    folder_id: r.get(1)?,
+                })
+            })?
+            .collect::<Result<_, _>>()?;
+        notes.retain(|n| ids.contains(&n.folder_id));
+        // The cascade removes the subfolders and the notes' filings.
+        tx.execute("DELETE FROM BereanFolder WHERE FolderId = ?1", [id])?;
+        set_positions(&tx, &sibling_ids(&tx, all[at].parent_id)?)?;
+        tx.commit()?;
+        Ok(DeletedFolder { folders, notes })
+    }
+
+    /// Undo [`delete_folder`](Self::delete_folder): put the folders back
+    /// with their ids, parents, names and positions (the top one at its old
+    /// position among the current siblings), and refile the notes that
+    /// still exist and are still unfiled. A folder id that is taken, a
+    /// parent that is gone, a name a sibling has taken since, or a snapshot
+    /// that isn't one subtree => `Invalid`, changing nothing.
+    pub fn restore_folder(&self, deleted: &DeletedFolder) -> Result<(), CoreError> {
+        let invalid = |what: &str| Err(CoreError::Invalid(format!("can't restore folder: {what}")));
+        let Some(top) = deleted.folders.first() else {
+            return invalid("nothing to restore");
+        };
+        let mut conn = self.inner.userdata();
+        let tx = conn.transaction()?;
+        if let Some(parent) = top.parent_id {
+            if !folder_exists(&tx, parent)? {
+                return invalid("its parent is gone");
+            }
+        }
+        check_folder_name_free(&tx, top.parent_id, &top.name, None)?;
+        let mut restored = HashSet::new();
+        let mut insert = tx.prepare(
+            "INSERT INTO BereanFolder (FolderId, ParentId, Name, Position) VALUES (?1, ?2, ?3, ?4)",
+        )?;
+        for (i, f) in deleted.folders.iter().enumerate() {
+            // Parents before children: the snapshot is in tree order.
+            if i > 0 && !f.parent_id.is_some_and(|p| restored.contains(&p)) {
+                return invalid("the snapshot isn't one subtree");
+            }
+            if folder_exists(&tx, f.id)? {
+                return invalid("a folder id is taken");
+            }
+            insert.execute(params![f.id, f.parent_id, f.name, f.position])?;
+            restored.insert(f.id);
+        }
+        drop(insert);
+        // Put the top folder back at its old place among today's siblings.
+        let mut siblings = sibling_ids(&tx, top.parent_id)?;
+        siblings.retain(|&f| f != top.id);
+        siblings.insert((top.position as usize).min(siblings.len()), top.id);
+        set_positions(&tx, &siblings)?;
+        // Refile only notes still here and not filed elsewhere meanwhile.
+        let mut refile = tx.prepare(
+            "INSERT INTO BereanNoteFolder (NoteId, FolderId) SELECT n.NoteId, ?2 FROM Note n \
+             WHERE n.Guid = ?1 AND NOT EXISTS \
+             (SELECT 1 FROM BereanNoteFolder f WHERE f.NoteId = n.NoteId)",
+        )?;
+        for n in &deleted.notes {
+            if !restored.contains(&n.folder_id) {
+                return invalid("a note's folder isn't in the snapshot");
+            }
+            refile.execute(params![n.note_id, n.folder_id])?;
+        }
+        drop(refile);
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// File the note `note_id` in `folder_id`, or unfile it for `None`.
+    /// Unknown note or folder => `NotFound`.
+    pub fn set_note_folder(&self, note_id: &str, folder_id: Option<i64>) -> Result<(), CoreError> {
+        let mut conn = self.inner.userdata();
+        let tx = conn.transaction()?;
+        let note = note_row(&tx, note_id)?;
+        match folder_id {
+            Some(folder) => {
+                folder_parent(&tx, folder)?;
+                tx.execute(
+                    "INSERT INTO BereanNoteFolder (NoteId, FolderId) VALUES (?1, ?2) \
+                     ON CONFLICT (NoteId) DO UPDATE SET FolderId = excluded.FolderId",
+                    [note, folder],
+                )?;
+            }
+            None => {
+                tx.execute("DELETE FROM BereanNoteFolder WHERE NoteId = ?1", [note])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
     }
 
     // Tags.

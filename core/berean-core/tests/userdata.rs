@@ -182,6 +182,26 @@ fn schema(path: &Path) -> Vec<(String, String, String, Option<String>)> {
     .unwrap()
 }
 
+/// Whether a table is Berean's rather than JW's: its own tables, and the
+/// `sqlite_sequence` SQLite adds for their `AUTOINCREMENT`.
+fn is_berean_table(name: &str) -> bool {
+    name.starts_with("Berean") || name == "sqlite_sequence"
+}
+
+/// [`schema`] without Berean's tables and their indexes.
+fn jw_schema(path: &Path) -> Vec<(String, String, String, Option<String>)> {
+    let mut s = schema(path);
+    s.retain(|e| !is_berean_table(&e.2));
+    s
+}
+
+/// [`contents`] without Berean's tables.
+fn jw_contents(path: &Path) -> Vec<(String, Vec<Vec<Value>>)> {
+    let mut c = contents(path);
+    c.retain(|(t, _)| !is_berean_table(t));
+    c
+}
+
 fn user_version(path: &Path) -> u32 {
     Connection::open(path)
         .unwrap()
@@ -234,9 +254,28 @@ fn new_userdata_db_matches_the_pinned_blank() {
     drop(env.core());
     let (_blank_dir, blank) = blank_db();
 
-    let ours = schema(&env.userdata_db());
+    // JW's part is the blank exactly; Berean's tables come on top.
+    let ours = jw_schema(&env.userdata_db());
     let theirs = schema(&blank);
     assert_eq!(ours, theirs);
+    let berean: Vec<(String, String)> = schema(&env.userdata_db())
+        .into_iter()
+        .filter(|e| is_berean_table(&e.2))
+        .map(|e| (e.0, e.1))
+        .filter(|(_, name)| !name.starts_with("sqlite_autoindex"))
+        .collect();
+    let pair = |t: &str, n: &str| (t.to_string(), n.to_string());
+    assert_eq!(
+        berean,
+        [
+            pair("table", "BereanFolder"),
+            pair("table", "sqlite_sequence"),
+            pair("index", "IX_BereanFolder_Sibling_Name"),
+            pair("index", "IX_BereanFolder_ParentId"),
+            pair("table", "BereanNoteFolder"),
+            pair("index", "IX_BereanNoteFolder_FolderId"),
+        ]
+    );
     // 18 tables, 23 triggers, 14 explicit indexes (design §5).
     let count = |kind: &str| theirs.iter().filter(|e| e.0 == kind).count();
     assert_eq!((count("table"), count("trigger")), (18, 23));
@@ -251,8 +290,11 @@ fn new_userdata_db_matches_the_pinned_blank() {
     assert_eq!(user_version(&env.userdata_db()), 16);
     assert_eq!(user_version(&blank), 16);
     // The same initial rows: the locale, the one LastModified row and the
-    // Favorites tag.
-    assert_eq!(contents(&env.userdata_db()), contents(&blank));
+    // Favorites tag. Berean's tables start empty.
+    assert_eq!(jw_contents(&env.userdata_db()), contents(&blank));
+    assert!(contents(&env.userdata_db())
+        .iter()
+        .all(|(t, rows)| !is_berean_table(t) || rows.is_empty()));
     assert_eq!(
         contents(&env.userdata_db())
             .into_iter()
@@ -502,7 +544,13 @@ fn highlight_color_and_removal() {
     ));
 
     let note = ud
-        .add_note("On it", "text", Some(&paragraph(W_E, 7, 1)), Some(&h.id))
+        .add_note(
+            "On it",
+            "text",
+            Some(&paragraph(W_E, 7, 1)),
+            Some(&h.id),
+            None,
+        )
         .unwrap();
     assert_eq!(note.highlight_id.as_deref(), Some(h.id.as_str()));
     ud.remove_highlight(&h.id).unwrap();
@@ -516,7 +564,7 @@ fn highlight_color_and_removal() {
     assert!(rows(&raw, "SELECT * FROM BlockRange").is_empty());
     assert!(rows(&raw, "SELECT * FROM UserMark").is_empty());
     assert!(is_not_found(ud.remove_highlight(&h.id)));
-    assert!(is_not_found(ud.add_note("x", "y", None, Some(&h.id))));
+    assert!(is_not_found(ud.add_note("x", "y", None, Some(&h.id), None)));
 }
 
 #[test]
@@ -599,7 +647,7 @@ fn rows_the_reads_cant_map_are_skipped_but_kept() {
     // A new note on doc 8 makes its own Location row; the Specialty one
     // stays as it was.
     let n = ud
-        .add_note("t", "c", Some(&document(W_E, 8)), None)
+        .add_note("t", "c", Some(&document(W_E, 8)), None, None)
         .unwrap();
     assert_eq!(n.location, Some(document(W_E, 8)));
     assert_eq!(rows(&raw, "SELECT COUNT(*) FROM UserMark"), [vec![int(3)]]);
@@ -611,7 +659,7 @@ fn rows_the_reads_cant_map_are_skipped_but_kept() {
 fn notes_by_location_and_tag() {
     let env = Env::new();
     let ud = env.core().userdata();
-    let free = ud.add_note("Free", "standing", None, None).unwrap();
+    let free = ud.add_note("Free", "standing", None, None, None).unwrap();
     assert_eq!(free.location, None);
     assert!(
         is_iso_utc(&free.created) && is_iso_utc(&free.modified),
@@ -619,24 +667,24 @@ fn notes_by_location_and_tag() {
     );
     assert!(is_v4_uuid(&free.id));
     let in_doc = ud
-        .add_note("Doc", "", Some(&document(W_E, 7)), None)
+        .add_note("Doc", "", Some(&document(W_E, 7)), None, None)
         .unwrap();
     let in_para = ud
-        .add_note("Para", "p", Some(&paragraph(W_E, 7, 4)), None)
+        .add_note("Para", "p", Some(&paragraph(W_E, 7, 4)), None, None)
         .unwrap();
     let mut v = verse(NWT_E, 43, 3, 16);
     v.doc_id = Some(1001070143);
-    let in_verse = ud.add_note("Verse", "v", Some(&v), None).unwrap();
+    let in_verse = ud.add_note("Verse", "v", Some(&v), None, None).unwrap();
     assert_eq!(in_verse.location, Some(verse(NWT_E, 43, 3, 16)));
     let in_es = ud
-        .add_note("Versículo", "v", Some(&verse(NWT_S, 43, 3, 16)), None)
+        .add_note("Versículo", "v", Some(&verse(NWT_S, 43, 3, 16)), None, None)
         .unwrap();
     let ids = |f: NoteFilter| -> Vec<String> {
         ud.notes(&f).unwrap().into_iter().map(|n| n.id).collect()
     };
     let at = |loc: Location| NoteFilter {
         location: Some(loc),
-        tag_id: None,
+        ..NoteFilter::default()
     };
 
     assert_eq!(
@@ -668,8 +716,8 @@ fn notes_by_location_and_tag() {
     ud.tag_note(&in_verse.id, tag.id).unwrap();
     ud.tag_note(&in_verse.id, tag.id).unwrap(); // no-op
     let tagged = NoteFilter {
-        location: None,
-        tag_id: Some(tag.id),
+        tag_ids: vec![tag.id],
+        ..NoteFilter::default()
     };
     assert_eq!(
         ids(tagged.clone()),
@@ -678,7 +726,7 @@ fn notes_by_location_and_tag() {
     assert_eq!(
         ids(NoteFilter {
             location: Some(document(W_E, 7)),
-            ..tagged
+            ..tagged.clone()
         }),
         [in_para.id.as_str()]
     );
@@ -755,8 +803,8 @@ fn tags() {
     );
     assert!(is_not_found(ud.rename_tag(999, "X")));
 
-    let n1 = ud.add_note("1", "", None, None).unwrap();
-    let n2 = ud.add_note("2", "", None, None).unwrap();
+    let n1 = ud.add_note("1", "", None, None, None).unwrap();
+    let n2 = ud.add_note("2", "", None, None, None).unwrap();
     ud.tag_note(&n1.id, a.id).unwrap();
     ud.tag_note(&n2.id, a.id).unwrap();
     ud.tag_note(&n2.id, b.id).unwrap();
@@ -999,11 +1047,17 @@ fn populate(ud: &UserData) {
     )
     .unwrap();
     let n = ud
-        .add_note("On it", "text", Some(&paragraph(W_E, 7, 2)), Some(&h.id))
+        .add_note(
+            "On it",
+            "text",
+            Some(&paragraph(W_E, 7, 2)),
+            Some(&h.id),
+            None,
+        )
         .unwrap();
     let t = ud.add_tag("Study").unwrap();
     ud.tag_note(&n.id, t.id).unwrap();
-    ud.add_note("Free", "", None, None).unwrap();
+    ud.add_note("Free", "", None, None, None).unwrap();
     ud.add_favorite(&publication(NWT_S)).unwrap();
     ud.set_bookmark(W_E, 0, &paragraph(W_E, 7, 3), "Para 3", Some("s"))
         .unwrap();
@@ -1089,10 +1143,17 @@ fn export_writes_the_database_and_its_manifest() {
     let copy = copy_dir.path().join("userData.db");
     std::fs::write(&copy, db).unwrap();
     assert_eq!(user_version(&copy), 16);
-    assert_eq!(schema(&copy), schema(&env.userdata_db()));
+    // `VACUUM INTO` lists tables first, so Berean's indexes move.
+    let sorted = |path: &Path| {
+        let mut s = schema(path);
+        s.sort();
+        s
+    };
+    assert_eq!(sorted(&copy), sorted(&env.userdata_db()));
     assert_eq!(contents(&copy), contents(&env.userdata_db()));
     let (_blank_dir, blank) = blank_db();
-    assert_eq!(schema(&copy), schema(&blank));
+    // Berean's tables are still in the copy; dropping them is a later change.
+    assert_eq!(jw_schema(&copy), schema(&blank));
 }
 
 #[test]
@@ -1481,9 +1542,10 @@ fn import_replaces_the_data_with_the_backup() {
     let ud = ex.ud();
     assert_eq!(ex.import(&file).unwrap(), SYNTHETIC_SUMMARY);
 
-    // The database is the backup's, exactly; the old one is kept.
-    assert_eq!(contents(&ex.env.userdata_db()), contents(&backup.db));
-    assert_eq!(schema(&ex.env.userdata_db()), schema(&backup.db));
+    // The database is the backup's, exactly, plus Berean's (empty) tables;
+    // the old one is kept.
+    assert_eq!(jw_contents(&ex.env.userdata_db()), contents(&backup.db));
+    assert_eq!(jw_schema(&ex.env.userdata_db()), schema(&backup.db));
     assert_eq!(
         media_contents(&ex.env.data.join("userData.media")),
         [("default_thumbnail.png".to_string(), blank_thumbnail())]
@@ -1606,9 +1668,9 @@ fn export_then_import_round_trips_every_table() {
         let (_, rows) = ours.iter().find(|(name, _)| name == t).unwrap();
         assert!(!rows.is_empty(), "{t}");
     }
-    // The same schema; `VACUUM INTO` lists it tables first.
+    // The same JW schema; `VACUUM INTO` lists it tables first.
     let sorted = |path: &Path| {
-        let mut s = schema(path);
+        let mut s = jw_schema(path);
         s.sort();
         s
     };
@@ -1638,7 +1700,7 @@ fn v14_backup_is_upgraded_to_v16() {
     // survives.
     let (_blank_dir, blank) = blank_db();
     assert_eq!(location_shape(&db), location_shape(&blank));
-    assert_eq!(contents(&db), contents(&v16.db));
+    assert_eq!(jw_contents(&db), contents(&v16.db));
     assert_eq!(fk_violations(&db), 0);
 }
 
@@ -1864,4 +1926,97 @@ fn cancelled_import_leaves_the_data() {
         ud.import_backup(&file, &progress, &cancel).unwrap(),
         SYNTHETIC_SUMMARY
     );
+}
+
+/// The Berean tables in the database at `path`, by name.
+fn berean_tables(path: &Path) -> Vec<String> {
+    let mut names: Vec<String> = schema(path)
+        .into_iter()
+        .filter(|e| e.0 == "table" && e.1.starts_with("Berean"))
+        .map(|e| e.1)
+        .collect();
+    names.sort();
+    names
+}
+
+#[test]
+fn folder_tables_are_added_to_an_existing_jw_db() {
+    // A JW file with no Berean tables, as a JW device would have it.
+    let env = Env::new();
+    std::fs::create_dir_all(&env.data).unwrap();
+    let (_blank_dir, blank) = blank_db();
+    std::fs::copy(&blank, env.userdata_db()).unwrap();
+    assert!(berean_tables(&env.userdata_db()).is_empty());
+
+    let ud = env.core().userdata();
+    assert_eq!(
+        berean_tables(&env.userdata_db()),
+        ["BereanFolder", "BereanNoteFolder"]
+    );
+    // JW's schema version and tables are untouched.
+    assert_eq!(user_version(&env.userdata_db()), 16);
+    assert_eq!(jw_schema(&env.userdata_db()), schema(&blank));
+    assert_eq!(jw_contents(&env.userdata_db()), contents(&blank));
+
+    // Reopening with folders keeps them (`IF NOT EXISTS`).
+    let f = ud.create_folder("Kept", None).unwrap();
+    drop(ud);
+    assert_eq!(env.core().userdata().folders().unwrap(), [f]);
+    assert_eq!(user_version(&env.userdata_db()), 16);
+}
+
+#[test]
+fn import_clears_folders_and_undo_brings_them_back() {
+    let ex = Existing::new();
+    let ud = ex.ud();
+    let top = ud.create_folder("Gospel of John", None).unwrap();
+    let sub = ud.create_folder("Signs", Some(top.id)).unwrap();
+    let note = ud.add_note("Cana", "", None, None, Some(sub.id)).unwrap();
+    let folders = ud.folders().unwrap();
+    assert_eq!(folders.len(), 2);
+
+    let file = ex.file("in.jwlibrary");
+    Backup::synthetic().write(&file);
+    ex.import(&file).unwrap();
+    // The JW database has no folders: the tables are there again, empty.
+    assert_eq!(
+        berean_tables(&ex.env.userdata_db()),
+        ["BereanFolder", "BereanNoteFolder"]
+    );
+    assert!(ud.folders().unwrap().is_empty());
+    assert!(ud
+        .notes(&NoteFilter::default())
+        .unwrap()
+        .iter()
+        .all(|n| n.folder_id.is_none()));
+    assert_eq!(user_version(&ex.env.userdata_db()), 16);
+    // And usable.
+    let made = ud.create_folder("After import", None).unwrap();
+    assert_eq!(made.position, 0);
+
+    // Undo puts the old file back, folders and filings included.
+    assert!(ud.undo_import().unwrap());
+    assert_eq!(ud.folders().unwrap(), folders);
+    let read = ud.notes(&NoteFilter::default()).unwrap();
+    let back = read.iter().find(|n| n.id == note.id).unwrap();
+    assert_eq!(back.folder_id, Some(sub.id));
+}
+
+#[test]
+fn export_still_works_with_folders() {
+    let env = Env::new();
+    let ud = env.core().userdata();
+    populate(&ud);
+    let f = ud.create_folder("Folder", None).unwrap();
+    ud.add_note("Filed", "", None, None, Some(f.id)).unwrap();
+    let out_dir = tempfile::tempdir().unwrap();
+    let out = out_dir.path().join("backup.jwlibrary");
+    ud.export_backup(&out, &no_progress, &CancelToken::new())
+        .unwrap();
+    let members = zip_members(&out);
+    assert_eq!(members[1].0, "userData.db");
+    // It imports back elsewhere with every note.
+    let other = Existing::new();
+    let summary = other.import(&out).unwrap();
+    assert_eq!(summary.notes, 3);
 }
