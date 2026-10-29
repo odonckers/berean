@@ -627,6 +627,28 @@ impl From<berean_core::reader::BibleChapter> for BibleChapter {
     }
 }
 
+/// The FFI mirror of [`berean_core::reader::BibleBook`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct BibleBook {
+    pub book: u32,
+    pub name: String,
+    pub long_title: String,
+    pub chapter_name: Option<String>,
+    pub chapter_count: u32,
+}
+
+impl From<berean_core::reader::BibleBook> for BibleBook {
+    fn from(b: berean_core::reader::BibleBook) -> Self {
+        BibleBook {
+            book: b.book,
+            name: b.name,
+            long_title: b.long_title,
+            chapter_name: b.chapter_name,
+            chapter_count: b.chapter_count,
+        }
+    }
+}
+
 /// The FFI mirror of [`berean_core::reader::Location`].
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct Location {
@@ -721,6 +743,17 @@ impl Reader {
         chapter: u32,
     ) -> Result<BibleChapter, CoreError> {
         Ok(self.inner.bible_chapter(&bible, book, chapter)?.into())
+    }
+
+    /// The books of the installed Bible `bible`, by book number, with their
+    /// names and chapter counts; books it has no chapters of are not listed.
+    pub fn bible_books(&self, bible: String) -> Result<Vec<BibleBook>, CoreError> {
+        Ok(self
+            .inner
+            .bible_books(&bible)?
+            .into_iter()
+            .map(Into::into)
+            .collect())
     }
 
     /// Resolve a citation or `jwpub://` link to the span it names.
@@ -1943,6 +1976,12 @@ mod tests {
         assert_eq!((chapter.book, chapter.chapter), (43, 3));
         assert_eq!(chapter.verses.len(), 36);
         assert_eq!(chapter.verses[15].label, "16");
+
+        let books = reader.bible_books("nwt:0:0".into()).unwrap();
+        assert_eq!(books.len(), 66);
+        assert_eq!(books[42].book, 43);
+        assert_eq!(books[42].chapter_count, 21);
+        assert_eq!(books[18].chapter_name.as_deref(), Some("Psalm"));
 
         let john = |verse| Location {
             pub_key: "nwt:0:0".into(),

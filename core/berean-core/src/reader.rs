@@ -1,6 +1,7 @@
 //! Reader: the table of contents, documents and Bible chapters of installed
 //! publications, and resolving citations and `jwpub://` links to a
-//! [`LocationSpan`].
+//! [`LocationSpan`]. [`Reader::bible_books`] lists a Bible's books with their
+//! names and chapter counts, for book and chapter navigation.
 //!
 //! A document is named by its MEPS document id (`Document.MepsDocumentId`),
 //! never by the publication's local `DocumentId`: the MEPS id stays the same
@@ -77,9 +78,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::catalog::{Catalog, CatalogFilter};
-use crate::jwpub::{
-    BibleBook, DocumentParagraph, DocumentSummary, Publication, PublicationViewItem,
-};
+use crate::jwpub::{self, DocumentParagraph, DocumentSummary, Publication, PublicationViewItem};
 use crate::languages;
 use crate::library::{format_pub_key, Library, PubKind, PublicationSummary};
 use crate::{CoreError, Inner};
@@ -167,6 +166,22 @@ pub struct BibleChapter {
     pub html: String,
     /// In order. Verse 0 is a psalm's superscription.
     pub verses: Vec<VerseAnchor>,
+}
+
+/// One book of a Bible, for navigating to its chapters.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BibleBook {
+    /// The book number, 1 (Genesis) to 66 (Revelation).
+    pub book: u32,
+    /// The title of the book's document: `John`, `Psalms`, `1 Juan`.
+    pub name: String,
+    /// The book's full title (`BookDisplayTitle`).
+    pub long_title: String,
+    /// What a chapter of the book is called, when the Bible gives a single
+    /// word for it (`Psalm`, `Salmos`); `None` otherwise.
+    pub chapter_name: Option<String>,
+    /// How many chapters the Bible has of the book.
+    pub chapter_count: u32,
 }
 
 /// One verse of a [`BibleChapter`].
@@ -297,6 +312,42 @@ impl Reader {
         })
     }
 
+    /// The books of the installed Bible `bible`, by book number. A book the
+    /// Bible has no chapters of (a partial Bible) is not listed. Malformed
+    /// key => `Invalid`; not installed, or not a Bible (no book has a
+    /// chapter) => `NotFound`; a book without a document or a full title =>
+    /// `Corrupt`.
+    pub fn bible_books(&self, bible: &str) -> Result<Vec<BibleBook>, CoreError> {
+        self.library().with_publication(bible, |publication| {
+            let mut counts: HashMap<u32, u32> = HashMap::new();
+            for (book, _) in publication.bible_chapter_numbers()? {
+                *counts.entry(book).or_default() += 1;
+            }
+            let documents = documents_by_id(publication)?;
+            let mut books = Vec::new();
+            for row in publication.bible_books()? {
+                let book = u32::try_from(row.bible_book_id).map_err(|_| CoreError::Corrupt)?;
+                let Some(&chapter_count) = counts.get(&book) else {
+                    continue;
+                };
+                let doc = documents
+                    .get(&row.book_document_id)
+                    .ok_or(CoreError::Corrupt)?;
+                books.push(BibleBook {
+                    book,
+                    name: doc.title.clone(),
+                    chapter_name: chapter_name(&row).map(str::to_string),
+                    long_title: row.book_display_title,
+                    chapter_count,
+                });
+            }
+            if books.is_empty() {
+                return Err(CoreError::NotFound);
+            }
+            Ok(books)
+        })
+    }
+
     /// Resolve a citation or `jwpub://` link to the span of locations it
     /// names; see the module docs for the forms accepted.
     pub fn resolve(&self, reference: &str) -> Result<LocationSpan, CoreError> {
@@ -409,12 +460,8 @@ impl Reader {
                         let doc = documents
                             .get(&book.book_document_id)
                             .ok_or(CoreError::Corrupt)?;
-                        let single_word = book
-                            .chapter_display_title
-                            .as_deref()
-                            .filter(|t| t.split_whitespace().count() == 1);
                         let matches = std::iter::once(doc.title.as_str())
-                            .chain(single_word)
+                            .chain(chapter_name(&book))
                             .any(|name| fold(name) == citation.book);
                         if !matches {
                             continue;
@@ -822,6 +869,14 @@ pub(crate) fn documents_by_id(
         .collect())
 }
 
+/// A book's `ChapterDisplayTitle` when it is a single word (`Psalm`, not
+/// `According to John`).
+fn chapter_name(book: &jwpub::BibleBook) -> Option<&str> {
+    book.chapter_display_title
+        .as_deref()
+        .filter(|t| t.split_whitespace().count() == 1)
+}
+
 /// The document with MEPS id `doc_id`, if the publication has it.
 fn find_document(
     publication: &Publication,
@@ -925,7 +980,7 @@ fn span(
 fn bible_location(
     publication: &Publication,
     pub_key: &str,
-    book: &BibleBook,
+    book: &jwpub::BibleBook,
     doc: &DocumentSummary,
     chapter: u32,
     verse: Option<u32>,

@@ -59,7 +59,7 @@ Only features that a cited source describes are listed. Rows marked **to verify*
 ## Bible
 | ID | Feature | JW Library behavior | Status | Layer | UI | Board row / PR | Notes |
 |---|---|---|---|---|---|---|---|
-| BIB-1 | Book → chapter navigation | Tap a book, then a chapter. Book colors follow the eight groupings. [S1][S9] | UI pending | both | Kiwi/Moss | Core: Bible/verse mapping + reader content / #17 | `Reader::toc` on a Bible lists books. Grouping colors are UI, **to verify** whether the data has them. |
+| BIB-1 | Book → chapter navigation | Tap a book, then a chapter. Book colors follow the eight groupings. [S1][S9] | UI pending | both | Kiwi/Moss | Core: Bible/verse mapping + reader content / #17 | Core done: `Reader::bible_books` lists a Bible's books by number with name, long title, single-word chapter name (`Psalm`) and chapter count; books missing from a partial Bible are not listed. `Reader::toc` on a Bible lists books too. Grouping colors are UI, **to verify** whether the data has them. |
 | BIB-2 | Read a chapter with verse anchors | — [S1] | UI pending | both | Kiwi/Moss | #17 | `Reader::bible_chapter`: verse anchors, split verses covered whole, Psalm superscription = verse 0. |
 | BIB-3 | Look up a reference | Look up scriptures. [S1] | UI pending | both | Kiwi/Moss | #17 | `Reader::resolve("John 3:16-18")`, cross-chapter verse ranges, chapter ranges ("John 3-4"), single-chapter books ("Jude 3"), English and Spanish book names; a span stays within one book. Abbreviations and name variants ("Salmo") are deferred (Owen). |
 | BIB-4 | Customize look-up Bibles | Choose and reorder which downloaded Bibles show for a tapped citation. [S6] | Not started | both | Kiwi/Moss | — | Settings/userdata plus `bible_chapter` per Bible. |

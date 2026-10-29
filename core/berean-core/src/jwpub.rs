@@ -170,6 +170,8 @@ pub struct BibleBook {
     pub bible_book_id: i64,
     /// The local `DocumentId` of the book's document.
     pub book_document_id: i64,
+    /// The book's full title, e.g. `The Good News According to John`.
+    pub book_display_title: String,
     /// e.g. `Psalm`, `According to John`.
     pub chapter_display_title: Option<String>,
 }
@@ -703,7 +705,7 @@ impl Publication {
         let Some(sql) = select_sql(
             &self.conn,
             "BibleBook",
-            &["BibleBookId", "BookDocumentId"],
+            &["BibleBookId", "BookDocumentId", "BookDisplayTitle"],
             &["ChapterDisplayTitle"],
             " FROM BibleBook ORDER BY BibleBookId",
         )?
@@ -714,7 +716,8 @@ impl Publication {
             Ok(BibleBook {
                 bible_book_id: r.get(0)?,
                 book_document_id: r.get(1)?,
-                chapter_display_title: r.get(2)?,
+                book_display_title: r.get(2)?,
+                chapter_display_title: r.get(3)?,
             })
         })
     }

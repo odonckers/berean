@@ -6,7 +6,7 @@ mod common;
 
 use std::sync::OnceLock;
 
-use berean_core::reader::{Location, LocationSpan, Reader, TocEntry};
+use berean_core::reader::{BibleBook, Location, LocationSpan, Reader, TocEntry};
 use berean_core::{CancelToken, Core, CoreError};
 use common::{fixture, raw_db};
 
@@ -795,4 +795,65 @@ fn resolve_document_links() {
         assert_invalid(r.resolve(link), "malformed document link");
     }
     assert_invalid(r.resolve("jwpub://c/E:1/2:3"), "unsupported link");
+}
+
+fn bible_book(pub_key: &str, book: u32) -> BibleBook {
+    reader()
+        .bible_books(pub_key)
+        .unwrap()
+        .into_iter()
+        .find(|b| b.book == book)
+        .unwrap()
+}
+
+#[test]
+fn bible_books_lists_every_book_in_order() {
+    let books = reader().bible_books(NWT_E).unwrap();
+    assert_eq!(
+        books.iter().map(|b| b.book).collect::<Vec<_>>(),
+        (1..=66).collect::<Vec<_>>()
+    );
+    assert_eq!(books.iter().map(|b| b.chapter_count).sum::<u32>(), 1189);
+    assert_eq!(bible_book(NWT_E, 1).chapter_count, 50);
+    assert_eq!(bible_book(NWT_E, 31).chapter_count, 1);
+}
+
+#[test]
+fn bible_books_names_and_titles() {
+    assert_eq!(
+        bible_book(NWT_E, 43),
+        BibleBook {
+            book: 43,
+            name: "John".into(),
+            long_title: "The Good News According to John".into(),
+            chapter_name: None,
+            chapter_count: 21,
+        }
+    );
+    assert_eq!(
+        bible_book(NWT_E, 19),
+        BibleBook {
+            book: 19,
+            name: "Psalms".into(),
+            long_title: "The Book of Psalms".into(),
+            chapter_name: Some("Psalm".into()),
+            chapter_count: 150,
+        }
+    );
+    let first_john = bible_book(NWT_S, 62);
+    assert_eq!(first_john.name, "1 Juan");
+    assert_eq!(first_john.long_title, "Primera Carta de Juan");
+    assert_eq!(first_john.chapter_name, None);
+    assert_eq!(
+        bible_book(NWT_S, 19).chapter_name.as_deref(),
+        Some("Salmos")
+    );
+}
+
+#[test]
+fn bible_books_of_a_missing_or_non_bible_are_not_found() {
+    let r = reader();
+    assert_not_found(r.bible_books("nwt:2:0"));
+    assert_not_found(r.bible_books(W_E));
+    assert_invalid(r.bible_books("nwt"), "malformed publication key");
 }
