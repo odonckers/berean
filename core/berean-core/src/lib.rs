@@ -175,9 +175,14 @@ pub struct Core {
 ///
 /// Lock order: a publication's lock, then `publications`, then `conn`. A
 /// thread holds at most one publication lock at a time, and never waits on
-/// one while holding `publications` or `conn`.
+/// one while holding `publications` or `conn`. `userdata` stands alone: it
+/// is never taken while another of these locks is held, nor another taken
+/// while it is held.
 pub(crate) struct Inner {
     conn: Mutex<Connection>,
+    /// The user-data database, `userData.db` (see `userdata`).
+    #[allow(dead_code)] // Read by the user-data calls, which come next.
+    userdata: Mutex<Connection>,
     /// Recently opened publications, least recently used first, keyed by
     /// their store directory (a reinstall gets a new one). See
     /// `Library::with_publication`.
@@ -203,7 +208,8 @@ impl Inner {
 
 impl Core {
     /// Open (creating if missing) the data and cache directories, open/create
-    /// the user-data DB under `data_dir`, and migrate it forward.
+    /// the core DB under `data_dir` and migrate it forward, and open/create
+    /// the user-data DB (`userData.db`) next to it.
     pub fn open(
         data_dir: impl AsRef<Path>,
         cache_dir: impl AsRef<Path>,
@@ -215,9 +221,11 @@ impl Core {
 
         let mut conn = Connection::open(data_dir.join("user.sqlite"))?;
         migrations().to_latest(&mut conn)?;
+        let userdata = userdata::open(data_dir)?;
 
         let inner = Arc::new(Inner {
             conn: Mutex::new(conn),
+            userdata: Mutex::new(userdata),
             publications: Mutex::new(Vec::new()),
             data_dir: data_dir.to_path_buf(),
         });
