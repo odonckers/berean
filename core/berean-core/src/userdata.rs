@@ -1697,16 +1697,18 @@ impl UserData {
     }
 
     /// Put back the data the last [`import_backup`](Self::import_backup)
-    /// replaced, dropping what it brought in. There is one undo: after it,
-    /// or before any import, => `NotFound`.
-    pub fn undo_import(&self) -> Result<(), CoreError> {
+    /// replaced, dropping what it brought in, and say whether it did. There
+    /// is one undo: after it, or before any import, there is no undo copy
+    /// and this returns `false`, changing nothing.
+    pub fn undo_import(&self) -> Result<bool, CoreError> {
         let dir = &self.inner.data_dir;
-        let staging = TempDir::with_prefix_in(".userData-undo.", dir)?;
-        let trash = staging.path();
+        // Checked under the lock, so an import can't land in between.
         let mut conn = self.inner.userdata();
         if !dir.join(PREV_DB).is_file() {
-            return Err(CoreError::NotFound);
+            return Ok(false);
         }
+        let staging = TempDir::with_prefix_in(".userData-undo.", dir)?;
+        let trash = staging.path();
         swap_files(
             dir,
             &mut conn,
@@ -1716,6 +1718,7 @@ impl UserData {
                 (dir.join(PREV_DB), dir.join(DB_FILE), true),
                 (dir.join(PREV_MEDIA), dir.join(MEDIA_DIR), false),
             ],
-        )
+        )?;
+        Ok(true)
     }
 }

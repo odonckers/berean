@@ -1031,6 +1031,14 @@ impl UserData {
         })
         .await
     }
+
+    /// Put back the data the last [`import_backup`](Self::import_backup)
+    /// replaced, dropping what it brought in. Returns `true` when the
+    /// previous data was restored, `false` when there is no undo copy (no
+    /// import yet, or it was already undone); there is one undo per import.
+    pub fn undo_import(&self) -> Result<bool, CoreError> {
+        Ok(self.inner.undo_import()?)
+    }
 }
 
 #[cfg(test)]
@@ -1381,13 +1389,16 @@ mod tests {
 
         let other_dir = tempfile::tempdir().unwrap();
         let other = open_core(&other_dir).userdata();
+        // No import yet: nothing to undo.
+        assert!(!other.undo_import().unwrap());
+        let prior = other.add_tag("Prior".into()).unwrap();
         // Cancelled: nothing imported.
         let cancelled = CancelToken::new();
         cancelled.cancel();
         let err =
             block_on(other.import_backup(backup.clone(), recorder.clone(), cancelled)).unwrap_err();
         assert!(matches!(err, CoreError::Cancelled), "{err:?}");
-        assert!(other.tags().unwrap().is_empty());
+        assert_eq!(other.tags().unwrap(), std::slice::from_ref(&prior));
         // Not a backup.
         let junk = other_dir.path().join("junk.jwlibrary");
         std::fs::write(&junk, b"not a zip").unwrap();
@@ -1437,5 +1448,14 @@ mod tests {
                 snippet: None,
             }]
         );
+
+        // Undo puts back the data from before the import, once.
+        assert!(other.undo_import().unwrap());
+        assert_eq!(other.tags().unwrap(), [prior]);
+        assert!(other.notes(NoteFilter::default()).unwrap().is_empty());
+        assert!(other.favorites().unwrap().is_empty());
+        assert!(other.bookmarks("w26:0:20260800".into()).unwrap().is_empty());
+        assert!(!other.undo_import().unwrap());
+        assert_eq!(other.tags().unwrap().len(), 1);
     }
 }

@@ -107,7 +107,8 @@ pub struct Bookmark { pub pub_key: String, pub slot: u8 /*0..=9*/, pub location:
   `move_favorite(location, to_position)`.
 - **Bookmarks:** `bookmarks(pub_key) -> [Bookmark]`, `set_bookmark(pub_key, slot, location, title, snippet)`
   (replaces whatever is in the slot), `remove_bookmark(pub_key, slot)`.
-- **Backup:** `export_backup(path, progress, cancel)`, `import_backup(path, progress, cancel) -> ImportSummary{counts}`.
+- **Backup:** `export_backup(path, progress, cancel)`, `import_backup(path, progress, cancel) -> ImportSummary{counts}`,
+  `undo_import() -> Bool` (sync; false when there is no undo copy).
 
 Changes from the proposal's text, flagged for approval:
 1. The highlight carries token offsets (`TextRange`), not just a `LocationSpan`.

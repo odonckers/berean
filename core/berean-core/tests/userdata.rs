@@ -1765,19 +1765,19 @@ fn bad_backups_are_rejected_without_touching_the_data() {
 fn undo_restores_the_data_before_the_import() {
     let ex = Existing::new();
     let ud = ex.ud();
-    assert!(is_not_found(ud.undo_import()));
+    assert!(!ud.undo_import().unwrap());
     let before = ex.state();
     let file = ex.file("in.jwlibrary");
     Backup::synthetic().write(&file);
     ex.import(&file).unwrap();
     assert_ne!(ex.state(), before);
 
-    ud.undo_import().unwrap();
+    assert!(ud.undo_import().unwrap());
     assert_eq!(ex.state(), before);
     assert_eq!(ud.tags().unwrap()[0].name, "Study");
     assert_eq!(ud.notes(&NoteFilter::default()).unwrap().len(), 2);
     // One undo only.
-    assert!(is_not_found(ud.undo_import()));
+    assert!(!ud.undo_import().unwrap());
     assert_eq!(ex.state(), before);
 
     // Two imports: undo goes back to the first one's data.
@@ -1789,13 +1789,13 @@ fn undo_restores_the_data_before_the_import() {
     second.write(&file);
     ex.import(&file).unwrap();
     assert!(media_contents(&ex.env.data.join("userData.media")).is_empty());
-    ud.undo_import().unwrap();
+    assert!(ud.undo_import().unwrap());
     // The first import's data and media; the undo used up its prev.
     assert_eq!(ex.state().0, after_first.0);
     assert_eq!(ex.state().1, after_first.1);
     assert!(!ex.env.data.join("userData.prev.db").exists());
     assert!(!ex.env.data.join("userData.prev.media").exists());
-    assert!(is_not_found(ud.undo_import()));
+    assert!(!ud.undo_import().unwrap());
 }
 
 #[test]
