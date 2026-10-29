@@ -7,7 +7,7 @@ mod common;
 #[path = "common/trimmed_catalog.rs"]
 mod trimmed_catalog;
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -15,7 +15,7 @@ use std::time::Instant;
 use berean_core::catalog::{Catalog, CatalogFilter, CatalogRevision};
 use berean_core::jwpub::Publication;
 use berean_core::languages::{self, Language};
-use berean_core::library::{DownloadPlan, PubKind, PublicationSummary};
+use berean_core::library::{DownloadPlan, Library, PubKind, PublicationSummary};
 use berean_core::{CancelToken, Core, CoreError};
 use common::fixture;
 use rusqlite::Connection;
@@ -31,6 +31,8 @@ const LL_E_TITLE: &str = "Listen to God and Live Forever";
 const REVISION: u64 = 2624030;
 const MWB_E: &str = "mwb26:0:20260900";
 const PUB_MEDIA: &str = "https://b.jw-cdn.org/apis/pub-media/GETPUBMEDIALINKS";
+/// The steps `ingest_file` counts for copying the file.
+const COPY_STEPS: u64 = 100;
 
 struct Env {
     dir: tempfile::TempDir,
@@ -636,17 +638,21 @@ fn ingest_cancelled_keeps_the_old_catalog() {
     assert_eq!(snapshot(&catalog), before);
     env.assert_no_leftovers();
 
-    // Cancelled between each pair of steps, including just before the swap.
-    for step in 1..=3 {
+    // Cancelled at the first report of the copy, at its end, and after
+    // validating and indexing (just before the swap).
+    for step in [1, COPY_STEPS, COPY_STEPS + 1, COPY_STEPS + 2] {
         let cancel = CancelToken::new();
+        let fired = Cell::new(false);
         let on_progress = |done: u64, _total: u64| {
-            if done == step {
+            if done >= step && !fired.get() {
+                fired.set(true);
                 cancel.cancel();
             }
         };
         let err = catalog
             .ingest_file(&edited, &on_progress, &cancel)
             .unwrap_err();
+        assert!(fired.get(), "step {step}: never reported");
         assert!(matches!(err, CoreError::Cancelled), "step {step}: {err:?}");
         assert_eq!(snapshot(&catalog), before, "step {step}");
         env.assert_no_leftovers();
@@ -673,6 +679,161 @@ fn ingest_progress_reaches_completion() {
     assert!(calls.iter().all(|&(_, t)| t == total), "{calls:?}");
     assert!(calls.windows(2).all(|w| w[0].0 < w[1].0), "{calls:?}");
     assert_eq!(calls.last().unwrap().0, total);
+}
+
+/// Ingest `path` over the trimmed catalog, cancelling at the first report
+/// that is part way through the copy: it is cancelled and leaves the old
+/// catalog and nothing else.
+fn assert_cancels_mid_copy(env: &Env, catalog: &Catalog, path: &Path) {
+    let before = snapshot(catalog);
+    let cancel = CancelToken::new();
+    let mid_copy = RefCell::new(Vec::new());
+    let on_progress = |done: u64, total: u64| {
+        assert_eq!(total, COPY_STEPS + 3);
+        if done > 0 && done < COPY_STEPS {
+            mid_copy.borrow_mut().push(done);
+            cancel.cancel();
+        }
+    };
+    let err = catalog
+        .ingest_file(path, &on_progress, &cancel)
+        .unwrap_err();
+    assert!(matches!(err, CoreError::Cancelled), "{path:?}: {err:?}");
+    // Cancelling stops the copy at the next chunk, so it reports once.
+    assert_eq!(mid_copy.borrow().len(), 1, "{path:?}: {mid_copy:?}");
+    assert_eq!(snapshot(catalog), before, "{path:?}");
+    env.assert_no_leftovers();
+}
+
+#[test]
+fn ingest_cancels_mid_copy() {
+    let env = Env::new();
+    let catalog = env.core().catalog();
+    ingest(&catalog, trimmed()).unwrap();
+    // Gunzipping the full catalog, and copying a plain one.
+    assert_cancels_mid_copy(&env, &catalog, &fixture(trimmed_catalog::FULL));
+    let edited = env.edited_trimmed("edited.db", "UPDATE Revision SET Level = Level + 1;");
+    assert_cancels_mid_copy(&env, &catalog, &edited);
+}
+
+#[test]
+fn ingest_progress_over_a_gz_is_bounded_and_complete() {
+    let env = Env::new();
+    let catalog = env.core().catalog();
+    let gz = env.scratch("trimmed.db.gz");
+    gzip(&trimmed(), &gz);
+    let calls = RefCell::new(Vec::new());
+    let record = |done: u64, total: u64| calls.borrow_mut().push((done, total));
+    catalog
+        .ingest_file(&gz, &record, &CancelToken::new())
+        .unwrap();
+
+    let calls = calls.into_inner();
+    let total = COPY_STEPS + 3;
+    assert!(calls.iter().all(|&(_, t)| t == total), "{calls:?}");
+    assert!(calls.len() as u64 <= total, "{calls:?}");
+    assert!(calls.windows(2).all(|w| w[0].0 < w[1].0), "{calls:?}");
+    assert_eq!(calls.last().unwrap().0, total);
+    // Progress during the copy, not only after it.
+    let copying = calls.iter().filter(|&&(d, _)| d < COPY_STEPS).count();
+    assert!(copying > 1, "{calls:?}");
+    assert!(calls.len() > 4, "{calls:?}");
+}
+
+/// Copies of the trimmed catalog whose W_E asset row is changed by `set`.
+fn w_e_asset_set(env: &Env, name: &str, set: &str) -> PathBuf {
+    env.edited_trimmed(
+        name,
+        &format!(
+            "UPDATE PublicationAsset SET {set} WHERE PublicationId IN (
+                 SELECT Id FROM Publication
+                 WHERE Symbol = 'w26' AND MepsLanguageId = 0 AND IssueTagNumber = 20260800);"
+        ),
+    )
+}
+
+/// The publication store's staging and trash directories are empty.
+fn assert_no_store_leftovers(env: &Env) {
+    for sub in [".staging", ".trash"] {
+        let dir = env.data.join("publications").join(sub);
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 0, "{dir:?}");
+    }
+}
+
+#[test]
+fn install_checks_the_catalog_size_and_sha1() {
+    let w_e = fixture("w_E_202608.jwpub");
+    let size = std::fs::metadata(&w_e).unwrap().len();
+    let keys = |library: &Library| -> Vec<String> {
+        let installed = library.installed().unwrap();
+        installed.into_iter().map(|s| s.pub_key).collect()
+    };
+
+    // The matching file installs, also against an upper-case SHA-1.
+    let env = Env::new();
+    let core = env.core();
+    let library = core.library();
+    let upper = w_e_asset_set(&env, "upper.db", "Signature = upper(Signature)");
+    for catalog_file in [trimmed(), upper] {
+        ingest(&core.catalog(), &catalog_file).unwrap();
+        library
+            .install(W_E, &w_e, &|_, _| {}, &CancelToken::new())
+            .unwrap();
+        assert_eq!(keys(&library), [W_E]);
+        assert_no_store_leftovers(&env);
+    }
+
+    // A wrong SHA-1 or size is corrupt, and installs nothing.
+    let wrong_sha1 = format!("Signature = '{}'", "0".repeat(40));
+    let wrong_size = format!("Size = {}", size + 1);
+    for (name, set) in [("sha1.db", &wrong_sha1), ("size.db", &wrong_size)] {
+        let env = Env::new();
+        let core = env.core();
+        let library = core.library();
+        library
+            .install(LL_E, fixture("ll_E.jwpub"), &|_, _| {}, &CancelToken::new())
+            .unwrap();
+        ingest(&core.catalog(), w_e_asset_set(&env, name, set)).unwrap();
+        let err = library
+            .install(W_E, &w_e, &|_, _| {}, &CancelToken::new())
+            .unwrap_err();
+        assert!(matches!(err, CoreError::Corrupt), "{name}: {err:?}");
+        assert_eq!(keys(&library), [LL_E], "{name}");
+        let dirs = std::fs::read_dir(env.data.join("publications"))
+            .unwrap()
+            .filter(|e| {
+                !e.as_ref()
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with('.')
+            })
+            .count();
+        assert_eq!(dirs, 1, "{name}");
+        assert_no_store_leftovers(&env);
+    }
+
+    // A key the catalog does not list, or no catalog at all: not checked.
+    let env = Env::new();
+    let core = env.core();
+    core.library()
+        .install(W_E, &w_e, &|_, _| {}, &CancelToken::new())
+        .unwrap();
+    let unlisted = env.edited_trimmed(
+        "unlisted.db",
+        "DELETE FROM Publication
+         WHERE Symbol = 'w26' AND MepsLanguageId = 0 AND IssueTagNumber = 20260800;",
+    );
+    ingest(&core.catalog(), &unlisted).unwrap();
+    assert!(matches!(
+        core.catalog().asset(W_E),
+        Err(CoreError::NotFound)
+    ));
+    core.library()
+        .install(W_E, &w_e, &|_, _| {}, &CancelToken::new())
+        .unwrap();
+    assert_eq!(keys(&core.library()), [W_E]);
+    assert_no_store_leftovers(&env);
 }
 
 /// A recorded pub-media reply (see `core/scripts/fixtures.txt`).

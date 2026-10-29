@@ -8,7 +8,10 @@
 //! built from the publication's catalog row and the language table, fetches
 //! it, and hands the reply to [`Library::plan_download`]. That picks the
 //! `.jwpub` the reply lists and checks it against the catalog; the caller
-//! downloads the plan's file and passes it to [`Library::install`].
+//! downloads the plan's file and passes it to [`Library::install`]. Install
+//! checks any file whose key the ingested catalog lists against the size and
+//! SHA-1 the catalog gives (the same pair the [`DownloadPlan`] carries), so a
+//! truncated or wrong download is `Corrupt` before anything is unpacked.
 //!
 //! # Store
 //!
@@ -29,23 +32,29 @@
 //! A publication's key is `{symbol}:{meps_language}:{issue_tag}`, e.g.
 //! `w26:0:20260800` or `ll:0:0`, taken from its own `Publication` row.
 
+use std::fs::File;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::{params, OptionalExtension};
 use serde::Deserialize;
+use sha1::{Digest, Sha1};
 use tempfile::TempDir;
 
-use crate::catalog::{Catalog, CatalogEntry};
+use crate::catalog::{Catalog, CatalogAsset, CatalogEntry};
 use crate::jwpub::{Container, Publication, PublicationMeta};
 use crate::languages;
 use crate::search::{self, IndexRow, INDEX_STEPS};
-use crate::{CancelToken, CoreError, Inner, ProgressSink};
+use crate::{CancelToken, CoreError, Inner, ProgressSink, Steps};
 
 const STORE: &str = "publications";
 const STAGING: &str = ".staging";
 const TRASH: &str = ".trash";
+/// How many progress steps unpacking a file counts as, however many entries
+/// it has.
+const UNPACK_STEPS: u64 = 100;
 const PUB_MEDIA: &str = "https://b.jw-cdn.org/apis/pub-media/GETPUBMEDIALINKS";
 /// How many open publications [`Library::with_publication`] keeps.
 pub(crate) const OPEN_PUBLICATIONS: usize = 8;
@@ -144,14 +153,19 @@ impl Library {
 
     /// Verify the `.jwpub` at `file_path`, check it is the publication
     /// `pub_key` names, unpack it into the store, index it for search and
-    /// record it, replacing any installed copy and its index rows. Progress
-    /// counts opening and verifying the file, each unpacked entry, checking
-    /// the unpacked copy, a fixed 100 steps for indexing it, and committing.
+    /// record it, replacing any installed copy and its index rows. If the
+    /// ingested catalog lists `pub_key`, the file must first have the size
+    /// and SHA-1 the catalog gives (the ones its
+    /// [`DownloadPlan`] carries). Progress counts one step for opening and
+    /// verifying the file, a fixed 100 for unpacking its entries, one for
+    /// checking the unpacked copy, a fixed 100 for indexing it, and one for
+    /// committing.
     ///
     /// A malformed key, or a file that is a different publication =>
-    /// `Invalid`; a damaged file (including content the reader cannot read)
-    /// => `Corrupt`; cancelled => `Cancelled`. On any error the store and
-    /// the search index are unchanged.
+    /// `Invalid`; a file that does not match the catalog's size or SHA-1, or
+    /// a damaged file (including content the reader cannot read) =>
+    /// `Corrupt`; cancelled => `Cancelled`. On any error the store and the
+    /// search index are unchanged.
     pub fn install(
         &self,
         pub_key: &str,
@@ -159,8 +173,15 @@ impl Library {
         progress: &dyn ProgressSink,
         cancel: &CancelToken,
     ) -> Result<(), CoreError> {
+        const TOTAL: u64 = 1 + UNPACK_STEPS + 1 + INDEX_STEPS + 1;
         cancel.check()?;
         let dir_name = dir_name(pub_key)?;
+        let file_path = file_path.as_ref();
+        match self.catalog().entry(pub_key) {
+            Ok(entry) => check_asset(file_path, &entry.asset, cancel)?,
+            Err(CoreError::NotFound) => {}
+            Err(e) => return Err(e),
+        }
         let store = self.store();
 
         // Dropping `staging` deletes whatever is left in it, on every path.
@@ -169,15 +190,14 @@ impl Library {
         std::fs::create_dir(&unpacked)?;
 
         let mut container = Container::open(file_path, staging.path())?;
-        let entries = container.len() as u64;
-        let total = entries + 3 + INDEX_STEPS;
-        progress.on_progress(1, total);
+        progress.on_progress(1, TOTAL);
 
         container.write_manifest(&unpacked)?;
+        let mut steps = Steps::new(progress, 1, UNPACK_STEPS, container.len() as u64, TOTAL);
         for i in 0..container.len() {
             cancel.check()?;
             container.unpack_entry(i, &unpacked)?;
-            progress.on_progress(2 + i as u64, total);
+            steps.report(i as u64 + 1);
         }
         drop(container);
 
@@ -190,9 +210,9 @@ impl Library {
                 "file is publication {key}, not {pub_key}"
             )));
         }
-        progress.on_progress(entries + 2, total);
+        progress.on_progress(UNPACK_STEPS + 2, TOTAL);
 
-        let rows = search::index_rows(&publication, progress, entries + 2, total, cancel)?;
+        let rows = search::index_rows(&publication, progress, UNPACK_STEPS + 2, TOTAL, cancel)?;
         drop(publication);
 
         cancel.check()?;
@@ -218,7 +238,7 @@ impl Library {
             self.evict(&old);
             self.discard(&old);
         }
-        progress.on_progress(total, total);
+        progress.on_progress(TOTAL, TOTAL);
         Ok(())
     }
 
@@ -519,6 +539,31 @@ fn lru_get<T: Clone>(
     let value = entry.1.clone();
     cache.push(entry);
     Ok(value)
+}
+
+/// Check that the file at `path` is the one the catalog lists: `asset`'s
+/// size and SHA-1, the same pair a [`DownloadPlan`] carries. Hashes in 64 KiB
+/// chunks, checking `cancel` before each. A mismatch => `Corrupt`.
+fn check_asset(path: &Path, asset: &CatalogAsset, cancel: &CancelToken) -> Result<(), CoreError> {
+    let mut file = File::open(path)?;
+    if file.metadata()?.len() != asset.size {
+        return Err(CoreError::Corrupt);
+    }
+    let mut hasher = Sha1::new();
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        cancel.check()?;
+        let n = file.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    if hex::encode(hasher.finalize()).eq_ignore_ascii_case(&asset.sha1) {
+        Ok(())
+    } else {
+        Err(CoreError::Corrupt)
+    }
 }
 
 /// The JW code of a catalog row's language. Unmapped => `NotFound`.

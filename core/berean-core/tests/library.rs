@@ -5,6 +5,7 @@
 mod common;
 
 use std::cell::RefCell;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use berean_core::library::{Library, PubKind, PublicationSummary};
@@ -14,6 +15,9 @@ use common::fixture;
 const W_E: &str = "w26:0:20260800";
 const W_S: &str = "w26:1:20260800";
 const LL_E: &str = "ll:0:0";
+/// The steps `install` counts for unpacking, and for indexing.
+const UNPACK_STEPS: u64 = 100;
+const INDEX_STEPS: u64 = 100;
 
 struct Env {
     _dir: tempfile::TempDir,
@@ -151,10 +155,10 @@ fn cancel_mid_install_leaves_nothing() {
     let before = env.store_dirs();
 
     let token = CancelToken::new();
-    let calls = RefCell::new(0);
-    let sink = |_, _| {
-        *calls.borrow_mut() += 1;
-        if *calls.borrow() == 3 {
+    let calls = RefCell::new(Vec::new());
+    let sink = |done, _| {
+        calls.borrow_mut().push(done);
+        if calls.borrow().len() == 3 {
             token.cancel();
         }
     };
@@ -162,7 +166,10 @@ fn cancel_mid_install_leaves_nothing() {
         .install(W_E, fixture("w_E_202608.jwpub"), &sink, &token)
         .unwrap_err();
     assert!(matches!(err, CoreError::Cancelled), "{err:?}");
-    assert_eq!(*calls.borrow(), 3);
+    let calls = calls.into_inner();
+    assert_eq!(calls.len(), 3);
+    // Cancelled part way through unpacking.
+    assert!(calls[2] > 1 && calls[2] < 1 + UNPACK_STEPS, "{calls:?}");
     assert_eq!(keys(&lib), [LL_E]);
     assert_eq!(env.store_dirs(), before);
     env.assert_no_leftovers();
@@ -282,6 +289,41 @@ fn progress_is_monotonic_and_completes() {
     assert!(calls.windows(2).all(|w| w[0].0 <= w[1].0), "{calls:?}");
     assert!(calls.iter().all(|&(d, _)| d <= total), "{calls:?}");
     assert_eq!(calls.last().unwrap().0, total);
+}
+
+#[test]
+fn progress_is_bounded_however_many_entries() {
+    // Insight unpacks far more entries than install may report steps.
+    let bound = 1 + UNPACK_STEPS + 1 + INDEX_STEPS + 1;
+    let file = fixture("it_E.jwpub");
+    let mut outer = zip::ZipArchive::new(std::fs::File::open(&file).unwrap()).unwrap();
+    let mut contents = Vec::new();
+    outer
+        .by_name("contents")
+        .unwrap()
+        .read_to_end(&mut contents)
+        .unwrap();
+    let entries = zip::ZipArchive::new(std::io::Cursor::new(contents))
+        .unwrap()
+        .len() as u64;
+    assert!(entries > bound, "{entries} entries");
+
+    let env = Env::new();
+    let lib = env.core().library();
+    let calls = RefCell::new(Vec::new());
+    lib.install(
+        "it:0:0",
+        &file,
+        &|done, total| calls.borrow_mut().push((done, total)),
+        &CancelToken::new(),
+    )
+    .unwrap();
+
+    let calls = calls.into_inner();
+    assert!(calls.len() as u64 <= bound, "{} calls", calls.len());
+    assert!(calls.iter().all(|&(_, t)| t == bound), "{calls:?}");
+    assert!(calls.windows(2).all(|w| w[0].0 < w[1].0), "{calls:?}");
+    assert_eq!(calls.last().unwrap().0, bound);
 }
 
 #[test]

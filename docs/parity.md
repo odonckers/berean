@@ -81,19 +81,19 @@ Only features that a cited source describes are listed. Rows marked **to verify*
 ## Notes / highlights / tags / bookmarks / history
 | ID | Feature | JW Library behavior | Status | Layer | UI | Board row / PR | Notes |
 |---|---|---|---|---|---|---|---|
-| UD-1 | Highlights | Select text or drag to highlight, choose or change a color, delete. [S8] | Not started | both | Kiwi/Moss | Core: userdata (Holding) | Will key on the `LocationSpan` and paragraph/verse anchors from #17. |
-| UD-2 | Notes | [S9] mentions them (backup) | Not started | both | Kiwi/Moss | Core: userdata (Holding) | **to verify** the 15.9.2 note UI (no iOS help page). |
-| UD-3 | Tags | [S9] mentions them (backup) | Not started | both | Kiwi/Moss | Core: userdata (Holding) | **to verify** the 15.9.2 tag UI. |
-| UD-4 | Favorites | [S9] mentions them (backup) | Not started | both | Kiwi/Moss | Core: userdata (Holding) | **to verify** what "favorites" covers. |
-| UD-5 | Bookmarks | 10 per publication; for an article/chapter or a specific paragraph/verse; go to, delete, replace. [S4] | Not started | both | Kiwi/Moss | Core: userdata (Holding) | |
+| UD-1 | Highlights | Select text or drag to highlight, choose or change a color, delete. [S8] | UI pending | both | Kiwi/Moss | Core: userdata (#20) | `UserData::highlights` per document or chapter, `add_highlight` (a `TextRange`: a `LocationSpan` of paragraphs or verses plus start/end word tokens), `set_highlight_color` (six colors), `remove_highlight` (its notes stay, detached). Stored as JW's `UserMark` + `BlockRange`. Open: token semantics are unverified until a real 15.9.x export is checked. |
+| UD-2 | Notes | [S9] mentions them (backup) | UI pending | both | Kiwi/Moss | Core: userdata (#20) | `UserData::notes` (filter by location, including what's inside it, and by tag), `add_note` (at a location, on a highlight, or free-standing), `update_note`, `remove_note`. **to verify** the 15.9.2 note UI (no iOS help page). |
+| UD-3 | Tags | [S9] mentions them (backup) | UI pending | both | Kiwi/Moss | Core: userdata (#20) | `UserData::tags`, `add_tag`, `rename_tag` (empty or duplicate names are `Invalid`), `remove_tag` (untags its notes), `tag_note`, `untag_note`. **to verify** the 15.9.2 tag UI. |
+| UD-4 | Favorites | [S9] mentions them (backup) | UI pending | both | Kiwi/Moss | Core: userdata (#20) | `UserData::favorites` (ordered), `add_favorite`, `remove_favorite`, `move_favorite`, on JW's built-in Favorites tag: a publication, document, Bible book or chapter. **to verify** what "favorites" covers. |
+| UD-5 | Bookmarks | 10 per publication; for an article/chapter or a specific paragraph/verse; go to, delete, replace. [S4] | UI pending | both | Kiwi/Moss | Core: userdata (#20) | `UserData::bookmarks`, `set_bookmark` (slots 0–9; setting a used slot replaces it), `remove_bookmark`. |
 | UD-6 | History | Long-press the Bible or Publications tab for recent scriptures/articles; Clear. [S5] | Not started | both | Kiwi/Moss | — | No board row yet. |
 | UD-7 | Sync across devices | Not supported ("No. At this time…"). [S9] | n/a | — | — | — | Not a parity target. |
 
 ## .jwlibrary backup / restore
 | ID | Feature | JW Library behavior | Status | Layer | UI | Board row / PR | Notes |
 |---|---|---|---|---|---|---|---|
-| BK-1 | Back up personal data | Saves notes, tags, highlights, favorites and bookmarks to a backup file. [S9] | Not started | both | Kiwi/Moss | Core: userdata + .jwlibrary import/export (Holding) | The format is `.jwlibrary` per the approved proposal. |
-| BK-2 | Restore | Restore on the same or a different device. [S9] | Not started | both | Kiwi/Moss | Core: userdata + .jwlibrary (Holding) | Round-trip test planned. |
+| BK-1 | Back up personal data | Saves notes, tags, highlights, favorites and bookmarks to a backup file. [S9] | UI pending | both | Kiwi/Moss | Core: userdata (#20) | `UserData::export_backup` (async over FFI, with progress and cancel) writes a `.jwlibrary`: `manifest.json` (SHA-256, schema v16), `userData.db` and the media. The data lives in JW's own v16 schema, so tables Berean doesn't surface (playlists, `InputField`, unknown tables) round-trip unchanged. Open: manual check that a Berean export restores in JW Library 15.9.x. |
+| BK-2 | Restore | Restore on the same or a different device. [S9] | UI pending | both | Kiwi/Moss | Core: userdata (#20) | `UserData::import_backup` replaces the data, as JW's restore does: it checks the zip, hash, schema version (14, upgraded to 16, or 16), integrity and foreign keys before an atomic swap, and returns an `ImportSummary`. Any failure leaves the data as it was. The previous data is kept for one undo (exposed as `UserData::undo_import() -> Bool`, false when there is no undo copy). Tested on synthetic backups; open: a real 15.9.x export, and merge import (a later row). |
 
 ## Meetings tab / Meeting Workbook
 | ID | Feature | JW Library behavior | Status | Layer | UI | Board row / PR | Notes |

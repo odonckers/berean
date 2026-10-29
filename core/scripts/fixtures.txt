@@ -33,3 +33,10 @@ c55762f49cc53f8d6af06115a542d63021633161a974b23c163b8183ef00ee45  catalog-v5-ffa
 # .jwpub holds both volumes; it installs as `it:0:0`, and the Research Guide
 # cites it most (352 MB).
 bbc02a7c8797430d67983ca5ac3a91ac124a1ca518572c24f54a924c1e364ba3  it_E.jwpub  https://cfp2.jw-cdn.org/a/d74b90/2/o/it_E.jwpub
+# The jwlManager author's empty user-data database (berean-core/tests/
+# userdata.rs): a zip holding a blank v16 `userData.db` (apparently from
+# Android JW Library; it has `android_metadata`) and `default_thumbnail.png`,
+# no manifest. MIT (© 2026 Eryk J., erykjj/jwlManager); not a JW-signed
+# artifact. Used to check the vendored DDL and as the base for synthetic
+# backups.
+3e415f1ef8831965c942bff327d00172179f02bbd41e9cf65cc66505e9459360  jwlmanager_blank_v16.zip  https://raw.githubusercontent.com/erykjj/jwlManager/188977c59dabe78fa8a5466c7e3c4af57aee6077/res/blank
