@@ -12,7 +12,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use berean_core::catalog::{Catalog, CatalogFilter, CatalogRevision};
+use berean_core::catalog::{Catalog, CatalogFilter, CatalogRevision, CatalogUpdate};
 use berean_core::jwpub::Publication;
 use berean_core::languages::{self, Language};
 use berean_core::library::{DownloadPlan, Library, PubKind, PublicationSummary};
@@ -1039,4 +1039,285 @@ fn several_jwpub_files_pick_the_catalog_size() {
     );
     let err = library.plan_download(W_E, none.as_bytes()).unwrap_err();
     assert!(matches!(err, CoreError::Corrupt), "{err:?}");
+}
+
+const MANIFEST_URL: &str = "https://app.jw-cdn.org/catalogs/publications/v5/manifest.json";
+const CURRENT_ID: &str = "84939357-be37-4893-8a5b-f3e87f137b08";
+const OTHER_ID: &str = "0b5c2f1e-3d4a-4b6c-8e9f-a0b1c2d3e4f5";
+
+/// A minimal catalog with only the columns the core reads and one
+/// publication, built from scratch so the update tests need no fixture.
+fn small_catalog(path: &Path) {
+    let conn = Connection::open(path).unwrap();
+    conn.execute_batch(
+        "CREATE TABLE Revision (Level INTEGER, Created TEXT);
+         CREATE TABLE Publication (Id INTEGER PRIMARY KEY, Symbol TEXT, KeySymbol TEXT,
+             MepsLanguageId INTEGER, IssueTagNumber INTEGER, PublicationTypeId INTEGER,
+             Year INTEGER, Title TEXT);
+         CREATE TABLE PublicationAsset (PublicationId INTEGER, Signature TEXT, Size INTEGER,
+             SchemaVersion INTEGER, MinPlatformVersion INTEGER, LastModified TEXT);
+         INSERT INTO Revision VALUES (7, '2026-10-28T01:05:28+00:00');
+         INSERT INTO Publication VALUES (1, 'll', 'll', 0, 0, 4, 2011,
+             'Listen to God and Live Forever');
+         INSERT INTO PublicationAsset VALUES (1, 'abc', 123, 8, 1,
+             '2026-01-15T12:36:43+00:00');",
+    )
+    .unwrap();
+}
+
+fn manifest(current: &str) -> Vec<u8> {
+    format!(r#"{{"version": 1, "current": "{current}"}}"#).into_bytes()
+}
+
+fn update_for(id: &str) -> CatalogUpdate {
+    CatalogUpdate {
+        url: format!("https://app.jw-cdn.org/catalogs/publications/v5/{id}/catalog.db.gz"),
+        id: id.into(),
+    }
+}
+
+fn install(catalog: &Catalog, update: &CatalogUpdate, path: &Path) -> Result<(), CoreError> {
+    catalog.install_update(update, path, &|_, _| {}, &CancelToken::new())
+}
+
+#[test]
+fn manifest_request_is_the_v5_manifest() {
+    let env = Env::new();
+    assert_eq!(env.core().catalog().manifest_request().url, MANIFEST_URL);
+}
+
+#[test]
+fn plan_update_before_any_install() {
+    let env = Env::new();
+    let catalog = env.core().catalog();
+    assert_eq!(
+        catalog.plan_update(&manifest(CURRENT_ID)).unwrap(),
+        Some(update_for(CURRENT_ID))
+    );
+    // Upper case is normalized.
+    assert_eq!(
+        catalog
+            .plan_update(&manifest(&CURRENT_ID.to_uppercase()))
+            .unwrap(),
+        Some(update_for(CURRENT_ID))
+    );
+}
+
+#[test]
+fn bad_manifests_are_corrupt() {
+    let env = Env::new();
+    let catalog = env.core().catalog();
+    let wrong_hyphens = "84939357b-e37-4893-8a5b-f3e87f137b08";
+    let not_hex = "84939357-be37-4893-8a5b-f3e87f137b0g";
+    assert_eq!(wrong_hyphens.len(), 36);
+    assert_eq!(not_hex.len(), 36);
+    let mut bad: Vec<Vec<u8>> = ["../x", "abc", wrong_hyphens, not_hex, ""]
+        .iter()
+        .map(|id| manifest(id))
+        .collect();
+    bad.extend(
+        [
+            format!(r#"{{"version": 2, "current": "{CURRENT_ID}"}}"#),
+            format!(r#"{{"current": "{CURRENT_ID}"}}"#),
+            r#"{"version": 1}"#.to_string(),
+            format!(r#"{{"version": "1", "current": "{CURRENT_ID}"}}"#),
+            "not json".to_string(),
+            "{".to_string(),
+            String::new(),
+        ]
+        .map(String::into_bytes),
+    );
+    for reply in bad {
+        let err = catalog.plan_update(&reply).unwrap_err();
+        assert!(
+            matches!(err, CoreError::Corrupt),
+            "{}: {err:?}",
+            String::from_utf8_lossy(&reply)
+        );
+    }
+}
+
+#[test]
+fn install_update_records_the_id() {
+    let env = Env::new();
+    let catalog = env.core().catalog();
+    let path = env.scratch("small.db");
+    small_catalog(&path);
+    let update = catalog.plan_update(&manifest(CURRENT_ID)).unwrap().unwrap();
+
+    let calls = RefCell::new(Vec::new());
+    let record = |done: u64, total: u64| calls.borrow_mut().push((done, total));
+    catalog
+        .install_update(&update, &path, &record, &CancelToken::new())
+        .unwrap();
+    let (done, total) = *calls.borrow().last().unwrap();
+    assert_eq!(done, total);
+
+    assert_eq!(catalog.revision().unwrap().unwrap().level, 7);
+    assert_eq!(catalog.asset(LL_E).unwrap().size, 123);
+    assert_eq!(catalog.plan_update(&manifest(CURRENT_ID)).unwrap(), None);
+    assert_eq!(
+        catalog
+            .plan_update(&manifest(&CURRENT_ID.to_uppercase()))
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        catalog.plan_update(&manifest(OTHER_ID)).unwrap(),
+        Some(update_for(OTHER_ID))
+    );
+    env.assert_no_leftovers();
+
+    // The record survives reopening the core.
+    let catalog = env.core().catalog();
+    assert_eq!(catalog.plan_update(&manifest(CURRENT_ID)).unwrap(), None);
+
+    // An uppercase id in the update is recorded lowercased.
+    install(&catalog, &update_for(&OTHER_ID.to_uppercase()), &path).unwrap();
+    assert_eq!(catalog.plan_update(&manifest(OTHER_ID)).unwrap(), None);
+    assert!(catalog
+        .plan_update(&manifest(CURRENT_ID))
+        .unwrap()
+        .is_some());
+}
+
+#[test]
+fn install_update_cancelled_records_nothing() {
+    let env = Env::new();
+    let catalog = env.core().catalog();
+    let path = env.scratch("small.db");
+    small_catalog(&path);
+    let cancelled = CancelToken::new();
+    cancelled.cancel();
+
+    let err = catalog
+        .install_update(&update_for(CURRENT_ID), &path, &|_, _| {}, &cancelled)
+        .unwrap_err();
+    assert!(matches!(err, CoreError::Cancelled), "{err:?}");
+    assert_eq!(catalog.revision().unwrap(), None);
+    assert!(catalog
+        .plan_update(&manifest(CURRENT_ID))
+        .unwrap()
+        .is_some());
+    env.assert_no_leftovers();
+
+    // A previously recorded id stays.
+    install(&catalog, &update_for(OTHER_ID), &path).unwrap();
+    let err = catalog
+        .install_update(&update_for(CURRENT_ID), &path, &|_, _| {}, &cancelled)
+        .unwrap_err();
+    assert!(matches!(err, CoreError::Cancelled), "{err:?}");
+    assert_eq!(catalog.plan_update(&manifest(OTHER_ID)).unwrap(), None);
+    assert!(catalog
+        .plan_update(&manifest(CURRENT_ID))
+        .unwrap()
+        .is_some());
+
+    // Cancelled just before the swap: still nothing recorded.
+    let cancel = CancelToken::new();
+    let on_progress = |done: u64, _total: u64| {
+        if done >= COPY_STEPS + 2 {
+            cancel.cancel();
+        }
+    };
+    let err = catalog
+        .install_update(&update_for(CURRENT_ID), &path, &on_progress, &cancel)
+        .unwrap_err();
+    assert!(matches!(err, CoreError::Cancelled), "{err:?}");
+    assert_eq!(catalog.plan_update(&manifest(OTHER_ID)).unwrap(), None);
+    env.assert_no_leftovers();
+}
+
+#[test]
+fn install_update_failure_records_nothing() {
+    let env = Env::new();
+    let catalog = env.core().catalog();
+    let path = env.scratch("small.db");
+    small_catalog(&path);
+    let not_catalog = env.scratch("not_catalog.db");
+    std::fs::write(&not_catalog, b"not a catalog").unwrap();
+
+    let err = install(&catalog, &update_for(CURRENT_ID), &not_catalog).unwrap_err();
+    assert!(matches!(err, CoreError::Corrupt), "{err:?}");
+    let err = install(&catalog, &update_for(CURRENT_ID), &env.scratch("missing")).unwrap_err();
+    assert!(matches!(err, CoreError::Io(_)), "{err:?}");
+    assert_eq!(catalog.revision().unwrap(), None);
+    assert!(catalog
+        .plan_update(&manifest(CURRENT_ID))
+        .unwrap()
+        .is_some());
+    env.assert_no_leftovers();
+
+    // A previously recorded id stays.
+    install(&catalog, &update_for(OTHER_ID), &path).unwrap();
+    let err = install(&catalog, &update_for(CURRENT_ID), &not_catalog).unwrap_err();
+    assert!(matches!(err, CoreError::Corrupt), "{err:?}");
+    assert_eq!(catalog.plan_update(&manifest(OTHER_ID)).unwrap(), None);
+    env.assert_no_leftovers();
+}
+
+#[test]
+fn install_update_with_a_bad_id_installs_nothing() {
+    let env = Env::new();
+    let catalog = env.core().catalog();
+    let path = env.scratch("small.db");
+    small_catalog(&path);
+    for id in ["../x", "abc", "84939357b-e37-4893-8a5b-f3e87f137b08", ""] {
+        let err = install(&catalog, &update_for(id), &path).unwrap_err();
+        assert!(matches!(err, CoreError::Corrupt), "{id}: {err:?}");
+        assert_eq!(catalog.revision().unwrap(), None, "{id}");
+    }
+    assert!(catalog
+        .plan_update(&manifest(CURRENT_ID))
+        .unwrap()
+        .is_some());
+    env.assert_no_leftovers();
+}
+
+#[test]
+fn ingest_file_clears_the_recorded_id() {
+    let env = Env::new();
+    let catalog = env.core().catalog();
+    let path = env.scratch("small.db");
+    small_catalog(&path);
+    install(&catalog, &update_for(CURRENT_ID), &path).unwrap();
+    assert_eq!(catalog.plan_update(&manifest(CURRENT_ID)).unwrap(), None);
+
+    ingest(&catalog, &path).unwrap();
+    assert_eq!(
+        catalog.plan_update(&manifest(CURRENT_ID)).unwrap(),
+        Some(update_for(CURRENT_ID))
+    );
+    // With nothing recorded, ingesting again is fine too.
+    ingest(&catalog, &path).unwrap();
+    assert!(catalog
+        .plan_update(&manifest(CURRENT_ID))
+        .unwrap()
+        .is_some());
+}
+
+#[test]
+fn unreadable_recorded_id_counts_as_none() {
+    let env = Env::new();
+    let catalog = env.core().catalog();
+    let path = env.data.join("catalog/manifest-id");
+    std::fs::write(&path, [0xff, 0xfe, 0x00]).unwrap();
+    assert!(catalog
+        .plan_update(&manifest(CURRENT_ID))
+        .unwrap()
+        .is_some());
+    std::fs::write(&path, format!("{CURRENT_ID}\n")).unwrap();
+    assert!(catalog
+        .plan_update(&manifest(CURRENT_ID))
+        .unwrap()
+        .is_some());
+
+    // A temp id file a crash left in staging is cleared on open.
+    std::fs::write(env.data.join("catalog/.staging/.tmpid"), CURRENT_ID).unwrap();
+    let catalog = env.core().catalog();
+    env.assert_no_leftovers();
+    assert!(catalog
+        .plan_update(&manifest(CURRENT_ID))
+        .unwrap()
+        .is_some());
 }

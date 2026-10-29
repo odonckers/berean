@@ -14,6 +14,25 @@
 //! staged copy, and opening the core empties `.staging`. Queries open the
 //! stored file read-only; its rows are never copied into the user DB.
 //!
+//! # Updates
+//!
+//! JW Library publishes the current catalog's id (a UUID) in a manifest;
+//! the catalog itself is at `.../v5/<id>/catalog.db.gz`, with no published
+//! size or checksum, and `catalog.db` does not store the id. So the core
+//! records the id of the catalog it installed from the manifest in
+//! `catalog/manifest-id`. The platform makes [`Catalog::manifest_request`],
+//! passes the reply to [`Catalog::plan_update`] (`None` when the recorded id
+//! is the manifest's, otherwise where to download the catalog), downloads it,
+//! and passes the file to [`Catalog::install_update`]. That ingests it exactly
+//! as `ingest_file` does and, only after the rename over `catalog/catalog.db`
+//! has succeeded, writes the id to a temp file in `.staging` and renames it
+//! over `catalog/manifest-id`. Any failure or cancellation before the catalog
+//! rename records nothing and leaves a previous id in place; a temp id file a
+//! crash leaves behind is emptied out of `.staging` with everything else.
+//! [`Catalog::ingest_file`] removes `catalog/manifest-id` after its rename,
+//! since a catalog ingested by hand is not known to be the manifest's. A
+//! missing or unreadable id file counts as no id recorded.
+//!
 //! Before anything is ingested every listing is empty, [`Catalog::revision`]
 //! is `None` and [`Catalog::asset`] is `NotFound`.
 //!
@@ -42,17 +61,27 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use rusqlite::{params_from_iter, Connection, OpenFlags, OptionalExtension};
-use tempfile::TempDir;
+use serde::Deserialize;
+use tempfile::{NamedTempFile, TempDir};
 
 use crate::languages::{self, Language};
-use crate::library::{format_pub_key, parse_pub_key, remove_path, PubKind, PublicationSummary};
+use crate::library::{
+    format_pub_key, parse_pub_key, remove_path, HttpRequest, PubKind, PublicationSummary,
+};
 use crate::{CancelToken, CoreError, Inner, ProgressSink, Steps};
 
 const DIR: &str = "catalog";
 const STAGING: &str = ".staging";
 const CURRENT: &str = "catalog.db";
+/// The id of the installed catalog, when it was installed from the manifest.
+const MANIFEST_ID: &str = "manifest-id";
+/// Where JW Library publishes the catalogs, one directory per catalog id.
+const CATALOGS: &str = "https://app.jw-cdn.org/catalogs/publications/v5";
 /// How many progress steps copying the file counts as, however large it is.
 const COPY_STEPS: u64 = 100;
+/// Every progress step of an ingest: the copy, then validating, indexing
+/// and committing.
+const TOTAL: u64 = COPY_STEPS + 3;
 /// How much of the file is copied between cancellation checks.
 const CHUNK: usize = 64 * 1024;
 
@@ -140,6 +169,22 @@ pub struct CatalogAsset {
     pub last_modified: String,
 }
 
+/// A newer catalog to download and pass to [`Catalog::install_update`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CatalogUpdate {
+    /// Where to download its `catalog.db.gz`.
+    pub url: String,
+    /// The manifest's id for it, a lowercase UUID.
+    pub id: String,
+}
+
+/// The manifest's reply: which catalog is current.
+#[derive(Deserialize)]
+struct Manifest {
+    version: u64,
+    current: String,
+}
+
 /// What the core needs from a catalog row to download its publication.
 pub(crate) struct CatalogEntry {
     /// The undated `KeySymbol`, e.g. `w`: pub-media's `pub`.
@@ -168,14 +213,88 @@ impl Catalog {
     /// 64 KiB chunk of the copy and before each later step.
     ///
     /// Not a readable catalog => `Corrupt`; cancelled => `Cancelled`. On any
-    /// error the previous catalog is unchanged.
+    /// error the previous catalog is unchanged. Once it is replaced, the
+    /// recorded manifest id is removed: this catalog is not known to be the
+    /// manifest's.
     pub fn ingest_file(
         &self,
         file_path: impl AsRef<Path>,
         progress: &dyn ProgressSink,
         cancel: &CancelToken,
     ) -> Result<(), CoreError> {
-        const TOTAL: u64 = COPY_STEPS + 3;
+        self.replace(file_path.as_ref(), progress, cancel)?;
+        match std::fs::remove_file(self.dir().join(MANIFEST_ID)) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
+            _ => {}
+        }
+        progress.on_progress(TOTAL, TOTAL);
+        Ok(())
+    }
+
+    /// The request for the manifest that names the current catalog. The
+    /// caller makes it and passes the reply body to `plan_update`.
+    pub fn manifest_request(&self) -> HttpRequest {
+        HttpRequest {
+            url: format!("{CATALOGS}/manifest.json"),
+        }
+    }
+
+    /// The catalog to download, from the reply to
+    /// [`manifest_request`](Self::manifest_request), or `None` when the
+    /// installed catalog was installed from the manifest's current id.
+    /// An unreadable reply, a version other than 1, or a current id that is
+    /// not a UUID => `Corrupt`.
+    pub fn plan_update(
+        &self,
+        manifest_response: &[u8],
+    ) -> Result<Option<CatalogUpdate>, CoreError> {
+        let manifest: Manifest =
+            serde_json::from_slice(manifest_response).map_err(|_| CoreError::Corrupt)?;
+        if manifest.version != 1 {
+            return Err(CoreError::Corrupt);
+        }
+        let id = canonical_id(&manifest.current)?;
+        let installed = std::fs::read_to_string(self.dir().join(MANIFEST_ID)).ok();
+        if installed.as_deref() == Some(id.as_str()) {
+            return Ok(None);
+        }
+        Ok(Some(CatalogUpdate {
+            url: format!("{CATALOGS}/{id}/catalog.db.gz"),
+            id,
+        }))
+    }
+
+    /// Install the catalog `update` names, downloaded to `file_path`, as
+    /// [`ingest_file`](Self::ingest_file) does, and record its id once it
+    /// has replaced the catalog. An id that is not a UUID => `Corrupt`, and
+    /// nothing is installed. On any error before the catalog is replaced,
+    /// the previous catalog and recorded id are unchanged.
+    pub fn install_update(
+        &self,
+        update: &CatalogUpdate,
+        file_path: impl AsRef<Path>,
+        progress: &dyn ProgressSink,
+        cancel: &CancelToken,
+    ) -> Result<(), CoreError> {
+        let id = canonical_id(&update.id)?;
+        self.replace(file_path.as_ref(), progress, cancel)?;
+        if let Err(e) = self.record_id(&id) {
+            // The previous id no longer names the installed catalog.
+            let _ = std::fs::remove_file(self.dir().join(MANIFEST_ID));
+            return Err(e);
+        }
+        progress.on_progress(TOTAL, TOTAL);
+        Ok(())
+    }
+
+    /// Copy, validate and index the catalog at `file_path` and rename it over
+    /// the stored one, reporting every step but the last.
+    fn replace(
+        &self,
+        file_path: &Path,
+        progress: &dyn ProgressSink,
+        cancel: &CancelToken,
+    ) -> Result<(), CoreError> {
         cancel.check()?;
         let mut source = File::open(file_path)?;
         let mut magic = [0u8; 2];
@@ -211,7 +330,17 @@ impl Catalog {
 
         cancel.check()?;
         std::fs::rename(&staged, self.dir().join(CURRENT))?;
-        progress.on_progress(TOTAL, TOTAL);
+        Ok(())
+    }
+
+    /// Write `id` to a temp file in `.staging` and rename it over the
+    /// recorded manifest id.
+    fn record_id(&self, id: &str) -> Result<(), CoreError> {
+        let mut tmp = NamedTempFile::new_in(self.dir().join(STAGING))?;
+        tmp.write_all(id.as_bytes())?;
+        tmp.as_file().sync_all()?;
+        tmp.persist(self.dir().join(MANIFEST_ID))
+            .map_err(|e| e.error)?;
         Ok(())
     }
 
@@ -396,6 +525,20 @@ impl Catalog {
 fn get_u64(r: &rusqlite::Row<'_>, i: usize) -> rusqlite::Result<u64> {
     let v: i64 = r.get(i)?;
     u64::try_from(v).map_err(|_| rusqlite::Error::IntegralValueOutOfRange(i, v))
+}
+
+/// `id` lowercased, if it is a canonical UUID: 36 characters, hex digits
+/// with hyphens at 8, 13, 18 and 23. Anything else => `Corrupt`.
+fn canonical_id(id: &str) -> Result<String, CoreError> {
+    let canonical = id.len() == 36
+        && id.bytes().enumerate().all(|(i, b)| match i {
+            8 | 13 | 18 | 23 => b == b'-',
+            _ => b.is_ascii_hexdigit(),
+        });
+    if !canonical {
+        return Err(CoreError::Corrupt);
+    }
+    Ok(id.to_ascii_lowercase())
 }
 
 fn kind_of(type_id: i64) -> PubKind {
