@@ -27,7 +27,30 @@
     "plugins": [
       "expo-router",
       "expo-dev-client",
-      "expo-font",
+      [
+        "expo-font",
+        {
+          "android": {
+            "fonts": [
+              {
+                "fontFamily": "Literata",
+                "path": "./assets/fonts/literata.ttf",
+                "fontDefinitions": [
+                  { "weight": 400, "axes": { "opsz": 14, "wght": 400 } },
+                  { "weight": 500, "axes": { "opsz": 20, "wght": 500 } },
+                  { "weight": 600, "axes": { "opsz": 24, "wght": 600 } },
+                  {
+                    "path": "./assets/fonts/literata_italic.ttf",
+                    "weight": 400,
+                    "style": "italic",
+                    "axes": { "opsz": 14, "wght": 400 }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
       ["expo-navigation-bar", { "enforceContrast": false }]
     ]
   }

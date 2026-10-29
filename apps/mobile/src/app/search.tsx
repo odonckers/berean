@@ -1,10 +1,5 @@
-import { Placeholder } from '@/components/placeholder';
+import { SearchPlaceholder } from '@/components/search-placeholder';
 
 export default function SearchScreen() {
-  return (
-    <Placeholder
-      title="Search"
-      body="Search across Scripture and your studies will appear here once the Berean core is wired in."
-    />
-  );
+  return <SearchPlaceholder />;
 }

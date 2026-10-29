@@ -1,36 +1,17 @@
-import { useTheme } from 'expo-router';
-import { ScrollView, StyleSheet, Text } from 'react-native';
-
-import { DockedSearchBar } from '@/components/docked-search-bar';
+import { Screen } from '@/components/screen';
+import { UIText } from '@/components/text';
 
 type PlaceholderProps = {
   title: string;
+  heading: string;
   body: string;
-  showSearchBar?: boolean;
 };
 
-export function Placeholder({ title, body, showSearchBar = false }: PlaceholderProps) {
-  const { colors } = useTheme();
+export function Placeholder({ title, heading, body }: PlaceholderProps) {
   return (
-    <>
-      <ScrollView
-        style={styles.scroll}
-        contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={styles.content}
-      >
-        <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>
-          {title}
-        </Text>
-        <Text style={[styles.body, { color: colors.text }]}>{body}</Text>
-      </ScrollView>
-      {showSearchBar && <DockedSearchBar />}
-    </>
+    <Screen title={title} search>
+      <UIText variant="title">{heading}</UIText>
+      <UIText secondary>{body}</UIText>
+    </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  scroll: { flex: 1 },
-  content: { padding: 16, gap: 8 },
-  title: { fontSize: 22, fontWeight: '600' },
-  body: { fontSize: 17 },
-});
