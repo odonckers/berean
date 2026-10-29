@@ -1,24 +1,27 @@
 import * as Haptics from 'expo-haptics';
 import { router, useFocusEffect, usePreventRemove } from 'expo-router';
-import { type ComponentRef, useCallback, useMemo, useRef, useState } from 'react';
-import { BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Animated, { LinearTransition, useReducedMotion } from 'react-native-reanimated';
+import { type ComponentRef, Fragment, useCallback, useMemo, useRef, useState } from 'react';
+import {
+  BackHandler,
+  type LayoutChangeEvent,
+  type ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import type { NativeGesture } from 'react-native-gesture-handler';
+import { useReducedMotion } from 'react-native-reanimated';
 
 import { ScriptureText, UIText } from '@/components/text';
 import { TextButton } from '@/components/text-button';
 import { useBerean } from '@/design/theme';
-import { radii, spacing } from '@/design/tokens';
 import { useTopAppBarFill } from '@/design/use-top-app-bar-fill';
 import { reader } from '@/ffi/core';
 import { load } from '@/library/load';
+import { type Run, paragraphsFromVerses } from '@/reader/chapter-blocks';
 import { ReadingColumn, useColumnPaddingTop } from '@/reader/reading-column';
 import { forgetVerse, rememberVerse, restoredVerse } from '@/reader/session';
-import {
-  OPEN_SPRING,
-  StudyPane,
-  moveAccessibilityFocus,
-  type PaneTab,
-} from '@/reader/study-pane';
+import { StudyPane, moveAccessibilityFocus, type PaneTab } from '@/reader/study-pane';
 
 // The core does not yet report study content per verse (pending Echo's
 // verseStudy / studyReferences / markers), so every verse is Empty.
@@ -33,10 +36,13 @@ const GUIDE_INSTALLED = false;
 const SCROLL_ZONE = 0.65;
 const SCROLL_TARGET = 0.2;
 
-// Verses after the study pane slide with the pane's open spring.
-const verseShift = LinearTransition.springify(OPEN_SPRING.duration).dampingRatio(
-  OPEN_SPRING.dampingRatio,
-);
+// Nested Text can't take padding or a border radius, so the verse number
+// pads its pill with thin spaces. They're there selected or not, so
+// selecting never reflows the paragraph.
+const THIN_SPACE = ' ';
+
+// Per-verse accessibility actions on a paragraph block, named by verse.
+const VERSE_ACTION = 'verse-';
 
 export function BibleChapterView({
   pubKey,
@@ -74,40 +80,57 @@ export function BibleChapterView({
   });
   const selected = selection?.chapterKey === chapterKey ? selection.verse : undefined;
 
-  // Verse elements, for returning accessibility focus on close.
-  const verseRefs = useRef(new Map<number, ComponentRef<typeof Text>>());
-  // Layout for the open auto-scroll: each row's y within the verse list,
-  // the list's y within the column, and the chapter ScrollView's viewport.
+  const paragraphs = useMemo(
+    () => (loaded.ok ? paragraphsFromVerses(loaded.value.verses) : []),
+    [loaded],
+  );
+
+  // Each paragraph's first block, by paragraph index, for returning
+  // accessibility focus on close. A split paragraph's first block is the
+  // same element as the whole paragraph, so the ref survives the close.
+  const blockRefs = useRef(new Map<number, ComponentRef<typeof Text>>());
+  // The chapter scroll and its viewport, for the open auto-scroll.
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
-  const rowTops = useRef(new Map<number, number>());
-  const listTop = useRef(0);
   const viewport = useRef({ offset: 0, insetTop: 0, height: 0 });
+  // Set on a tap open, so the new pane's first layout runs the auto-scroll;
+  // a restored pane never scrolls.
+  const scrollOnPaneLayout = useRef(false);
+  // The chapter scroll's gesture, which the pane's resize drag blocks.
+  const [chapterScroll, setChapterScroll] = useState<NativeGesture>();
 
   const close = useCallback(() => {
     if (selected === undefined) return;
     forgetVerse(chapterKey);
     setSelection(undefined);
-    // The verse number is inline in the verse's Text and not an
-    // accessibility element of its own, so focus returns to the verse.
-    const verseNode = verseRefs.current.get(selected);
-    requestAnimationFrame(() => moveAccessibilityFocus(verseNode));
-  }, [chapterKey, selected]);
+    // The verse number is a span in the paragraph's Text, and a span can't
+    // take accessibility focus, so focus returns to its paragraph.
+    const index = paragraphs.findIndex((p) => p.runs.some((run) => run.verse === selected));
+    const block = blockRefs.current.get(index);
+    requestAnimationFrame(() => moveAccessibilityFocus(block));
+  }, [chapterKey, selected, paragraphs]);
 
   const open = (verse: number) => {
     rememberVerse(chapterKey, verse);
     setSelection({ chapterKey, verse, restored: false });
     void Haptics.selectionAsync().catch(() => {});
+    scrollOnPaneLayout.current = true;
+  };
 
-    // Spec §5 exception: a verse in the bottom 35% scrolls to about 20%
-    // from the top, alongside the pane's open animation.
-    const rowTop = rowTops.current.get(verse);
+  // Spec §5 exception: a verse in the bottom 35% scrolls to about 20% from
+  // the top, alongside the pane's open animation. A span has no layout of
+  // its own, so this measures the split point: the pane's top is the bottom
+  // of the block ending with the selected verse. The split point lands at
+  // 20%, so the verse's last line sits just above it.
+  const onPaneLayout = (e: LayoutChangeEvent) => {
+    if (!scrollOnPaneLayout.current) return;
+    scrollOnPaneLayout.current = false;
     const { offset, insetTop, height } = viewport.current;
-    if (rowTop === undefined || height === 0) return;
-    const verseTop = columnTop + listTop.current + rowTop;
+    if (height === 0) return;
+    const splitTop = columnTop + e.nativeEvent.layout.y;
     const visible = height - insetTop;
-    if (verseTop - offset - insetTop > visible * SCROLL_ZONE) {
+    if (splitTop - offset - insetTop > visible * SCROLL_ZONE) {
       scrollRef.current?.scrollTo({
-        y: verseTop - insetTop - visible * SCROLL_TARGET,
+        y: splitTop - insetTop - visible * SCROLL_TARGET,
         animated: !reducedMotion,
       });
     }
@@ -160,14 +183,111 @@ export function BibleChapterView({
     );
   }
 
-  const layout = reducedMotion ? undefined : verseShift;
   const reference = `${title} ${chapter}:${selected ?? ''}`.trim();
+
+  // One block of a paragraph: its runs as a single Text, so the verses flow
+  // on. Each verse number is a pressable span, a link to its study pane.
+  // Spans can't be accessibility elements on every platform, so the block
+  // also carries one action per verse, which TalkBack and VoiceOver list
+  // as the element's actions.
+  // RN Text has no first-line indent yet, so a continuation block (the rest
+  // of a paragraph after the pane) has the same style as its first block;
+  // once paragraphs carry an indent, the continuation leaves it off.
+  const renderBlock = (key: string, runs: readonly Run[], paragraph?: number) => (
+    <Text
+      key={key}
+      ref={
+        paragraph === undefined
+          ? undefined
+          : (node) => {
+              if (node) blockRefs.current.set(paragraph, node);
+              else blockRefs.current.delete(paragraph);
+            }
+      }
+      style={[type.reading.scripture, { color: colors.text }]}
+      accessibilityActions={runs.map((run) => ({
+        name: `${VERSE_ACTION}${run.verse}`,
+        label: run.verse === selected ? `Close study for verse ${run.verse}` : `Study verse ${run.verse}`,
+      }))}
+      onAccessibilityAction={(e) => {
+        const { actionName } = e.nativeEvent;
+        if (!actionName.startsWith(VERSE_ACTION)) return;
+        const verse = Number(actionName.slice(VERSE_ACTION.length));
+        if (runs.some((run) => run.verse === verse)) toggle(verse);
+      }}
+    >
+      {runs.map((run, index) => {
+        const isSelected = run.verse === selected;
+        return (
+          <Fragment key={run.verse}>
+            {index > 0 && ' '}
+            {/* The selected number is an accent pill. A note-count badge
+                will sit beside the number later. */}
+            <Text
+              onPress={() => toggle(run.verse)}
+              suppressHighlighting
+              accessibilityRole="link"
+              accessibilityLabel={`Verse ${run.verse}, ${
+                isSelected ? 'study open' : 'opens study'
+              }. ${run.text}`}
+              accessibilityHint={
+                isSelected ? 'Double tap to close the study pane' : 'Double tap to open the study pane'
+              }
+              accessibilityState={{ selected: isSelected }}
+              style={[
+                type.verseNumber,
+                isSelected
+                  ? { color: colors.surfaceRaised, backgroundColor: colors.accent }
+                  : { color: colors.textSecondary },
+              ]}
+            >
+              {THIN_SPACE}
+              {run.label === '' ? run.verse : run.label}
+              {THIN_SPACE}
+            </Text>{' '}
+            {run.text}
+          </Fragment>
+        );
+      })}
+    </Text>
+  );
+
+  // Each paragraph is one block. The selected verse's paragraph splits
+  // after that verse: the runs up to it, the study pane, then the rest as a
+  // continuation. Only the pane animates; text below it moves with layout.
+  const blocks = paragraphs.flatMap((paragraph, index) => {
+    const split = paragraph.runs.findIndex((run) => run.verse === selected);
+    if (split === -1) return [renderBlock(`p${index}`, paragraph.runs, index)];
+    const before = paragraph.runs.slice(0, split + 1);
+    const after = paragraph.runs.slice(split + 1);
+    return [
+      renderBlock(`p${index}`, before, index),
+      <StudyPane
+        key={`pane-${selected}`}
+        reference={reference}
+        subtitle={title}
+        pubKey={pubKey}
+        available={NO_STUDY_CONTENT}
+        guideInstalled={GUIDE_INSTALLED}
+        restored={selection?.restored ?? false}
+        chapterScroll={chapterScroll}
+        onClose={close}
+        onLayout={onPaneLayout}
+      />,
+      after.length > 0 && renderBlock(`p${index}-continued`, after),
+    ];
+  });
 
   return (
     <ReadingColumn
       tabRoot
       ref={scrollRef}
       scrollEventThrottle={16}
+      onScrollGesture={(gesture) =>
+        setChapterScroll((current) =>
+          current?.handlerTag === gesture.handlerTag ? current : gesture,
+        )
+      }
       {...fill}
       onScroll={(e) => {
         fill.onScroll(e);
@@ -180,94 +300,17 @@ export function BibleChapterView({
       }}
     >
       <ScriptureText variant="chapterHeading">Chapter {chapter}</ScriptureText>
-      <View
-        onLayout={(e) => {
-          listTop.current = e.nativeEvent.layout.y;
-        }}
-      >
-        {loaded.value.verses.map((verse) => {
-          const isSelected = verse.verse === selected;
-          // Each verse is its own animated row so only the ones after the
-          // pane slide; verses above it never move.
-          return [
-            <Animated.View
-              key={verse.verse}
-              layout={layout}
-              onLayout={(e) => {
-                rowTops.current.set(verse.verse, e.nativeEvent.layout.y);
-              }}
-            >
-              {/* A plain Text (styled as ScriptureText) so it can take a ref. */}
-              <Text
-                ref={(node) => {
-                  if (node) verseRefs.current.set(verse.verse, node);
-                  else verseRefs.current.delete(verse.verse);
-                }}
-                style={[type.reading.scripture, { color: colors.text }]}
-                accessibilityLabel={`Verse ${verse.verse}, ${
-                  isSelected ? 'study open' : 'opens study'
-                }. ${verse.text}`}
-                accessibilityHint={
-                  isSelected
-                    ? 'Double tap to close the study pane'
-                    : 'Double tap to open the study pane'
-                }
-                accessibilityState={{ selected: isSelected }}
-                accessibilityActions={[{ name: 'activate', label: `Study verse ${verse.verse}` }]}
-                onAccessibilityAction={(e) => {
-                  if (e.nativeEvent.actionName === 'activate') toggle(verse.verse);
-                }}
-              >
-                {/* An inline view so the selected number can be a pill. Its
-                    padding is the same selected or not, so selecting never
-                    reflows the verse; hitSlop pads the target without layout.
-                    A note-count badge will sit beside the number later. */}
-                <Pressable
-                  accessible={false}
-                  importantForAccessibility="no-hide-descendants"
-                  onPress={() => toggle(verse.verse)}
-                  hitSlop={spacing.sm}
-                  style={[styles.verseNumber, isSelected && { backgroundColor: colors.accent }]}
-                >
-                  <Text
-                    style={[
-                      type.verseNumber,
-                      { color: isSelected ? colors.surfaceRaised : colors.textSecondary },
-                    ]}
-                  >
-                    {verse.label === '' ? verse.verse : verse.label}
-                  </Text>
-                </Pressable>{' '}
-                {verse.text}
-              </Text>
-            </Animated.View>,
-            isSelected && (
-              <StudyPane
-                key="pane"
-                reference={reference}
-                subtitle={title}
-                pubKey={pubKey}
-                available={NO_STUDY_CONTENT}
-                guideInstalled={GUIDE_INSTALLED}
-                restored={selection?.restored ?? false}
-                onClose={close}
-              />
-            ),
-          ];
-        })}
-      </View>
-      <Animated.View layout={layout} style={styles.navRow}>
+      {blocks}
+      <View style={styles.navRow}>
         {previous}
         <View style={styles.navSpacer} />
         <TextButton title="Next chapter" onPress={() => goToChapter(chapter + 1)} />
-      </Animated.View>
+      </View>
     </ReadingColumn>
   );
 }
 
 const styles = StyleSheet.create({
-  // The selected number's accent pill: radii.chip, 1 x 4 padding.
-  verseNumber: { borderRadius: radii.chip, paddingVertical: 1, paddingHorizontal: spacing.xs },
   navRow: { flexDirection: 'row', alignItems: 'center' },
   navSpacer: { flex: 1 },
 });

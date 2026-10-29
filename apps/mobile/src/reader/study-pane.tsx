@@ -7,10 +7,11 @@ import {
   Text,
   View,
   findNodeHandle,
+  type LayoutChangeEvent,
   useWindowDimensions,
 } from 'react-native';
 import { SymbolView } from 'expo-symbols';
-import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
+import { GestureDetector, type NativeGesture, usePanGesture } from 'react-native-gesture-handler';
 import Animated, {
   FadeIn,
   FadeOut,
@@ -58,8 +59,8 @@ const TAB_EMPTY_COPY: Record<PaneTab, string> = {
 };
 
 // Spec §5: open is a spring (response 0.38 s, damping 0.9), close a spring
-// (0.30 s, damping 1.0). Exported so the verses below the pane move with it.
-export const OPEN_SPRING = { duration: 380, dampingRatio: 0.9 } as const;
+// (0.30 s, damping 1.0).
+const OPEN_SPRING = { duration: 380, dampingRatio: 0.9 } as const;
 const CLOSE_SPRING = { duration: 300, dampingRatio: 1 } as const;
 
 // Pane height as a fraction of the window (spec §4, §7): it starts at 40%
@@ -121,13 +122,21 @@ type StudyPaneProps = {
   guideInstalled: boolean;
   /** Re-opened after a remount: no opening animation or announcement (spec §8). */
   restored: boolean;
+  /**
+   * The chapter's scroll gesture. The resize drag blocks it: a drag that
+   * starts on the header makes the scroll wait until the resize fails, and
+   * once the resize is active the scroll never takes over.
+   */
+  chapterScroll?: NativeGesture;
   onClose: () => void;
+  /** The pane container's layout in the reading column. */
+  onLayout?: (e: LayoutChangeEvent) => void;
 };
 
 /**
  * The inline study pane (docs/design/inline-study-pane.md). It is part of
- * the chapter's scroll content, rendered right after the selected verse, so
- * nothing above it moves. Material look: an M3 surfaceContainer card with a
+ * the chapter's scroll content, splitting the selected verse's paragraph
+ * right after that verse, so nothing above it moves. Material look: an M3 surfaceContainer card with a
  * 1dp ring and primary tabs. iOS look: a raised card with a hairline border
  * and a segmented control.
  */
@@ -138,7 +147,9 @@ export function StudyPane({
   available,
   guideInstalled,
   restored,
+  chapterScroll,
   onClose,
+  onLayout,
 }: StudyPaneProps) {
   const { look, scheme, colors, m3, studyPane } = useBerean();
   const reducedMotion = useReducedMotion();
@@ -197,6 +208,7 @@ export function StudyPane({
   const resize = usePanGesture({
     activeOffsetY: [-10, 10],
     failOffsetX: [-20, 20],
+    block: chapterScroll,
     onBegin: () => {
       'worklet';
       dragStart.set(height.get());
@@ -232,6 +244,7 @@ export function StudyPane({
     <Animated.View
       entering={restored ? undefined : reducedMotion ? fadeOpen : growOpen}
       exiting={reducedMotion ? fadeClosed : collapseClosed}
+      onLayout={onLayout}
       accessibilityLabel={paneLabel}
       style={[
         styles.pane,
@@ -403,6 +416,8 @@ export function StudyPane({
           </View>
         ))}
 
+      {/* A nested scroll: while it scrolls, the chapter ScrollView doesn't
+          intercept the drag (Android ScrollView checks its nested axes). */}
       <ScrollView
         nestedScrollEnabled
         style={styles.body}

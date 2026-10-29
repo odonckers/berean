@@ -1,5 +1,6 @@
 import type { ComponentProps, ReactNode } from 'react';
-import { ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import { type NativeGesture, ScrollView } from 'react-native-gesture-handler';
 
 import { useContentInsets } from '@/design/tab-chrome';
 import { useBerean } from '@/design/theme';
@@ -13,12 +14,23 @@ export function useColumnPaddingTop(tabRoot: boolean): number {
   return (tabRoot ? insets.top : 0) + spacing.lg;
 }
 
-/** A scrolling surface with the reading column: capped at the measure, centered. */
+/**
+ * A scrolling surface with the reading column: capped at the measure, centered.
+ * The ScrollView is Gesture Handler's, so gestures in the column (the study
+ * pane's resize drag) can take part in arbitration with the scroll; a plain
+ * React Native ScrollView is invisible to Gesture Handler. onScrollGesture
+ * hands out the scroll's native gesture for those relations.
+ */
 export function ReadingColumn({
   children,
   tabRoot = false,
+  onScrollGesture,
   ...scrollProps
-}: { children: ReactNode; tabRoot?: boolean } & Pick<
+}: {
+  children: ReactNode;
+  tabRoot?: boolean;
+  onScrollGesture?: (gesture: NativeGesture) => void;
+} & Pick<
   ComponentProps<typeof ScrollView>,
   'ref' | 'onScroll' | 'onScrollEndDrag' | 'onMomentumScrollEnd' | 'onLayout' | 'scrollEventThrottle'
 >) {
@@ -31,6 +43,7 @@ export function ReadingColumn({
   return (
     <ScrollView
       {...scrollProps}
+      onGestureUpdate_CAN_CAUSE_INFINITE_RERENDER={onScrollGesture}
       style={{ backgroundColor: colors.surface }}
       contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={{
