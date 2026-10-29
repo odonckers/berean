@@ -1,6 +1,6 @@
 // Compile-time checks for coreErrorMessage. Nothing runs: `npm run typecheck`
-// fails if the CoreError tuple variants stop carrying their detail string in
-// `inner[0]`, which coreErrorMessage reads.
+// fails if a CoreError variant stops exposing the Display-backed `toString()`
+// that coreErrorMessage returns.
 import type { CoreError, CoreError_Tags } from 'berean-ffi-rn';
 
 import type { coreErrorMessage } from '../errors';
@@ -15,8 +15,8 @@ type Variant<Tag extends CoreError_Tags> = Extract<CoreError, { tag: Tag }>;
 
 export type CoreErrorMessageChecks = [
   Expect<Equal<typeof coreErrorMessage, (e: unknown) => string>>,
-  // The tuple variants carry their detail as a string at inner[0].
-  Expect<Equal<Variant<CoreError_Tags.Io>['inner'][0], string>>,
-  Expect<Equal<Variant<CoreError_Tags.Migration>['inner'][0], string>>,
-  Expect<Equal<Variant<CoreError_Tags.Invalid>['inner'][0], string>>,
+  // Every variant's toString() returns Rust's Display text as a string.
+  Expect<Equal<ReturnType<CoreError['toString']>, string>>,
+  Expect<Equal<ReturnType<Variant<CoreError_Tags.NotFound>['toString']>, string>>,
+  Expect<Equal<ReturnType<Variant<CoreError_Tags.Io>['toString']>, string>>,
 ];
