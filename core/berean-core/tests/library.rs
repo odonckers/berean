@@ -102,6 +102,7 @@ fn install_list_open_remove() {
             issue_tag: 20260800,
             year: 2026,
             title: "The Watchtower Announcing Jehovah’s Kingdom (Study)—2026".into(),
+            issue_title: None,
             kind: PubKind::Watchtower,
         }]
     );

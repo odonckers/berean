@@ -96,6 +96,10 @@ pub struct PublicationSummary {
     pub issue_tag: u32,
     pub year: u32,
     pub title: String,
+    /// The catalog's raw `Publication.IssueTitle` (e.g. "The Watchtower,
+    /// January 2026"); `None` when NULL or empty. Apps show `issue_title`
+    /// when present, else `title`.
+    pub issue_title: Option<String>,
     pub kind: PubKind,
 }
 
@@ -257,6 +261,8 @@ impl Library {
                 issue_tag: r.get(3)?,
                 year: r.get(4)?,
                 title: r.get(5)?,
+                // A `.jwpub`'s Publication table has no IssueTitle column.
+                issue_title: None,
                 kind: PubKind::from_publication_type(&r.get::<_, String>(6)?),
             })
         })?;
