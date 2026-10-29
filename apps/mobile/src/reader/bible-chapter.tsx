@@ -105,10 +105,8 @@ export function BibleChapterView({
   // "Chapter N", there is no picker, and Previous/Next stay in the book.
   const books = useMemo(() => load(() => reader().bibleBooks(pubKey)), [pubKey]);
   const bookList = books.ok && books.value.length > 0 ? books.value : undefined;
-  const heading = chapterHeading(
-    bookList?.find((b) => b.book === book),
-    chapter,
-  );
+  const bookInfo = bookList?.find((b) => b.book === book);
+  const heading = chapterHeading(bookInfo, chapter);
   const [picking, setPicking] = useState(false);
   const pickLabel = `${heading}, choose book and chapter`;
 
@@ -278,7 +276,7 @@ export function BibleChapterView({
                 >
                   <Text
                     numberOfLines={1}
-                    style={[styles.appBarTitle, { fontSize: type.ui.title.fontSize, color: m3.onSurface }]}
+                    style={[type.ui.title, styles.appBarTitle, { color: m3.onSurface }]}
                   >
                     {heading}
                   </Text>
@@ -451,10 +449,17 @@ export function BibleChapterView({
         {!material && bookList !== undefined ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={pickLabel}
+            accessibilityLabel={bookInfo === undefined ? pickLabel : `${bookInfo.longTitle}, ${pickLabel}`}
             onPress={() => setPicking(true)}
             style={({ pressed }) => [styles.headingButton, { opacity: pressed ? 0.6 : 1 }]}
           >
+            {/* Per the iOS frame: the book's long title, as the core gives
+                it, as a caption above the heading. */}
+            {bookInfo !== undefined && (
+              <UIText variant="caption" secondary>
+                {bookInfo.longTitle}
+              </UIText>
+            )}
             <ScriptureText variant="chapterHeading">{heading}</ScriptureText>
           </Pressable>
         ) : (
@@ -478,9 +483,9 @@ const styles = StyleSheet.create({
   // The iOS look's in-content heading as a button: at least the 44pt target.
   headingButton: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center' },
   // The material top app bar's title as a button: the 48dp target; the
-  // text matches the look's header title style.
+  // text is M3 title large (the material look's ui title: 22/28, regular).
   titleButton: { minHeight: 48, justifyContent: 'center' },
-  appBarTitle: { fontWeight: '400' },
+  appBarTitle: { letterSpacing: 0 },
   navRow: { flexDirection: 'row', alignItems: 'center' },
   navSpacer: { flex: 1 },
   versePill: { borderRadius: 6, paddingVertical: 1, paddingHorizontal: 4 },
