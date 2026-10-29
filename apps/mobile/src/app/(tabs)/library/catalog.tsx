@@ -147,6 +147,7 @@ export default function CatalogScreen() {
               <CatalogUpdatePanel compact />
               <TextButton
                 title={language?.name ?? 'All languages'}
+                align="leading"
                 accessibilityLabel={`Language: ${language?.name ?? 'All languages'}. Change language`}
                 onPress={() => router.push('/library/languages')}
               />

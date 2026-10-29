@@ -123,7 +123,7 @@ export default function LibraryScreen() {
             jobList.length === 0 ? (
               <View style={styles.empty}>
                 <UIText>No publications yet.</UIText>
-                <TextButton title="Browse catalog" onPress={openCatalog} />
+                <TextButton title="Browse catalog" align="leading" onPress={openCatalog} />
               </View>
             ) : undefined
           }

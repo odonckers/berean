@@ -63,13 +63,14 @@ export function DevCatalogIngest({ onIngested }: { onIngested: () => void }) {
           <ProgressBar percent={ingest.percent} label="Ingesting catalog" />
           <TextButton
             title="Cancel"
+            align="leading"
             accessibilityLabel="Cancel catalog ingest"
             onPress={() => token.current?.cancel()}
           />
         </>
       ) : (
         <>
-          <TextButton title="Dev: ingest catalog file" onPress={start} />
+          <TextButton title="Dev: ingest catalog file" align="leading" onPress={start} />
           {ingest.error !== undefined && (
             <UIText
               accessibilityLiveRegion="assertive"

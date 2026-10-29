@@ -38,14 +38,21 @@ export function CatalogUpdatePanel({ compact = false }: { compact?: boolean }) {
 
 function CancelButton({ step }: { step: 'download' | 'install' }) {
   return (
-    <TextButton title="Cancel" accessibilityLabel={`Cancel catalog ${step}`} onPress={cancelUpdate} />
+    <TextButton
+      title="Cancel"
+      align="leading"
+      accessibilityLabel={`Cancel catalog ${step}`}
+      onPress={cancelUpdate}
+    />
   );
 }
 
 function PanelBody({ status }: { status: CatalogUpdateState }) {
   const { colors } = useBerean();
   const text = styles.text;
-  const checkButton = <TextButton title="Check for catalog update" onPress={checkForUpdate} />;
+  const checkButton = (
+    <TextButton title="Check for catalog update" align="leading" onPress={checkForUpdate} />
+  );
 
   switch (status.state) {
     case 'idle':
@@ -68,6 +75,7 @@ function PanelBody({ status }: { status: CatalogUpdateState }) {
       return (
         <TextButton
           title={`Download catalog (about ${APPROX_CATALOG_MB} MB)`}
+          align="leading"
           accessibilityLabel={`Download catalog, about ${APPROX_CATALOG_MB} megabytes`}
           onPress={downloadUpdate}
         />
@@ -123,6 +131,7 @@ function PanelBody({ status }: { status: CatalogUpdateState }) {
             {status.retryable && (
               <TextButton
                 title="Retry"
+                align="leading"
                 accessibilityLabel={
                   status.step === 'check' ? 'Retry catalog update check' : 'Retry catalog download'
                 }
@@ -131,6 +140,7 @@ function PanelBody({ status }: { status: CatalogUpdateState }) {
             )}
             <TextButton
               title="Dismiss"
+              align={status.retryable ? 'center' : 'leading'}
               accessibilityLabel="Dismiss catalog update error"
               onPress={dismiss}
             />
