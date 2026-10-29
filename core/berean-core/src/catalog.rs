@@ -6,11 +6,13 @@
 //! the network. [`Catalog::ingest_file`] accepts either form, copies it
 //! (gunzipping if needed) into `catalog/.staging/`, checks that it is a
 //! readable catalog, adds one index, and renames it over `catalog/catalog.db`.
-//! Cancellation is checked, and progress reported, between those four steps.
-//! The rename is the commit point: until it happens the previous catalog stays
-//! in place and keeps answering; any failure deletes the staged copy, and
-//! opening the core empties `.staging`. Queries open the stored file
-//! read-only; its rows are never copied into the user DB.
+//! The copy goes in 64 KiB chunks, checking cancellation before each and
+//! reporting progress over a fixed 100 steps by how much of the given file
+//! it has read; cancellation is checked, and one step reported, around each
+//! of the other three. The rename is the commit point: until it happens the
+//! previous catalog stays in place and keeps answering; any failure deletes the
+//! staged copy, and opening the core empties `.staging`. Queries open the
+//! stored file read-only; its rows are never copied into the user DB.
 //!
 //! Before anything is ingested every listing is empty, [`Catalog::revision`]
 //! is `None` and [`Catalog::asset`] is `NotFound`.
@@ -32,9 +34,11 @@
 //! filters after, so a key never appears twice. (`LastModified` is an
 //! ISO-8601 UTC timestamp, so it orders as text.)
 
+use std::cell::Cell;
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::sync::Arc;
 
 use rusqlite::{params_from_iter, Connection, OpenFlags, OptionalExtension};
@@ -42,11 +46,15 @@ use tempfile::TempDir;
 
 use crate::languages::{self, Language};
 use crate::library::{format_pub_key, parse_pub_key, remove_path, PubKind, PublicationSummary};
-use crate::{CancelToken, CoreError, Inner, ProgressSink};
+use crate::{CancelToken, CoreError, Inner, ProgressSink, Steps};
 
 const DIR: &str = "catalog";
 const STAGING: &str = ".staging";
 const CURRENT: &str = "catalog.db";
+/// How many progress steps copying the file counts as, however large it is.
+const COPY_STEPS: u64 = 100;
+/// How much of the file is copied between cancellation checks.
+const CHUNK: usize = 64 * 1024;
 
 /// The columns the core reads, by table. A file missing any of them is not a
 /// catalog this build understands.
@@ -153,8 +161,11 @@ impl Catalog {
     }
 
     /// Replace the catalog with the one at `file_path`: a `catalog.db.gz` or
-    /// the `catalog.db` inside it. Progress counts copying the file,
-    /// validating it, indexing it, and committing.
+    /// the `catalog.db` inside it. Progress counts a fixed 100 steps for
+    /// copying the file (by how much of the given file has been read, so
+    /// compressed bytes for a `.gz`), then one each for validating it,
+    /// indexing it, and committing. Cancellation is checked before every
+    /// 64 KiB chunk of the copy and before each later step.
     ///
     /// Not a readable catalog => `Corrupt`; cancelled => `Cancelled`. On any
     /// error the previous catalog is unchanged.
@@ -164,31 +175,28 @@ impl Catalog {
         progress: &dyn ProgressSink,
         cancel: &CancelToken,
     ) -> Result<(), CoreError> {
-        const TOTAL: u64 = 4;
+        const TOTAL: u64 = COPY_STEPS + 3;
         cancel.check()?;
         let mut source = File::open(file_path)?;
         let mut magic = [0u8; 2];
         let gzipped = source.read_exact(&mut magic).is_ok() && magic == [0x1f, 0x8b];
         source.seek(SeekFrom::Start(0))?;
+        let len = source.metadata()?.len();
 
         // Dropping `staging` deletes whatever is left in it, on every path.
         let staging = TempDir::new_in(self.dir().join(STAGING))?;
         let staged = staging.path().join(CURRENT);
         let mut out = File::create(&staged)?;
-        if gzipped {
-            gunzip(&mut source, &mut out)?;
-        } else {
-            std::io::copy(&mut source, &mut out)?;
-        }
+        let mut steps = Steps::new(progress, 0, COPY_STEPS, len, TOTAL);
+        copy(source, gzipped, &mut out, &mut steps, cancel)?;
         out.sync_all()?;
         drop(out);
-        progress.on_progress(1, TOTAL);
 
         cancel.check()?;
         let conn = Connection::open_with_flags(&staged, OpenFlags::SQLITE_OPEN_READ_WRITE)
             .map_err(|_| CoreError::Corrupt)?;
         validate(&conn).map_err(|_| CoreError::Corrupt)?;
-        progress.on_progress(2, TOTAL);
+        progress.on_progress(COPY_STEPS + 1, TOTAL);
 
         cancel.check()?;
         // A rollback journal, so the stored file reads alone; and the index
@@ -199,7 +207,7 @@ impl Catalog {
              ON Publication (MepsLanguageId, Symbol, IssueTagNumber);",
         )?;
         conn.close().map_err(|(_, e)| e)?;
-        progress.on_progress(3, TOTAL);
+        progress.on_progress(COPY_STEPS + 2, TOTAL);
 
         cancel.check()?;
         std::fs::rename(&staged, self.dir().join(CURRENT))?;
@@ -397,17 +405,51 @@ fn kind_of(type_id: i64) -> PubKind {
         .map_or(PubKind::Other, |(_, k)| *k)
 }
 
-/// Inflate `source` into `out`. A damaged or truncated stream => `Corrupt`;
-/// a failed write => `Io`.
-fn gunzip(source: &mut File, out: &mut File) -> Result<(), CoreError> {
-    let mut gz = flate2::read::MultiGzDecoder::new(std::io::BufReader::new(source));
-    let mut buf = vec![0u8; 1 << 16];
+/// Copy `source` into `out` in 64 KiB chunks, inflating it if `gzipped`,
+/// checking `cancel` before each chunk and reporting how many bytes of
+/// `source` have been read to `steps`. A damaged or truncated gzip stream
+/// => `Corrupt`; a failed read of a plain file or a failed write => `Io`.
+fn copy(
+    source: File,
+    gzipped: bool,
+    out: &mut File,
+    steps: &mut Steps<'_>,
+    cancel: &CancelToken,
+) -> Result<(), CoreError> {
+    let read = Rc::new(Cell::new(0));
+    let source = Counted {
+        inner: source,
+        read: read.clone(),
+    };
+    let (mut reader, bad_read): (Box<dyn Read>, fn(std::io::Error) -> CoreError) = if gzipped {
+        let gz = flate2::read::MultiGzDecoder::new(BufReader::new(source));
+        (Box::new(gz), |_| CoreError::Corrupt)
+    } else {
+        (Box::new(source), CoreError::from)
+    };
+    let mut buf = vec![0u8; CHUNK];
     loop {
-        let n = gz.read(&mut buf).map_err(|_| CoreError::Corrupt)?;
+        cancel.check()?;
+        let n = reader.read(&mut buf).map_err(bad_read)?;
         if n == 0 {
             return Ok(());
         }
         out.write_all(&buf[..n])?;
+        steps.report(read.get());
+    }
+}
+
+/// A reader that counts the bytes read through it into `read`.
+struct Counted<R> {
+    inner: R,
+    read: Rc<Cell<u64>>,
+}
+
+impl<R: Read> Read for Counted<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        self.read.set(self.read.get() + n as u64);
+        Ok(n)
     }
 }
 

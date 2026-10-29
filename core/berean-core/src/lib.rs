@@ -165,6 +165,46 @@ impl<F: Fn(u64, u64)> ProgressSink for F {
     }
 }
 
+/// Maps `done` of `units` of work onto steps `base..=base + steps` of
+/// `total`, reporting only when the step advances, so a call reports at most
+/// `steps` times however many units it has.
+pub(crate) struct Steps<'a> {
+    progress: &'a dyn ProgressSink,
+    base: u64,
+    steps: u64,
+    units: u64,
+    total: u64,
+    reported: u64,
+}
+
+impl<'a> Steps<'a> {
+    pub(crate) fn new(
+        progress: &'a dyn ProgressSink,
+        base: u64,
+        steps: u64,
+        units: u64,
+        total: u64,
+    ) -> Self {
+        Steps {
+            progress,
+            base,
+            steps,
+            units,
+            total,
+            reported: base,
+        }
+    }
+
+    /// `done` units are done. No units (`units` 0) reports nothing.
+    pub(crate) fn report(&mut self, done: u64) {
+        let at = self.base + done.min(self.units) * self.steps / self.units.max(1);
+        if at > self.reported {
+            self.reported = at;
+            self.progress.on_progress(at, self.total);
+        }
+    }
+}
+
 /// The single shared handle to all core data. `Send + Sync`: the SQLite
 /// connection is behind a `Mutex`, so callers may use it from any thread.
 pub struct Core {
