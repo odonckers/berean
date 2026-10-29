@@ -13,7 +13,7 @@ publish = false
 rusqlite = { version = "0.40", features = ["bundled"] }
 rusqlite_migration = "2.6"
 thiserror = "2"
-uniffi = "0.32"
+uniffi = "0.31"
 # JWPUB container: outer/inner zip, manifest JSON, SHA-256 hash check,
 # AES-128-CBC content decryption, zlib inflate.
 zip = { version = "2", default-features = false, features = ["deflate"] }
