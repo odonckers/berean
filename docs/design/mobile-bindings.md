@@ -182,8 +182,8 @@ These must land before the app wires in the core:
 
 | Item | Owner | State |
 | --- | --- | --- |
-| uniffi 0.31 trial on a scratch branch, then the workspace pin change (§7.1) | Echo | Pending |
-| Async FFI for `ingest_file` and `install` (§7.2) | Echo | Pending |
+| uniffi 0.31 trial on a scratch branch, then the workspace pin change (§7.1) | Echo | Landed (#23) |
+| Async FFI for `ingest_file` and `install` (§7.2) | Echo | Landed (#22) |
 | Search progress outside the lock (§7.3) | Echo | Pending; lands in the search export PR, not needed for the first wiring |
 | Time `Core.open` and `Catalog.publications` on a mid-range Android device (§5) | Otter | Pending |
 

@@ -1,0 +1,18 @@
+---
+# uniffi-bindgen-react-native config. See README.md in this directory.
+rust:
+  # The core in place: no `ubrn checkout`, no copy.
+  directory: ../../../../core
+  manifestPath: berean-ffi/Cargo.toml
+
+bindings:
+  cpp: cpp/generated
+  ts: src/generated
+
+android:
+  targets:
+    - arm64-v8a
+    - x86_64
+  # Must match the app's minSdk (React Native 0.88: `minSdk = "24"` in
+  # react-native/gradle/libs.versions.toml). Passed to cargo-ndk as --platform.
+  apiLevel: 24

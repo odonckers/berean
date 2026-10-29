@@ -43,6 +43,7 @@ Only features that a cited source describes are listed. Rows marked **to verify*
 | DL-2 | Delete | Swipe or select to delete Bibles or publications. [S2][S3] | UI pending | both | Kiwi/Moss | #15 | `Library::remove`. |
 | DL-3 | Updates | A refresh icon marks an updated item, with "Download" or "Later", plus a Pending Updates section. [S2][S3] | Core in progress | both | Kiwi/Moss | #16 | Comparing catalog vs installed versions: **to verify** that the catalog signature is enough. |
 | DL-4 | Downloaded list | Lists downloads in all languages, sortable by Title, Frequently Used, Rarely Used or Largest Size. [S3] | Core in progress | both | Kiwi/Moss | #15 | `Library::list` gives size and title. Usage-frequency sorting needs usage tracking (userdata). |
+| DL-5 | Open a side-loaded .jwpub | Open a .jwpub from Files (outside the catalog), including older files. **to verify** in 15.9.2 and which versions are accepted. | Not started | both | Kiwi/Moss | Parity: open side-loaded / older .jwpub files (Holding) | Separate from catalog install: integrity comes from the jwpub's own structure, not the catalog hash; catalog install stays strict (Wren, #26). API shape goes to Wren first. |
 
 ## JWPUB reading (Publications reader)
 | ID | Feature | JW Library behavior | Status | Layer | UI | Board row / PR | Notes |
@@ -88,6 +89,7 @@ Only features that a cited source describes are listed. Rows marked **to verify*
 | UD-5 | Bookmarks | 10 per publication; for an article/chapter or a specific paragraph/verse; go to, delete, replace. [S4] | UI pending | both | Kiwi/Moss | Core: userdata (#20) | `UserData::bookmarks`, `set_bookmark` (slots 0–9; setting a used slot replaces it), `remove_bookmark`. |
 | UD-6 | History | Long-press the Bible or Publications tab for recent scriptures/articles; Clear. [S5] | Not started | both | Kiwi/Moss | — | No board row yet. |
 | UD-7 | Sync across devices | Not supported ("No. At this time…"). [S9] | n/a | — | — | — | Not a parity target. |
+| UD-8 | Note folders | Not in JW Library: a Berean extension (Owen, Oct 28). | Core in progress | both | Kiwi/Moss | Core: Markdown notes with folders and tags (design PR) | Berean-only tables in userData.db; dropped from .jwlibrary export; import clears them (the UI warns first, from `import_preview`). A Berean-native backup that keeps them is a Holding row. |
 
 ## .jwlibrary backup / restore
 | ID | Feature | JW Library behavior | Status | Layer | UI | Board row / PR | Notes |
