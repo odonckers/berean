@@ -44,7 +44,8 @@ use sha1::{Digest, Sha1};
 use tempfile::TempDir;
 
 use crate::catalog::{Catalog, CatalogAsset, CatalogEntry};
-use crate::jwpub::{Container, Publication, PublicationMeta};
+use crate::instant;
+use crate::jwpub::{Container, Publication, PublicationMeta, MANIFEST};
 use crate::languages;
 use crate::search::{self, IndexRow, INDEX_STEPS};
 use crate::{CancelToken, CoreError, Inner, ProgressSink, Steps};
@@ -285,6 +286,48 @@ impl Library {
             summary.issue_title = titles.remove(&summary.pub_key);
         }
         Ok(summaries)
+    }
+
+    /// The keys of installed publications the catalog has a newer version
+    /// of, ordered by key: those whose resolved catalog row's
+    /// `PublicationAsset.LastModified` is a later instant than the
+    /// `timestamp` in the installed copy's `manifest.json`. The platform
+    /// re-downloads them through the usual download plan.
+    ///
+    /// Never fails: with no catalog, or one that cannot be opened, read or
+    /// queried, or on an error from the library's own database, the list is
+    /// empty; a key the catalog lacks, a missing or unreadable installed
+    /// manifest, or a timestamp on either side that is not a strict
+    /// ISO-8601 instant just leaves that key out.
+    pub fn updates_available(&self) -> Vec<String> {
+        // Read the installed list, then release the lock before the catalog.
+        let Ok(installed) = self.installed_dirs() else {
+            return Vec::new();
+        };
+        let keys: Vec<&str> = installed.iter().map(|(key, _)| key.as_str()).collect();
+        let Ok(modified) = self.catalog().last_modified(&keys) else {
+            return Vec::new();
+        };
+        let store = self.store();
+        installed
+            .into_iter()
+            .filter(|(key, dir)| {
+                let Some(catalog) = modified.get(key).and_then(|m| instant::parse(m)) else {
+                    return false;
+                };
+                installed_timestamp(&store.join(dir)).is_some_and(|t| catalog > t)
+            })
+            .map(|(key, _)| key)
+            .collect()
+    }
+
+    /// Every installed publication's key and store directory, ordered by key.
+    fn installed_dirs(&self) -> rusqlite::Result<Vec<(String, String)>> {
+        let conn = self.inner.conn();
+        let mut stmt =
+            conn.prepare("SELECT pub_key, dir FROM installed_publication ORDER BY pub_key")?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        rows.collect()
     }
 
     /// Uninstall a publication: drop its record and search index rows, and
@@ -539,6 +582,21 @@ impl Library {
     fn catalog(&self) -> Catalog {
         Catalog::new(self.inner.clone())
     }
+}
+
+/// The top-level `timestamp` of an installed copy's `manifest.json`.
+#[derive(Deserialize)]
+struct InstalledManifest {
+    timestamp: Option<String>,
+}
+
+/// The `timestamp` of the manifest in the installed publication directory
+/// `dir`, in seconds since the epoch; `None` when the manifest is missing or
+/// unreadable or its timestamp is absent or not a strict ISO-8601 instant.
+fn installed_timestamp(dir: &Path) -> Option<i64> {
+    let bytes = std::fs::read(dir.join(MANIFEST)).ok()?;
+    let manifest: InstalledManifest = serde_json::from_slice(&bytes).ok()?;
+    instant::parse(&manifest.timestamp?)
 }
 
 /// The value cached under `key`, made most recently used; on a miss, `open`

@@ -453,6 +453,206 @@ fn installed_survives_an_unreadable_catalog() {
     assert!(catalog.publications(&CatalogFilter::default()).is_err());
 }
 
+/// Every `.jwpub` fixture.
+const JWPUBS: &[&str] = &[
+    "it_E.jwpub",
+    "ll_E.jwpub",
+    "nwt_E.jwpub",
+    "nwt_S.jwpub",
+    "rsg_E.jwpub",
+    "te_E.jwpub",
+    "w_E_202608.jwpub",
+    "w_S_202608.jwpub",
+];
+
+/// Install the fixture `file` under the key it gives itself; returns the key.
+fn install_own_key(library: &Library, file: &str) -> String {
+    let key = Publication::open(fixture(file)).unwrap().meta().pub_key();
+    install_fixture(library, file, &key);
+    key
+}
+
+/// The `manifest.json` stored beside the installed copy of `key`.
+fn installed_manifest(env: &Env, key: &str) -> PathBuf {
+    let conn = Connection::open(env.data.join("user.sqlite")).unwrap();
+    let dir: String = conn
+        .query_row(
+            "SELECT dir FROM installed_publication WHERE pub_key = ?1",
+            [key],
+            |r| r.get(0),
+        )
+        .unwrap();
+    env.data
+        .join("publications")
+        .join(dir)
+        .join("manifest.json")
+}
+
+/// The `timestamp` of the manifest stored beside the installed copy of `key`.
+fn installed_timestamp(env: &Env, key: &str) -> String {
+    let bytes = std::fs::read(installed_manifest(env, key)).unwrap();
+    let manifest: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    manifest["timestamp"].as_str().unwrap().to_string()
+}
+
+/// SQL setting `LastModified` of every asset of `key`'s catalog rows.
+fn set_last_modified(key: &str, value: &str) -> String {
+    let mut parts = key.split(':');
+    let (symbol, lang, issue) = (
+        parts.next().unwrap(),
+        parts.next().unwrap(),
+        parts.next().unwrap(),
+    );
+    format!(
+        "UPDATE PublicationAsset SET LastModified = '{value}'
+         WHERE PublicationId IN (SELECT Id FROM Publication WHERE Symbol = '{symbol}'
+             AND MepsLanguageId = {lang} AND IssueTagNumber = {issue});"
+    )
+}
+
+/// With the current catalog every fixture's catalog row was modified exactly
+/// when its manifest was written, so nothing is newer.
+#[test]
+fn no_updates_when_the_catalog_matches() {
+    let env = Env::new();
+    let core = env.core();
+    let catalog = core.catalog();
+    let library = core.library();
+    let keys: Vec<String> = JWPUBS
+        .iter()
+        .map(|f| install_own_key(&library, f))
+        .collect();
+    ingest(&catalog, trimmed()).unwrap();
+
+    // The same instant on both sides, in two spellings.
+    for key in &keys {
+        let manifest = installed_timestamp(&env, key);
+        let catalog = catalog.asset(key).unwrap().last_modified;
+        assert_eq!(
+            manifest.strip_suffix('Z').unwrap(),
+            catalog.strip_suffix("+00:00").unwrap(),
+            "{key}"
+        );
+    }
+    assert_eq!(library.updates_available(), Vec::<String>::new());
+}
+
+#[test]
+fn newer_catalog_row_is_an_update() {
+    let env = Env::new();
+    let core = env.core();
+    let library = core.library();
+    install_fixture(&library, "w_E_202608.jwpub", W_E);
+    install_fixture(&library, "ll_E.jwpub", LL_E);
+
+    // No catalog: nothing to compare against.
+    assert!(library.updates_available().is_empty());
+
+    let newer = env.edited_trimmed(
+        "newer.db",
+        &set_last_modified(W_E, "2099-01-01T00:00:00+00:00"),
+    );
+    ingest(&core.catalog(), &newer).unwrap();
+    assert_eq!(library.updates_available(), [W_E]);
+
+    // An older row is not an update.
+    let older = env.edited_trimmed(
+        "older.db",
+        &set_last_modified(W_E, "2000-01-01T00:00:00+00:00"),
+    );
+    ingest(&core.catalog(), &older).unwrap();
+    assert!(library.updates_available().is_empty());
+}
+
+/// The comparison is on the row the key resolves to, not any row.
+#[test]
+fn updates_follow_the_resolved_row() {
+    let env = Env::new();
+    let core = env.core();
+    let library = core.library();
+    install_fixture(&library, "w_E_202608.jwpub", W_E);
+
+    // A newer duplicate wins and is an update.
+    let newer = env.edited_trimmed(
+        "newer.db",
+        &duplicate_w_e("wx", "Newer", 2, "'2099-01-01T00:00:00+00:00'"),
+    );
+    ingest(&core.catalog(), &newer).unwrap();
+    assert_eq!(library.updates_available(), [W_E]);
+
+    // An older one loses; the original matches the installed copy.
+    let older = env.edited_trimmed(
+        "older.db",
+        &duplicate_w_e("wx", "Older", 1, "'2000-01-01T00:00:00+00:00'"),
+    );
+    ingest(&core.catalog(), &older).unwrap();
+    assert!(library.updates_available().is_empty());
+}
+
+#[test]
+fn updates_survive_an_unreadable_catalog() {
+    let env = Env::new();
+    let core = env.core();
+    let library = core.library();
+    install_fixture(&library, "w_E_202608.jwpub", W_E);
+    let newer = env.edited_trimmed(
+        "newer.db",
+        &set_last_modified(W_E, "2099-01-01T00:00:00+00:00"),
+    );
+    ingest(&core.catalog(), &newer).unwrap();
+    assert_eq!(library.updates_available(), [W_E]);
+
+    std::fs::write(env.data.join("catalog/catalog.db"), b"not a database").unwrap();
+    assert!(library.updates_available().is_empty());
+}
+
+#[test]
+fn bad_timestamps_skip_only_their_key() {
+    let env = Env::new();
+    let core = env.core();
+    let library = core.library();
+    install_fixture(&library, "w_E_202608.jwpub", W_E);
+    install_fixture(&library, "w_S_202608.jwpub", W_S);
+    install_fixture(&library, "ll_E.jwpub", LL_E);
+    let all_newer = format!(
+        "{}{}{}",
+        set_last_modified(W_E, "2099-01-01T00:00:00+00:00"),
+        set_last_modified(W_S, "2099-01-01T00:00:00Z"),
+        set_last_modified(LL_E, "2099-01-01T01:00:00+01:00"),
+    );
+    let newer = env.edited_trimmed("newer.db", &all_newer);
+    ingest(&core.catalog(), &newer).unwrap();
+    // Ordered by key.
+    assert_eq!(library.updates_available(), [LL_E, W_E, W_S]);
+
+    // An unparseable catalog value skips just that key.
+    let garbage = env.edited_trimmed(
+        "garbage.db",
+        &format!("{all_newer}{}", set_last_modified(W_S, "garbage")),
+    );
+    ingest(&core.catalog(), &garbage).unwrap();
+    assert_eq!(library.updates_available(), [LL_E, W_E]);
+    ingest(&core.catalog(), &newer).unwrap();
+
+    // So does an unparseable installed timestamp...
+    let manifest = installed_manifest(&env, W_E);
+    let mut json: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&manifest).unwrap()).unwrap();
+    json["timestamp"] = "2026-04-29 04:32:02".into();
+    std::fs::write(&manifest, serde_json::to_vec(&json).unwrap()).unwrap();
+    assert_eq!(library.updates_available(), [LL_E, W_S]);
+
+    // ...and a missing installed manifest.
+    std::fs::remove_file(installed_manifest(&env, LL_E)).unwrap();
+    assert_eq!(library.updates_available(), [W_S]);
+
+    // And the whole list stays empty, not an error, on a library DB error.
+    let conn = Connection::open(env.data.join("user.sqlite")).unwrap();
+    conn.execute_batch("ALTER TABLE installed_publication RENAME TO gone")
+        .unwrap();
+    assert!(library.updates_available().is_empty());
+}
+
 #[test]
 fn assets_match_the_jwpub_files() {
     let env = Env::new();
