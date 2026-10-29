@@ -58,3 +58,20 @@ export function nextChapter(
   const after = books?.[index + 1];
   return after === undefined ? undefined : { book: after.book, chapter: 1 };
 }
+
+/**
+ * The key a chapter's state lives under (the session's open pane, the
+ * chapter's text tree): publication, book and chapter.
+ */
+export function keyForChapter(pubKey: string, at: ChapterLocation): string {
+  return `${pubKey}/${at.book}/${at.chapter}`;
+}
+
+/**
+ * Whether the chapter scroll goes back to the top: on every change of
+ * chapter (Previous/Next, the picker, new route params), never on a mount
+ * (no previous key), which is where a restored session keeps its place.
+ */
+export function shouldResetScroll(previous: string | undefined, next: string): boolean {
+  return previous !== undefined && previous !== next;
+}

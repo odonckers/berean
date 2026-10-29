@@ -15,6 +15,7 @@ import { GestureDetector, type NativeGesture, usePanGesture } from 'react-native
 import Animated, {
   FadeIn,
   ReduceMotion,
+  type SharedValue,
   cancelAnimation,
   clamp,
   useAnimatedStyle,
@@ -38,6 +39,7 @@ import {
   DISMISS_VELOCITY,
   MAX_HEIGHT,
   MIN_HEIGHT,
+  cappedDetents,
   dragFraction,
   openFraction,
   paneDetents,
@@ -114,6 +116,12 @@ type StudyPaneProps = {
    * once the resize is active the scroll never takes over.
    */
   chapterScroll?: NativeGesture;
+  /**
+   * The tallest the pane may be, as a window fraction (pane-snap's
+   * paneMaxFraction). The owner keeps it current as the chapter scrolls,
+   * so the pane never grows under the tab bar. Without it, the 85% maximum.
+   */
+  maxFraction?: SharedValue<number>;
   /** Asks to close: the close button and a dismissing drag. */
   onClose: () => void;
   /** The close animation finished; the pane can unmount. */
@@ -141,6 +149,7 @@ export function StudyPane({
   initialFraction,
   closing,
   chapterScroll,
+  maxFraction,
   onClose,
   onClosed,
   onResize,
@@ -206,6 +215,9 @@ export function StudyPane({
   const height = useSharedValue(growsOpen ? 0 : opened);
   const opacity = useSharedValue(restored ? 1 : 0);
   const dragStart = useSharedValue(opened);
+  // The running drag's cap, read as it begins: the chapter can't scroll
+  // under a resize, so the pane's room stays put until it ends.
+  const dragMax = useSharedValue(MAX_HEIGHT);
   const animatedPane = useAnimatedStyle(() => ({
     height: Math.max(height.get(), 0) * windowHeight,
     opacity: opacity.get(),
@@ -229,6 +241,8 @@ export function StudyPane({
       ? withTiming(target, { duration: 200, reduceMotion: ReduceMotion.Never })
       : withSpring(target, OPEN_SPRING);
   };
+  // The accessibility moves step through the detents under the cap.
+  const reachable = () => cappedDetents(detents, maxFraction?.get() ?? MAX_HEIGHT);
   const moveTo = (target: number | undefined) => {
     if (target === undefined || closing) return;
     settled(target);
@@ -282,6 +296,7 @@ export function StudyPane({
       // Grabbed while still growing open, the drag starts from the smallest
       // height rather than below it, so it can't read as a close.
       dragStart.set(clamp(height.get(), MIN_HEIGHT, MAX_HEIGHT));
+      dragMax.set(maxFraction?.get() ?? MAX_HEIGHT);
     },
     onUpdate: (e) => {
       'worklet';
@@ -291,7 +306,7 @@ export function StudyPane({
           translationY: e.translationY,
           windowHeight,
           min: MIN_HEIGHT,
-          max: MAX_HEIGHT,
+          max: dragMax.get(),
         }),
       );
     },
@@ -302,7 +317,7 @@ export function StudyPane({
         translationY: e.translationY,
         velocityY: e.velocityY,
         windowHeight,
-        detents,
+        detents: cappedDetents(detents, dragMax.get()),
         min: MIN_HEIGHT,
         dismissVelocity: DISMISS_VELOCITY,
       });
@@ -357,9 +372,9 @@ export function StudyPane({
             accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
             onAccessibilityAction={(e) => {
               if (e.nativeEvent.actionName === 'increment') {
-                moveTo(detents.find((d) => d > fraction));
+                moveTo(reachable().find((d) => d > fraction));
               } else if (e.nativeEvent.actionName === 'decrement') {
-                moveTo(detents.findLast((d) => d < fraction));
+                moveTo(reachable().findLast((d) => d < fraction));
               }
             }}
             style={styles.grabberRow}

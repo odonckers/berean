@@ -5,9 +5,11 @@ import {
   DISMISS_VELOCITY,
   MAX_HEIGHT,
   MIN_HEIGHT,
+  cappedDetents,
   dragFraction,
   openFraction,
   paneDetents,
+  paneMaxFraction,
   releaseTarget,
 } from './pane-snap.ts';
 
@@ -112,5 +114,70 @@ describe('dragFraction', () => {
     assert.equal(drag(0.4, windowHeight), MIN_HEIGHT);
     assert.equal(drag(0.85, -1), MAX_HEIGHT);
     assert.equal(drag(0.25, 1), MIN_HEIGHT);
+  });
+
+  test('stops at a lower cap', () => {
+    const cap = 0.5;
+    const capped = dragFraction({
+      start: 0.4,
+      translationY: -windowHeight,
+      windowHeight,
+      min: MIN_HEIGHT,
+      max: cap,
+    });
+    assert.equal(capped, cap);
+  });
+});
+
+describe('paneMaxFraction', () => {
+  // A window of 800 with a 64 app bar, an 80 tab bar and a 24 status bar:
+  // the chapter's visible area is 632 tall.
+  const visibleHeight = 632;
+  const cap = (paneTop: number, visible = visibleHeight) =>
+    paneMaxFraction({ paneTop, visibleHeight: visible, windowHeight, min: MIN_HEIGHT, max: MAX_HEIGHT });
+
+  test('from the pane top to the bottom of the visible area', () => {
+    // A pane 20% down the visible area: room for 632 - 126.4 = 505.6.
+    assert.ok(Math.abs(cap(126.4) - 505.6 / windowHeight) < 1e-9);
+    assert.ok(cap(126.4) < MAX_HEIGHT);
+    // Its bottom lands on the tab bar's top, never under it.
+    assert.ok(Math.abs(126.4 + cap(126.4) * windowHeight - visibleHeight) < 1e-9);
+  });
+
+  test('never above 85%, however much room', () => {
+    assert.equal(cap(0, 2000), MAX_HEIGHT);
+    assert.equal(cap(-500), MAX_HEIGHT);
+  });
+
+  test('never below 25%: a pane low in the viewport keeps its minimum', () => {
+    assert.equal(cap(600), MIN_HEIGHT);
+    assert.equal(cap(visibleHeight + 100), MIN_HEIGHT);
+  });
+
+  test('unmeasured, it falls back to 85%', () => {
+    assert.equal(cap(100, 0), MAX_HEIGHT);
+    assert.equal(
+      paneMaxFraction({ paneTop: 0, visibleHeight, windowHeight: 0, min: MIN_HEIGHT, max: MAX_HEIGHT }),
+      MAX_HEIGHT,
+    );
+  });
+});
+
+describe('cappedDetents', () => {
+  test('the detents under the cap, then the cap', () => {
+    assert.deepEqual(cappedDetents(detents, 0.6), [0.25, 0.4, 0.6]);
+    assert.deepEqual(cappedDetents(largeDetents, 0.7), [0.25, 0.4, 0.6, 0.7]);
+  });
+
+  test('a cap on a detent or above the top one', () => {
+    assert.deepEqual(cappedDetents(detents, 0.4), [0.25, 0.4]);
+    assert.deepEqual(cappedDetents(detents, MAX_HEIGHT), [0.25, 0.4, 0.85]);
+    assert.deepEqual(cappedDetents(detents, MIN_HEIGHT), [0.25]);
+  });
+
+  test('a release past the cap settles at it', () => {
+    const capped = cappedDetents(detents, 0.6);
+    assert.deepEqual(release(0.4, 0.8, 0, capped), { kind: 'snap', fraction: 0.6 });
+    assert.deepEqual(release(0.4, 0.45, 0, capped), { kind: 'snap', fraction: 0.4 });
   });
 });

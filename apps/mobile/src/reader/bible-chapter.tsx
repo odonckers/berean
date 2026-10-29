@@ -1,6 +1,14 @@
 import * as Haptics from 'expo-haptics';
 import { router, Stack, useFocusEffect, usePreventRemove } from 'expo-router';
-import { type ComponentRef, Fragment, useCallback, useMemo, useRef, useState } from 'react';
+import {
+  type ComponentRef,
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   BackHandler,
   type LayoutChangeEvent,
@@ -9,12 +17,14 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import type { NativeGesture } from 'react-native-gesture-handler';
-import { useReducedMotion } from 'react-native-reanimated';
+import { useReducedMotion, useSharedValue } from 'react-native-reanimated';
 
 import { ScriptureText, UIText } from '@/components/text';
 import { TextButton } from '@/components/text-button';
+import { useContentInsets } from '@/design/tab-chrome';
 import { useBerean } from '@/design/theme';
 import { useTopAppBarFill } from '@/design/use-top-app-bar-fill';
 import { reader } from '@/ffi/core';
@@ -22,12 +32,15 @@ import { load } from '@/library/load';
 import {
   type ChapterLocation,
   chapterHeading,
+  keyForChapter,
   nextChapter,
   previousChapter,
+  shouldResetScroll,
   verseReference,
 } from '@/reader/bible-nav';
 import { BiblePicker } from '@/reader/bible-picker';
 import { type Run, paragraphsFromVerses } from '@/reader/chapter-blocks';
+import { MAX_HEIGHT, MIN_HEIGHT, paneMaxFraction } from '@/reader/pane-snap';
 import { ReadingColumn, useColumnPaddingTop } from '@/reader/reading-column';
 import {
   forgetVerse,
@@ -95,6 +108,8 @@ export function BibleChapterView({
   // status bar padding where the look hides the native header.
   const fill = useTopAppBarFill();
   const columnTop = useColumnPaddingTop(true);
+  const contentInsets = useContentInsets();
+  const { height: windowHeight } = useWindowDimensions();
   // A synchronous FFI call on the JS thread; agreed for now.
   const loaded = useMemo(
     () => load(() => reader().bibleChapter(pubKey, book, chapter)),
@@ -115,7 +130,7 @@ export function BibleChapterView({
   // A remount (switching the dev Look) restores the open verse and its
   // height from the session, and the pane re-opens without animation or
   // announcement.
-  const chapterKey = `${pubKey}/${book}/${chapter}`;
+  const chapterKey = keyForChapter(pubKey, { book, chapter });
   const [selection, setSelection] = useState<Selection | undefined>(() => {
     const pane = restoredPane(chapterKey);
     return pane === undefined
@@ -144,12 +159,46 @@ export function BibleChapterView({
   const openedFromParagraph = useRef(false);
   // The chapter scroll and its viewport, for the open auto-scroll.
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
-  const viewport = useRef({ offset: 0, insetTop: 0, height: 0 });
+  const viewport = useRef({ offset: 0, insetTop: 0, insetBottom: 0, height: 0 });
   // Set on a tap open, so the new pane's first layout runs the auto-scroll;
   // a restored pane never scrolls.
   const scrollOnPaneLayout = useRef(false);
   // The chapter scroll's gesture, which the pane's resize drag blocks.
   const [chapterScroll, setChapterScroll] = useState<NativeGesture>();
+
+  // The params change in place on the Read route, so a new chapter keeps
+  // this view and its ScrollView, offset included. Each chapter change
+  // starts the new chapter at its top. A mount never scrolls: a remount
+  // restoring the session (switching the dev Look) keeps its place.
+  const shownChapter = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (shouldResetScroll(shownChapter.current, chapterKey)) {
+      viewport.current.offset = 0;
+      scrollRef.current?.scrollTo({ y: 0, animated: false });
+    }
+    shownChapter.current = chapterKey;
+  }, [chapterKey]);
+
+  // The pane's tallest height: from its top to the bottom of the visible
+  // area, above the tab bar (the scroll's bottom content inset where the
+  // bar overlaps it) and any system bar the content pads for. Kept current
+  // as the chapter scrolls and the pane lays out; the drag reads it on the
+  // UI thread.
+  const paneTop = useRef<number | undefined>(undefined);
+  const paneMax = useSharedValue(MAX_HEIGHT);
+  const updatePaneMax = () => {
+    if (paneTop.current === undefined) return;
+    const { offset, insetTop, insetBottom, height } = viewport.current;
+    paneMax.set(
+      paneMaxFraction({
+        paneTop: columnTop + paneTop.current - offset - insetTop,
+        visibleHeight: height - insetTop - insetBottom - contentInsets.bottom,
+        windowHeight,
+        min: MIN_HEIGHT,
+        max: MAX_HEIGHT,
+      }),
+    );
+  };
 
   // Closing is two steps: asking (close button, Back, a dismissing drag,
   // the verse tapped again) starts the pane's collapse, and the pane calls
@@ -189,6 +238,8 @@ export function BibleChapterView({
   // selected verse. The split point lands at 20%, so the verse's last line
   // sits just above it.
   const onPaneLayout = (e: LayoutChangeEvent) => {
+    paneTop.current = e.nativeEvent.layout.y;
+    updatePaneMax();
     if (!scrollOnPaneLayout.current) return;
     scrollOnPaneLayout.current = false;
     const { offset, insetTop, height } = viewport.current;
@@ -416,6 +467,7 @@ export function BibleChapterView({
         initialFraction={current?.fraction}
         closing={closing}
         chapterScroll={chapterScroll}
+        maxFraction={paneMax}
         onClose={close}
         onClosed={finishClose}
         onResize={(fraction) => rememberPaneFraction(chapterKey, fraction)}
@@ -441,12 +493,17 @@ export function BibleChapterView({
           const { contentOffset, contentInset } = e.nativeEvent;
           viewport.current.offset = contentOffset.y;
           viewport.current.insetTop = contentInset.top;
+          viewport.current.insetBottom = contentInset.bottom;
+          updatePaneMax();
         }}
         onLayout={(e) => {
           viewport.current.height = e.nativeEvent.layout.height;
+          updatePaneMax();
         }}
       >
-        {!material && bookList !== undefined ? (
+        {/* Per the reader frames: the iOS look titles the chapter in the
+            content; the material look's title is the top app bar's only. */}
+        {material ? null : bookList !== undefined ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={bookInfo === undefined ? pickLabel : `${bookInfo.longTitle}, ${pickLabel}`}
@@ -465,7 +522,12 @@ export function BibleChapterView({
         ) : (
           <ScriptureText variant="chapterHeading">{heading}</ScriptureText>
         )}
-        {blocks}
+        {/* Keyed by chapter: a new chapter mounts fresh paragraphs and
+            verse pills rather than reusing the last chapter's. Reused, the
+            paragraph keeps its Fabric shadow family and the pills keep
+            their tags, and Android drew the pills at stale positions over
+            the new text. */}
+        <Fragment key={chapterKey}>{blocks}</Fragment>
         <View style={styles.navRow}>
           {previous}
           <View style={styles.navSpacer} />

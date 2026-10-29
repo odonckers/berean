@@ -31,6 +31,43 @@ function clampFraction(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
+/**
+ * The tallest the pane may be, as a window fraction: from its top down to
+ * the bottom of the chapter's visible area (above the tab bar and the
+ * bottom inset), so its bottom never runs under them. All in the viewport's
+ * coordinates: paneTop from the top of the visible area, visibleHeight that
+ * area's height. It stays within [min, max]: a pane low in the viewport can
+ * still be dragged to the minimum.
+ */
+export function paneMaxFraction({
+  paneTop,
+  visibleHeight,
+  windowHeight,
+  min,
+  max,
+}: {
+  paneTop: number;
+  visibleHeight: number;
+  windowHeight: number;
+  min: number;
+  max: number;
+}): number {
+  'worklet';
+  if (windowHeight <= 0 || visibleHeight <= 0) return max;
+  return clampFraction((visibleHeight - paneTop) / windowHeight, min, max);
+}
+
+/**
+ * The detents under a cap: those below it, then the cap itself as the
+ * top stop, so a release past the cap settles at it.
+ */
+export function cappedDetents(detents: readonly number[], cap: number): number[] {
+  'worklet';
+  const under = detents.filter((detent) => detent < cap);
+  under.push(cap);
+  return under;
+}
+
 /** The live height while dragging: the start height moved with the finger, clamped. */
 export function dragFraction({
   start,
