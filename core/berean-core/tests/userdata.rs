@@ -12,7 +12,7 @@ use berean_core::reader::{Location, LocationSpan};
 use berean_core::userdata::{
     Bookmark, Highlight, HighlightColor, NoteFilter, Tag, TextRange, UserData,
 };
-use berean_core::{Core, CoreError};
+use berean_core::{CancelToken, Core, CoreError};
 use common::fixture;
 use rusqlite::types::Value;
 use rusqlite::Connection;
@@ -975,4 +975,232 @@ fn userdata_handles_share_state() {
         )
         .unwrap();
     assert_eq!(b.highlights(W_E, &document(W_E, 7)).unwrap(), [h]);
+}
+
+/// Some of everything the typed calls make, in both languages.
+fn populate(ud: &UserData) {
+    let h = ud
+        .add_highlight(
+            &range(
+                paragraph(W_E, 7, 2),
+                paragraph(W_E, 7, 4),
+                (Some(1), Some(6)),
+            ),
+            HighlightColor::Blue,
+        )
+        .unwrap();
+    ud.add_highlight(
+        &range(
+            verse(NWT_S, 43, 3, 16),
+            verse(NWT_S, 43, 3, 16),
+            (None, None),
+        ),
+        HighlightColor::Yellow,
+    )
+    .unwrap();
+    let n = ud
+        .add_note("On it", "text", Some(&paragraph(W_E, 7, 2)), Some(&h.id))
+        .unwrap();
+    let t = ud.add_tag("Study").unwrap();
+    ud.tag_note(&n.id, t.id).unwrap();
+    ud.add_note("Free", "", None, None).unwrap();
+    ud.add_favorite(&publication(NWT_S)).unwrap();
+    ud.set_bookmark(W_E, 0, &paragraph(W_E, 7, 3), "Para 3", Some("s"))
+        .unwrap();
+}
+
+/// The members of the zip at `path`, by name, in zip order.
+fn zip_members(path: &Path) -> Vec<(String, Vec<u8>)> {
+    let mut zip = zip::ZipArchive::new(std::fs::File::open(path).unwrap()).unwrap();
+    (0..zip.len())
+        .map(|i| {
+            let mut f = zip.by_index(i).unwrap();
+            assert_eq!(
+                f.compression(),
+                zip::CompressionMethod::Deflated,
+                "{}",
+                f.name()
+            );
+            let mut bytes = Vec::new();
+            f.read_to_end(&mut bytes).unwrap();
+            (f.name().to_string(), bytes)
+        })
+        .collect()
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::Digest;
+    hex::encode(sha2::Sha256::digest(bytes))
+}
+
+/// Names in `dir`, sorted.
+fn dir_names(dir: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .collect();
+    names.sort();
+    names
+}
+
+fn no_progress(_: u64, _: u64) {}
+
+#[test]
+fn export_writes_the_database_and_its_manifest() {
+    let env = Env::new();
+    let ud = env.core().userdata();
+    populate(&ud);
+    let out_dir = tempfile::tempdir().unwrap();
+    let out = out_dir.path().join("backup.jwlibrary");
+    ud.export_backup(&out, &no_progress, &CancelToken::new())
+        .unwrap();
+    assert_eq!(dir_names(out_dir.path()), ["backup.jwlibrary"]);
+
+    let members = zip_members(&out);
+    let names: Vec<&str> = members.iter().map(|(n, _)| n.as_str()).collect();
+    assert_eq!(names, ["manifest.json", "userData.db"]);
+    let db = &members[1].1;
+    let manifest: serde_json::Value = serde_json::from_slice(&members[0].1).unwrap();
+    let live_modified: String = env
+        .raw()
+        .query_row("SELECT LastModified FROM LastModified", [], |r| r.get(0))
+        .unwrap();
+    let created = manifest["creationDate"].as_str().unwrap();
+    assert!(is_iso_utc(created), "{created}");
+    assert_eq!(
+        manifest,
+        serde_json::json!({
+            "name": "Berean",
+            "creationDate": created,
+            "version": 1,
+            "type": 0,
+            "userDataBackup": {
+                "lastModifiedDate": live_modified,
+                "deviceName": "Berean",
+                "databaseName": "userData.db",
+                "hash": sha256_hex(db),
+                "schemaVersion": 16,
+            }
+        })
+    );
+
+    // The database is the live one: same schema, user_version and rows.
+    let copy_dir = tempfile::tempdir().unwrap();
+    let copy = copy_dir.path().join("userData.db");
+    std::fs::write(&copy, db).unwrap();
+    assert_eq!(user_version(&copy), 16);
+    assert_eq!(schema(&copy), schema(&env.userdata_db()));
+    assert_eq!(contents(&copy), contents(&env.userdata_db()));
+    let (_blank_dir, blank) = blank_db();
+    assert_eq!(schema(&copy), schema(&blank));
+}
+
+#[test]
+fn export_carries_media_files_and_replaces_the_target() {
+    let env = Env::new();
+    let ud = env.core().userdata();
+    let media = env.data.join("userData.media");
+    std::fs::create_dir_all(media.join("sub")).unwrap();
+    std::fs::write(media.join("default_thumbnail.png"), b"\x89PNG thumb").unwrap();
+    std::fs::write(media.join("sub/clip.mp4"), vec![7u8; 70_000]).unwrap();
+    let out_dir = tempfile::tempdir().unwrap();
+    let out = out_dir.path().join("backup.jwlibrary");
+    std::fs::write(&out, b"an older file").unwrap();
+
+    ud.export_backup(&out, &no_progress, &CancelToken::new())
+        .unwrap();
+    let members = zip_members(&out);
+    let names: Vec<&str> = members.iter().map(|(n, _)| n.as_str()).collect();
+    assert_eq!(
+        names,
+        [
+            "manifest.json",
+            "userData.db",
+            "default_thumbnail.png",
+            "sub/clip.mp4"
+        ]
+    );
+    assert_eq!(members[2].1, b"\x89PNG thumb");
+    assert_eq!(members[3].1, vec![7u8; 70_000]);
+    assert_eq!(dir_names(out_dir.path()), ["backup.jwlibrary"]);
+}
+
+#[test]
+fn export_progress_is_fixed_and_holds_no_lock() {
+    let env = Env::new();
+    let ud = env.core().userdata();
+    populate(&ud);
+    let out_dir = tempfile::tempdir().unwrap();
+    let seen = std::cell::RefCell::new(Vec::new());
+    let progress = |done: u64, total: u64| {
+        // Calling back into the user data here would deadlock if a lock were
+        // held.
+        assert_eq!(ud.tags().unwrap().len(), 1);
+        seen.borrow_mut().push((done, total));
+    };
+    ud.export_backup(
+        out_dir.path().join("b.jwlibrary"),
+        &progress,
+        &CancelToken::new(),
+    )
+    .unwrap();
+    let seen = seen.into_inner();
+    assert!(!seen.is_empty());
+    let total = seen[0].1;
+    assert!(seen.iter().all(|&(_, t)| t == total), "{seen:?}");
+    assert!(seen.windows(2).all(|w| w[0].0 <= w[1].0), "{seen:?}");
+    assert_eq!(seen.last(), Some(&(total, total)));
+}
+
+#[test]
+fn cancelled_export_leaves_no_file() {
+    let env = Env::new();
+    let ud = env.core().userdata();
+    populate(&ud);
+    let out_dir = tempfile::tempdir().unwrap();
+    let out = out_dir.path().join("b.jwlibrary");
+
+    let cancel = CancelToken::new();
+    cancel.cancel();
+    let r = ud.export_backup(&out, &no_progress, &cancel);
+    assert!(matches!(r, Err(CoreError::Cancelled)), "{r:?}");
+    assert!(dir_names(out_dir.path()).is_empty());
+
+    // Cancelled from inside the progress callback, at each step: nothing
+    // is left behind, and a file already at the target is untouched.
+    let steps = std::cell::Cell::new(0);
+    ud.export_backup(
+        out_dir.path().join("probe"),
+        &|_, total| steps.set(total),
+        &CancelToken::new(),
+    )
+    .unwrap();
+    std::fs::remove_file(out_dir.path().join("probe")).unwrap();
+    std::fs::write(&out, b"keep me").unwrap();
+    assert!(steps.get() > 2, "{}", steps.get());
+    for at in 1..steps.get() {
+        let cancel = CancelToken::new();
+        let progress = |done: u64, _: u64| {
+            if done == at {
+                cancel.cancel();
+            }
+        };
+        let r = ud.export_backup(&out, &progress, &cancel);
+        assert!(matches!(r, Err(CoreError::Cancelled)), "step {at}: {r:?}");
+        assert_eq!(dir_names(out_dir.path()), ["b.jwlibrary"], "step {at}");
+        assert_eq!(std::fs::read(&out).unwrap(), b"keep me");
+    }
+}
+
+#[test]
+fn export_to_a_missing_directory_is_io() {
+    let env = Env::new();
+    let ud = env.core().userdata();
+    let out_dir = tempfile::tempdir().unwrap();
+    let r = ud.export_backup(
+        out_dir.path().join("missing/b.jwlibrary"),
+        &no_progress,
+        &CancelToken::new(),
+    );
+    assert!(matches!(r, Err(CoreError::Io(_))), "{r:?}");
 }

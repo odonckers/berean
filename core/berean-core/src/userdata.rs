@@ -29,20 +29,50 @@
 //! `pub_key`. Rows are found by those columns (and created when missing);
 //! rows with no equivalent here (audio/video `Track`, `Specialty`, `Edition`)
 //! are skipped by every read, but stay in the file.
+//!
+//! # Backups
+//!
+//! A `.jwlibrary` file is a zip of `manifest.json`, the database and any
+//! media files (playlist media and thumbnails), which the core keeps under
+//! `<data_dir>/userData.media/` by their names in the zip.
+//! [`UserData::export_backup`] writes one.
 
+use std::fs::File;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use rusqlite::types::Value;
 use rusqlite::{params, params_from_iter, Connection, OptionalExtension, Row};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use tempfile::{NamedTempFile, TempDir};
+use zip::write::SimpleFileOptions;
+use zip::CompressionMethod;
 
 use crate::library::{format_pub_key, parse_pub_key};
 use crate::reader::{Location, LocationSpan};
-use crate::{CoreError, Inner};
+use crate::{CancelToken, CoreError, Inner, ProgressSink};
 
 /// The file name of the user-data database in the data dir; also the
 /// database name a backup manifest gives by default.
 pub(crate) const DB_FILE: &str = "userData.db";
+
+/// The directory under the data dir that holds a backup's media files.
+pub(crate) const MEDIA_DIR: &str = "userData.media";
+
+/// The member of a backup that describes it.
+const MANIFEST: &str = "manifest.json";
+
+/// The schema version Berean writes, and the newest it reads.
+const SCHEMA_VERSION: u32 = 16;
+
+/// The `name` and `deviceName` Berean writes into a backup's manifest.
+const DEVICE_NAME: &str = "Berean";
+
+/// The steps [`UserData::export_backup`] reports: copy the database, read
+/// its `LastModified`, hash it, write the zip, move it into place.
+const EXPORT_STEPS: u64 = 5;
 
 /// JW Library's v16 user-data schema, with its initial rows; see the file's
 /// header for where it comes from.
@@ -78,6 +108,68 @@ pub(crate) fn open(data_dir: &Path) -> Result<Connection, CoreError> {
     // `Corrupt`, rather than on the first call that uses it.
     conn.query_row("SELECT count(*) FROM sqlite_master", [], |_| Ok(()))?;
     Ok(conn)
+}
+
+/// A backup's `manifest.json`, with the field names JW Library uses.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Manifest {
+    name: String,
+    creation_date: String,
+    version: u32,
+    #[serde(rename = "type")]
+    kind: u32,
+    user_data_backup: BackupInfo,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BackupInfo {
+    last_modified_date: String,
+    device_name: String,
+    #[serde(default = "default_database_name")]
+    database_name: String,
+    hash: String,
+    schema_version: u32,
+}
+
+fn default_database_name() -> String {
+    DB_FILE.to_string()
+}
+
+/// The SHA-256 of the file at `path`, as lowercase hex.
+fn sha256_file(path: &Path) -> Result<String, CoreError> {
+    let mut hasher = Sha256::new();
+    std::io::copy(&mut File::open(path)?, &mut hasher)?;
+    Ok(hex::encode(hasher.finalize()))
+}
+
+/// Every regular file under `dir` (none if it doesn't exist), as its path
+/// relative to `dir` with `/` separators, sorted.
+fn media_files(dir: &Path) -> Result<Vec<String>, CoreError> {
+    fn walk(dir: &Path, prefix: &str, out: &mut Vec<String>) -> Result<(), CoreError> {
+        for entry in std::fs::read_dir(dir)? {
+            let entry = entry?;
+            let name = entry
+                .file_name()
+                .into_string()
+                .map_err(|n| CoreError::Io(format!("media file name not UTF-8: {n:?}")))?;
+            let rel = format!("{prefix}{name}");
+            let kind = entry.file_type()?;
+            if kind.is_dir() {
+                walk(&entry.path(), &format!("{rel}/"), out)?;
+            } else if kind.is_file() {
+                out.push(rel);
+            }
+        }
+        Ok(())
+    }
+    let mut out = Vec::new();
+    if dir.is_dir() {
+        walk(dir, "", &mut out)?;
+    }
+    out.sort();
+    Ok(out)
 }
 
 /// A highlight's color, in JW's `ColorIndex` order (1..=6).
@@ -1231,6 +1323,99 @@ impl UserData {
         if n == 0 {
             return Err(CoreError::NotFound);
         }
+        Ok(())
+    }
+
+    // Backups.
+
+    /// Write a `.jwlibrary` backup of all the user data to `path`, replacing
+    /// any file there: the database exactly as stored (every table, those
+    /// Berean doesn't surface included), its manifest, and the media files.
+    /// The file appears at `path` whole or not at all: it is written beside
+    /// it and renamed into place. Progress counts [`EXPORT_STEPS`] steps.
+    ///
+    /// Cancelled => `Cancelled`; a destination that can't be written =>
+    /// `Io`. On any error nothing is left at `path` but what was there.
+    pub fn export_backup(
+        &self,
+        path: impl AsRef<Path>,
+        progress: &dyn ProgressSink,
+        cancel: &CancelToken,
+    ) -> Result<(), CoreError> {
+        let path = path.as_ref();
+        cancel.check()?;
+        let dest_dir = match path.parent() {
+            Some(p) if !p.as_os_str().is_empty() => p,
+            _ => Path::new("."),
+        };
+        // Dropping `staging` deletes whatever is left in it, on every path.
+        let staging = TempDir::with_prefix_in(".userData-export.", dest_dir)?;
+        let copy = staging.path().join(DB_FILE);
+        let copy_str = copy
+            .to_str()
+            .ok_or_else(|| CoreError::Io(format!("path not UTF-8: {}", copy.display())))?;
+        {
+            let conn = self.inner.userdata();
+            conn.execute("VACUUM INTO ?1", [copy_str])?;
+        }
+        progress.on_progress(1, EXPORT_STEPS);
+
+        cancel.check()?;
+        let (last_modified, creation_date) = {
+            let conn = Connection::open(&copy)?;
+            let last_modified: String = conn
+                .query_row("SELECT LastModified FROM LastModified", [], |r| r.get(0))
+                .map_err(|_| CoreError::Corrupt)?;
+            let now: String = conn.query_row(&format!("SELECT {NOW}"), [], |r| r.get(0))?;
+            (last_modified, now)
+        };
+        progress.on_progress(2, EXPORT_STEPS);
+
+        cancel.check()?;
+        let hash = sha256_file(&copy)?;
+        progress.on_progress(3, EXPORT_STEPS);
+
+        cancel.check()?;
+        let manifest = Manifest {
+            name: DEVICE_NAME.into(),
+            creation_date,
+            version: 1,
+            kind: 0,
+            user_data_backup: BackupInfo {
+                last_modified_date: last_modified,
+                device_name: DEVICE_NAME.into(),
+                database_name: DB_FILE.into(),
+                hash,
+                schema_version: SCHEMA_VERSION,
+            },
+        };
+        let manifest = serde_json::to_vec(&manifest)
+            .map_err(|e| CoreError::Invalid(format!("manifest: {e}")))?;
+        let media = self.inner.data_dir.join(MEDIA_DIR);
+        let out = NamedTempFile::with_prefix_in(".userData-export.", dest_dir)?;
+        let mut zip = zip::ZipWriter::new(out);
+        let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+        let zip_err = |e: zip::result::ZipError| CoreError::Io(e.to_string());
+        zip.start_file(MANIFEST, options).map_err(zip_err)?;
+        zip.write_all(&manifest)?;
+        zip.start_file(DB_FILE, options).map_err(zip_err)?;
+        std::io::copy(&mut File::open(&copy)?, &mut zip)?;
+        for name in media_files(&media)? {
+            // A media file can't stand in for the manifest or the database.
+            if name == MANIFEST || name == DB_FILE {
+                continue;
+            }
+            zip.start_file(name.as_str(), options).map_err(zip_err)?;
+            std::io::copy(&mut File::open(media.join(&name))?, &mut zip)?;
+        }
+        let out = zip.finish().map_err(zip_err)?;
+        out.as_file().sync_all()?;
+        progress.on_progress(4, EXPORT_STEPS);
+
+        cancel.check()?;
+        out.persist(path)
+            .map_err(|e| CoreError::Io(e.error.to_string()))?;
+        progress.on_progress(EXPORT_STEPS, EXPORT_STEPS);
         Ok(())
     }
 }
