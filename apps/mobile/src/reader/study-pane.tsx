@@ -22,7 +22,6 @@ import Animated, {
   useSharedValue,
   withSpring,
   withTiming,
-  type EntryAnimationsValues,
   type ExitAnimationsValues,
   type LayoutAnimation,
 } from 'react-native-reanimated';
@@ -37,6 +36,15 @@ import {
   spacing,
   studyPaneInset,
 } from '@/design/tokens';
+import {
+  DISMISS_VELOCITY,
+  MAX_HEIGHT,
+  MIN_HEIGHT,
+  dragFraction,
+  openFraction,
+  paneDetents,
+  releaseTarget,
+} from '@/reader/pane-snap';
 import { rememberTab, rememberedTab } from '@/reader/session';
 
 export type PaneTab = 'studyNotes' | 'crossRefs' | 'research' | 'footnotes';
@@ -63,27 +71,6 @@ const TAB_EMPTY_COPY: Record<PaneTab, string> = {
 const OPEN_SPRING = { duration: 380, dampingRatio: 0.9 } as const;
 const CLOSE_SPRING = { duration: 300, dampingRatio: 1 } as const;
 
-// Pane height as a fraction of the window (spec §4, §7): it starts at 40%
-// (60% at accessibility text sizes), drags between 25% and 85%, and settles
-// on the nearest detent.
-const MIN_HEIGHT = 0.25;
-const MAX_HEIGHT = 0.85;
-const LARGE_TEXT_SCALE = 1.5;
-
-// A fast flick down on the header dismisses the pane.
-const DISMISS_VELOCITY = 800;
-
-function growOpen(values: EntryAnimationsValues): LayoutAnimation {
-  'worklet';
-  return {
-    initialValues: { height: 0, opacity: 0 },
-    animations: {
-      height: withSpring(values.targetHeight, OPEN_SPRING),
-      opacity: withTiming(1, { duration: 200 }),
-    },
-  };
-}
-
 function collapseClosed(values: ExitAnimationsValues): LayoutAnimation {
   'worklet';
   return {
@@ -95,14 +82,17 @@ function collapseClosed(values: ExitAnimationsValues): LayoutAnimation {
   };
 }
 
-// Reduce Motion: a cross-fade at the final height, no movement. Never lets
-// the fade play even though the system setting is on.
-const fadeOpen = FadeIn.duration(200).reduceMotion(ReduceMotion.Never);
+// The open fade. With Reduce Motion it is the whole open: a cross-fade at
+// the final height, no movement. Never lets the fade play even though the
+// system setting is on.
+const FADE_OPEN = { duration: 200, reduceMotion: ReduceMotion.Never } as const;
 const fadeClosed = FadeOut.duration(150).reduceMotion(ReduceMotion.Never);
 const tabFade = FadeIn.duration(150).reduceMotion(ReduceMotion.Never);
 
 /** Moves VoiceOver / TalkBack focus to a mounted element, if any. */
-export function moveAccessibilityFocus(node: ComponentRef<typeof Text> | null | undefined) {
+export function moveAccessibilityFocus(
+  node: ComponentRef<typeof Text> | ComponentRef<typeof View> | null | undefined,
+) {
   const tag = node ? findNodeHandle(node) : undefined;
   if (tag != null) AccessibilityInfo.setAccessibilityFocus(tag);
 }
@@ -184,13 +174,38 @@ export function StudyPane({
     return () => cancelAnimationFrame(frame);
   }, [reference, restored, openedOn]);
 
-  const largeText = fontScale >= LARGE_TEXT_SCALE;
-  const detents = largeText ? [0.25, 0.4, 0.6, 0.85] : [0.25, 0.4, 0.85];
-  const [fraction, setFraction] = useState(largeText ? 0.6 : 0.4);
-  // The live height while dragging, as a fraction so rotation keeps it.
-  const height = useSharedValue(fraction);
-  const dragStart = useSharedValue(fraction);
-  const animatedHeight = useAnimatedStyle(() => ({ height: height.get() * windowHeight }));
+  const detents = paneDetents(fontScale);
+  // The height the pane opens at (40%, 60% at accessibility text sizes).
+  const [opened] = useState(() => openFraction(fontScale));
+  // Mirrors the settled height for the accessibility value only; it never
+  // feeds back into the shared value.
+  const [fraction, setFraction] = useState(opened);
+  // The pane's height, as a fraction of the window so rotation keeps it.
+  // This shared value is its only owner while the pane is mounted: the
+  // open, the drag, the settle and the accessibility moves all animate it,
+  // and no layout animation touches height until the pane unmounts. As a
+  // layout prop it re-lays out the column every frame, so the text below
+  // follows the pane. The open grows from 0, except a restored pane (no
+  // animation) and Reduce Motion (a fade at the final height).
+  const growsOpen = !restored && !reducedMotion;
+  const height = useSharedValue(growsOpen ? 0 : opened);
+  const opacity = useSharedValue(restored ? 1 : 0);
+  const dragStart = useSharedValue(opened);
+  const animatedPane = useAnimatedStyle(() => ({
+    height: height.get() * windowHeight,
+    opacity: opacity.get(),
+  }));
+
+  // The open plays once per mount (the pane remounts per verse), even if
+  // Reduce Motion changes while it is open.
+  const openPlayed = useRef(false);
+  useEffect(() => {
+    if (openPlayed.current) return;
+    openPlayed.current = true;
+    if (restored) return;
+    opacity.set(withTiming(1, FADE_OPEN));
+    if (growsOpen) height.set(withSpring(opened, OPEN_SPRING));
+  }, [restored, growsOpen, opened, height, opacity]);
 
   // Settle on a detent; Reduce Motion settles with no overshoot.
   const settle = (target: number) => {
@@ -211,25 +226,39 @@ export function StudyPane({
     block: chapterScroll,
     onBegin: () => {
       'worklet';
-      dragStart.set(height.get());
+      // Grabbed while still growing open, the drag starts from the smallest
+      // height rather than below it, so it can't read as a close.
+      dragStart.set(clamp(height.get(), MIN_HEIGHT, MAX_HEIGHT));
     },
     onUpdate: (e) => {
       'worklet';
-      height.set(clamp(dragStart.get() - e.translationY / windowHeight, MIN_HEIGHT, MAX_HEIGHT));
+      height.set(
+        dragFraction({
+          start: dragStart.get(),
+          translationY: e.translationY,
+          windowHeight,
+          min: MIN_HEIGHT,
+          max: MAX_HEIGHT,
+        }),
+      );
     },
     onDeactivate: (e) => {
       'worklet';
-      const dragged = dragStart.get() - e.translationY / windowHeight;
-      if (e.velocityY > DISMISS_VELOCITY || dragged < MIN_HEIGHT) {
+      const release = releaseTarget({
+        start: dragStart.get(),
+        translationY: e.translationY,
+        velocityY: e.velocityY,
+        windowHeight,
+        detents,
+        min: MIN_HEIGHT,
+        dismissVelocity: DISMISS_VELOCITY,
+      });
+      if (release.kind === 'close') {
         scheduleOnRN(onClose);
         return;
       }
-      const current = height.get();
-      const target = detents.reduce((best, d) =>
-        Math.abs(d - current) < Math.abs(best - current) ? d : best,
-      );
-      height.set(settle(target));
-      scheduleOnRN(setFraction, target);
+      height.set(settle(release.fraction));
+      scheduleOnRN(setFraction, release.fraction);
     },
   });
 
@@ -242,7 +271,9 @@ export function StudyPane({
 
   return (
     <Animated.View
-      entering={restored ? undefined : reducedMotion ? fadeOpen : growOpen}
+      // The close stays a layout animation: it runs after unmount, when the
+      // shared value no longer drives the view, so height never has two
+      // owners at once.
       exiting={reducedMotion ? fadeClosed : collapseClosed}
       onLayout={onLayout}
       accessibilityLabel={paneLabel}
@@ -251,7 +282,7 @@ export function StudyPane({
         // Wider than the text: the pane sits studyPaneInset from the
         // column's outer edge, inside the column padding.
         { marginHorizontal: studyPaneInset[look] - readingColumnPadding[look] },
-        animatedHeight,
+        animatedPane,
         material
           ? {
               backgroundColor: m3.surfaceContainer,
