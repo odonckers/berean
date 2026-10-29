@@ -1,4 +1,4 @@
-import type { PublicationSummary } from 'berean-ffi-rn';
+import { PubKind, type PublicationSummary } from 'berean-ffi-rn';
 import { router, Stack, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, FlatList, Pressable, StyleSheet, View } from 'react-native';
@@ -25,6 +25,14 @@ function loadLibrary(): Loaded<LibraryData> {
 
 function openCatalog() {
   router.push('/library/catalog');
+}
+
+function openReader(pub: PublicationSummary) {
+  router.push({
+    pathname: '/library/reader',
+    // The kind travels as its enum name ("Bible"), not its number.
+    params: { pubKey: pub.pubKey, kind: PubKind[pub.kind], title: displayTitle(pub) },
+  });
 }
 
 function confirmRemove(pub: PublicationSummary) {
@@ -133,9 +141,10 @@ export default function LibraryScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`${displayTitle(item)}, ${publicationDetail(item, data.value.names)}`}
-              accessibilityHint="Long press to remove"
+              accessibilityHint="Opens the publication. Long press to remove"
               accessibilityActions={[{ name: 'remove', label: 'Remove' }]}
               onAccessibilityAction={() => confirmRemove(item)}
+              onPress={() => openReader(item)}
               onLongPress={() => confirmRemove(item)}
               style={[styles.row, { borderColor: colors.separator }]}
             >

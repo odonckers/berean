@@ -13,6 +13,7 @@ export default function LibraryLayout() {
             even where the stack options hide it (iOS look on Android). */}
         <Stack.Screen name="catalog" options={{ title: 'Catalog', headerShown: true }} />
         <Stack.Screen name="languages" options={{ title: 'Language', headerShown: true }} />
+        <Stack.Screen name="reader" options={{ title: '', headerShown: true }} />
       </Stack>
     </SelectedLanguageProvider>
   );

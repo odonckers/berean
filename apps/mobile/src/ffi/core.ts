@@ -1,4 +1,10 @@
-import { Core, type CatalogLike, type CoreLike, type LibraryLike } from 'berean-ffi-rn';
+import {
+  Core,
+  type CatalogLike,
+  type CoreLike,
+  type LibraryLike,
+  type ReaderLike,
+} from 'berean-ffi-rn';
 import { Paths } from 'expo-file-system';
 
 import { fileUriToPath } from './paths';
@@ -26,4 +32,8 @@ export function library(): LibraryLike {
 
 export function catalog(): CatalogLike {
   return getCore().catalog();
+}
+
+export function reader(): ReaderLike {
+  return getCore().reader();
 }
