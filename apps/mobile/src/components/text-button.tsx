@@ -12,7 +12,11 @@ type TextButtonProps = {
   disabled?: boolean;
 };
 
-/** A plain text button in the accent color, at least 44pt tall. */
+/**
+ * A plain text button in the accent color. Its hit area is at least 48x48dp
+ * on the Material look (M3 minimum touch target) and 44x44pt on the iOS look
+ * (HIG minimum).
+ */
 export function TextButton({
   title,
   onPress,
@@ -20,7 +24,8 @@ export function TextButton({
   selected,
   disabled = false,
 }: TextButtonProps) {
-  const { colors } = useBerean();
+  const { colors, look } = useBerean();
+  const target = look === 'material' ? MATERIAL_TARGET : IOS_TARGET;
   return (
     <Pressable
       accessibilityRole="button"
@@ -30,6 +35,7 @@ export function TextButton({
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,
+        { minHeight: target, minWidth: target },
         selected && { backgroundColor: colors.surfaceRaised, borderColor: colors.accent },
         { opacity: disabled ? 0.4 : pressed ? 0.6 : 1 },
       ]}
@@ -39,10 +45,11 @@ export function TextButton({
   );
 }
 
+const MATERIAL_TARGET = 48;
+const IOS_TARGET = 44;
+
 const styles = StyleSheet.create({
   button: {
-    minHeight: 44,
-    minWidth: 44,
     paddingHorizontal: spacing.md,
     justifyContent: 'center',
     alignItems: 'center',

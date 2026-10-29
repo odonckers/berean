@@ -3,6 +3,7 @@ import { router, Stack } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, ScrollView, StyleSheet, View } from 'react-native';
 
+import { FilterChip } from '@/components/filter-chip';
 import { UIText } from '@/components/text';
 import { TextButton } from '@/components/text-button';
 import { useContentInsets } from '@/design/tab-chrome';
@@ -156,9 +157,9 @@ export default function CatalogScreen() {
               contentContainerStyle={styles.chips}
             >
               {KIND_FILTERS.map((filter) => (
-                <TextButton
+                <FilterChip
                   key={filter.label}
-                  title={filter.label}
+                  label={filter.label}
                   accessibilityLabel={`Show ${filter.label}`}
                   selected={filter.kind === kind}
                   onPress={() => setKind(filter.kind)}
@@ -187,7 +188,7 @@ const styles = StyleSheet.create({
   list: { flex: 1 },
   filters: { paddingVertical: spacing.sm, gap: spacing.sm },
   inset: { paddingHorizontal: spacing.lg, gap: spacing.sm, alignItems: 'flex-start' },
-  chips: { paddingHorizontal: spacing.lg },
+  chips: { paddingHorizontal: spacing.lg, gap: spacing.sm, alignItems: 'center' },
   message: { padding: spacing.lg, gap: spacing.md, alignItems: 'flex-start' },
   empty: { padding: spacing.lg },
 });

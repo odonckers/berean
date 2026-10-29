@@ -24,7 +24,10 @@ export function useStackOptions(): Exclude<StackOptions, (...args: never[]) => u
   return {
     headerLargeTitleEnabled: true,
     headerLargeTitleShadowVisible: false,
+    // Accent tints the back button only; titles stay in the text color.
     headerTintColor: colors.accent,
+    headerTitleStyle: { color: colors.text },
+    headerLargeTitleStyle: { color: colors.text },
     contentStyle: { backgroundColor: colors.surface },
     // Android's native header has no large title, so it is hidden; Screen
     // draws the title in the content, under the status bar.
