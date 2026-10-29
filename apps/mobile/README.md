@@ -1,6 +1,15 @@
 # Berean mobile
 
-Expo (SDK 58) app for Berean using a development build (`expo-dev-client`, not Expo Go). It uses Expo Router with native tabs (Read, Studyspace, Notes, Library), each tab has its own native stack, and the new architecture is on. On Android a docked search bar above the navigation bar opens a placeholder search screen. The screens show plain placeholder text for now. Light and dark mode follow the system through the expo-router `ThemeProvider`. Real content arrives once the Rust core is wired in.
+Expo (SDK 58) app for Berean using a development build (`expo-dev-client`, not Expo Go). It uses Expo Router with native tabs (Read, Studyspace, Notes, Library), each tab has its own native stack, and the new architecture is on. Search is a docked bar above the navigation bar on Android phones, a top app bar action on Android tablets, and a trailing search tab on iOS. Ctrl+K on Android opens it as a centered palette. Read shows a design specimen (ASV John 1:1-5) and the other tabs show placeholder text. Real content arrives once the Rust core is wired in.
+
+## Design system and Look toggle
+
+- Tokens live in `src/design/tokens.ts`: color sets, highlight fills, Material 3 roles, spacing, radii, breakpoints and type scales. Screens never use raw hex. `src/design/theme.tsx` combines the system color scheme with the current Look and exposes the result through `useBerean()`. It also feeds the navigation theme, so native headers use Berean colors.
+- A Look is the platform design language: `ios` or `material`. Components branch on `useLook()`, not on `Platform.OS`. In release builds the Look is always the platform default.
+- In a dev build, open the dev menu and pick **Look: iOS design preview** or **Look: Material** (the current one has a ✓). This code is required only inside `if (__DEV__)` (`src/design/look.tsx`), so Metro strips it, and expo-dev-menu's JS with it, from release bundles.
+- The iOS Look on Android is only an approximation for previews. There is no Liquid Glass and no SF or New York font (Roboto and Literata are used instead), and the large title is drawn in the content because Android's native header has none.
+- Literata (variable, OFL) is bundled for Android through the expo-font config plugin in `app.json`. iOS uses New York via `ui-serif`.
+- Ctrl+K comes from a small local Expo module, `modules/berean-shortcuts` (Android only for now; Cmd+K on iOS is still a TODO).
 
 ## Prerequisites
 
