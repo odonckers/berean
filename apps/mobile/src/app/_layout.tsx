@@ -1,5 +1,6 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
 import { NativeTabs } from 'expo-router/native-tabs';
+import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
@@ -32,6 +33,7 @@ export default function RootLayout() {
             />
           </NativeTabs.Trigger>
         </NativeTabs>
+        <StatusBar style="auto" />
       </ThemeProvider>
     </GestureHandlerRootView>
   );
