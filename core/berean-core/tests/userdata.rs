@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 use berean_core::reader::{Location, LocationSpan};
 use berean_core::userdata::{
-    Bookmark, Highlight, HighlightColor, NoteFilter, Tag, TextRange, UserData,
+    Bookmark, Highlight, HighlightColor, ImportSummary, NoteFilter, Tag, TextRange, UserData,
 };
 use berean_core::{CancelToken, Core, CoreError};
 use common::fixture;
@@ -1203,4 +1203,665 @@ fn export_to_a_missing_directory_is_io() {
         &CancelToken::new(),
     );
     assert!(matches!(r, Err(CoreError::Io(_))), "{r:?}");
+}
+
+// Import. The backups are synthetic: the pinned blank, filled with raw SQL
+// the way JW Library fills it (tokens on every block, titles on locations),
+// plus an `InputField` row and a table JW doesn't have, `ZzExtra`.
+
+const SYNTHETIC: &str = "
+    INSERT INTO Location (LocationId, BookNumber, ChapterNumber, DocumentId, Track,
+        IssueTagNumber, KeySymbol, MepsLanguage, Type, Title) VALUES
+        (1, NULL, NULL, 2026601, NULL, 20260800, 'w26', 0, 0, 'Study Article 1'),
+        (2, NULL, NULL, 2026601, NULL, 20260800, 'w26', 1, 0, 'Artículo de estudio 1'),
+        (3, 43, 3, NULL, NULL, 0, 'nwtsty', 0, 0, 'John 3'),
+        (4, 43, 3, NULL, NULL, 0, 'nwtsty', 1, 0, 'Juan 3'),
+        (5, NULL, NULL, NULL, NULL, 20260800, 'w26', 0, 1, 'The Watchtower'),
+        (6, NULL, NULL, NULL, NULL, 0, 'nwtsty', 1, 1, 'Biblia');
+    INSERT INTO UserMark (UserMarkId, ColorIndex, LocationId, StyleIndex, UserMarkGuid,
+        Version) VALUES
+        (1, 1, 1, 0, '0d2a6b8e-41a1-4c1b-9b7e-3f6f0b1c2d01', 1),
+        (2, 3, 4, 0, '0d2a6b8e-41a1-4c1b-9b7e-3f6f0b1c2d02', 1),
+        (3, 6, 2, 0, '0d2a6b8e-41a1-4c1b-9b7e-3f6f0b1c2d03', 1);
+    INSERT INTO BlockRange (BlockType, Identifier, StartToken, EndToken, UserMarkId) VALUES
+        (1, 3, 2, 30, 1), (1, 4, 0, 25, 1), (1, 5, 0, 7, 1),
+        (2, 16, 0, 22, 2), (2, 17, 0, 14, 2),
+        (1, 1, 0, 4, 3);
+    INSERT INTO Note (NoteId, Guid, UserMarkId, LocationId, Title, Content, LastModified,
+        Created, BlockType, BlockIdentifier) VALUES
+        (1, '5b1e7c2a-0f3d-4e7a-8c11-2a9d3e4f5a01', 1, 1, 'On a highlight', 'Note text',
+            '2026-09-01T10:00:00Z', '2026-09-01T09:00:00Z', 1, 3),
+        (2, '5b1e7c2a-0f3d-4e7a-8c11-2a9d3e4f5a02', NULL, NULL, 'Free', 'Free text',
+            '2026-09-02T10:00:00Z', '2026-09-02T10:00:00Z', 0, NULL),
+        (3, '5b1e7c2a-0f3d-4e7a-8c11-2a9d3e4f5a03', NULL, 3, 'Verse', 'Juan',
+            '2026-09-03T10:00:00Z', '2026-09-03T10:00:00Z', 2, 16);
+    INSERT INTO Tag (TagId, Type, Name) VALUES (2, 1, 'Study');
+    INSERT INTO TagMap (NoteId, LocationId, TagId, Position) VALUES
+        (1, NULL, 2, 0), (3, NULL, 2, 1), (NULL, 6, 1, 0);
+    INSERT INTO Bookmark (LocationId, PublicationLocationId, Slot, Title, Snippet,
+        BlockType, BlockIdentifier) VALUES
+        (1, 5, 0, 'Study Article 1', 'snippet', 1, 3),
+        (4, 6, 2, 'Juan 3', NULL, 2, 16);
+    INSERT INTO InputField (LocationId, TextTag, Value) VALUES (1, 'tt12', 'My answer');
+    CREATE TABLE ZzExtra (Key TEXT NOT NULL, Data BLOB);
+    INSERT INTO ZzExtra VALUES ('a', x'00ff10'), ('b', NULL);
+";
+
+/// What a backup of [`SYNTHETIC`] holds, as the typed reads count it.
+const SYNTHETIC_SUMMARY: ImportSummary = ImportSummary {
+    highlights: 3,
+    notes: 3,
+    tags: 1,
+    bookmarks: 2,
+    favorites: 1,
+};
+
+/// jwlManager's `downgrade_schema` (v16 → v14), the statements verbatim
+/// (© 2026 Eryk J., jwlManager, MIT). Its first part, merging duplicate
+/// non-Bible locations, is left out: [`SYNTHETIC`] has none.
+const DOWNGRADE_V16: &str = "
+    CREATE TABLE Location_new (
+        LocationId     INTEGER NOT NULL PRIMARY KEY,
+        BookNumber     INTEGER,
+        ChapterNumber  INTEGER,
+        DocumentId     INTEGER,
+        Track          INTEGER,
+        IssueTagNumber INTEGER NOT NULL DEFAULT 0,
+        KeySymbol      TEXT,
+        MepsLanguage   INTEGER,
+        Type           INTEGER NOT NULL,
+        Title          TEXT,
+        UNIQUE (BookNumber, ChapterNumber, KeySymbol, MepsLanguage, Type),
+        UNIQUE (KeySymbol, IssueTagNumber, MepsLanguage, DocumentId, Track, Type),
+        CHECK ((Type = 0 AND
+            ((DocumentId IS NOT NULL AND DocumentId != 0) OR
+            (Track IS NOT NULL AND
+            ((KeySymbol IS NOT NULL AND length(KeySymbol) > 0) OR
+                (DocumentId IS NOT NULL AND DocumentId != 0))) OR
+            (BookNumber IS NOT NULL AND BookNumber != 0 AND
+            KeySymbol IS NOT NULL AND length(KeySymbol) > 0 AND
+            (ChapterNumber IS NULL OR ChapterNumber = 0)) OR
+            (ChapterNumber IS NOT NULL AND ChapterNumber != 0 AND
+            BookNumber IS NOT NULL AND BookNumber != 0 AND
+            KeySymbol IS NOT NULL AND length(KeySymbol) > 0))) OR
+            Type != 0),
+        CHECK ((Type = 1 AND
+            (BookNumber IS NULL OR BookNumber = 0) AND
+            (ChapterNumber IS NULL OR ChapterNumber = 0) AND
+            (DocumentId IS NULL OR DocumentId = 0) AND
+            KeySymbol IS NOT NULL AND length(KeySymbol) > 0 AND
+            Track IS NULL) OR
+            Type != 1),
+        CHECK ((Type IN (2, 3) AND
+            (BookNumber IS NULL OR BookNumber = 0) AND
+            (ChapterNumber IS NULL OR ChapterNumber = 0)) OR
+            Type NOT IN (2, 3)));
+    INSERT INTO Location_new SELECT
+        LocationId, BookNumber, ChapterNumber, DocumentId, Track,
+        IssueTagNumber, KeySymbol, MepsLanguage, Type, Title
+    FROM Location;
+    DROP TABLE Location;
+    ALTER TABLE Location_new RENAME TO Location;
+    PRAGMA user_version = 14;
+";
+
+/// The pinned blank's thumbnail, a media member of real backups.
+fn blank_thumbnail() -> Vec<u8> {
+    let mut zip =
+        zip::ZipArchive::new(std::fs::File::open(fixture("jwlmanager_blank_v16.zip")).unwrap())
+            .unwrap();
+    let mut bytes = Vec::new();
+    zip.by_name("default_thumbnail.png")
+        .unwrap()
+        .read_to_end(&mut bytes)
+        .unwrap();
+    bytes
+}
+
+/// A synthetic backup: its database, manifest and other members, each of
+/// which a test may spoil before writing it.
+struct Backup {
+    _dir: tempfile::TempDir,
+    /// The database member's file.
+    db: PathBuf,
+    manifest: serde_json::Value,
+    media: Vec<(String, Vec<u8>)>,
+}
+
+impl Backup {
+    /// The blank filled with [`SYNTHETIC`], with its thumbnail.
+    fn synthetic() -> Self {
+        let (dir, db) = blank_db();
+        Connection::open(&db)
+            .unwrap()
+            .execute_batch(SYNTHETIC)
+            .unwrap();
+        let mut b = Backup {
+            _dir: dir,
+            db,
+            manifest: serde_json::Value::Null,
+            media: vec![("default_thumbnail.png".into(), blank_thumbnail())],
+        };
+        b.seal();
+        b
+    }
+
+    /// Run `sql` on the database (foreign keys off), then
+    /// [`seal`](Self::seal) it.
+    fn alter(&mut self, sql: &str) {
+        Connection::open(&self.db)
+            .unwrap()
+            .execute_batch(&format!("PRAGMA foreign_keys = OFF;\n{sql}"))
+            .unwrap();
+        self.seal();
+    }
+
+    /// Write the manifest JW would for the database as it now is.
+    fn seal(&mut self) {
+        let bytes = std::fs::read(&self.db).unwrap();
+        self.manifest = serde_json::json!({
+            "name": "Synthetic",
+            "creationDate": "2026-10-28T06:54:00Z",
+            "version": 1,
+            "type": 0,
+            "userDataBackup": {
+                "lastModifiedDate": "2026-10-28T06:50:00Z",
+                "deviceName": "Synthetic",
+                "databaseName": "userData.db",
+                "hash": sha256_hex(&bytes),
+                "schemaVersion": user_version(&self.db),
+            }
+        });
+    }
+
+    fn write(&self, path: &Path) {
+        self.write_with_manifest(path, Some(&serde_json::to_vec(&self.manifest).unwrap()));
+    }
+
+    fn write_with_manifest(&self, path: &Path, manifest: Option<&[u8]>) {
+        use std::io::Write;
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
+        let options = zip::write::SimpleFileOptions::default();
+        if let Some(manifest) = manifest {
+            zip.start_file("manifest.json", options).unwrap();
+            zip.write_all(manifest).unwrap();
+        }
+        zip.start_file("userData.db", options).unwrap();
+        zip.write_all(&std::fs::read(&self.db).unwrap()).unwrap();
+        for (name, bytes) in &self.media {
+            zip.start_file(name.as_str(), options).unwrap();
+            zip.write_all(bytes).unwrap();
+        }
+        zip.finish().unwrap();
+    }
+}
+
+/// What an import could change in a data dir: the database's contents,
+/// the media files, and the names in the dir.
+type DataState = (
+    Vec<(String, Vec<Vec<Value>>)>,
+    Vec<(String, Vec<u8>)>,
+    Vec<String>,
+);
+
+/// A core holding some data of its own, and a dir for backup files.
+struct Existing {
+    env: Env,
+    core: Core,
+    files: tempfile::TempDir,
+}
+
+impl Existing {
+    fn new() -> Self {
+        let env = Env::new();
+        let core = env.core();
+        populate(&core.userdata());
+        let media = env.data.join("userData.media");
+        std::fs::create_dir_all(&media).unwrap();
+        std::fs::write(media.join("old.png"), b"old media").unwrap();
+        Existing {
+            env,
+            core,
+            files: tempfile::tempdir().unwrap(),
+        }
+    }
+
+    fn ud(&self) -> UserData {
+        self.core.userdata()
+    }
+
+    fn file(&self, name: &str) -> PathBuf {
+        self.files.path().join(name)
+    }
+
+    fn state(&self) -> DataState {
+        (
+            contents(&self.env.userdata_db()),
+            media_contents(&self.env.data.join("userData.media")),
+            dir_names(&self.env.data),
+        )
+    }
+
+    fn import(&self, path: &Path) -> Result<ImportSummary, CoreError> {
+        self.ud()
+            .import_backup(path, &no_progress, &CancelToken::new())
+    }
+}
+
+/// The files under `dir`, relative, with their bytes; empty if it's missing.
+fn media_contents(dir: &Path) -> Vec<(String, Vec<u8>)> {
+    fn walk(dir: &Path, prefix: &str, out: &mut Vec<(String, Vec<u8>)>) {
+        for name in dir_names(dir) {
+            let path = dir.join(&name);
+            if path.is_dir() {
+                walk(&path, &format!("{prefix}{name}/"), out);
+            } else {
+                out.push((format!("{prefix}{name}"), std::fs::read(&path).unwrap()));
+            }
+        }
+    }
+    let mut out = Vec::new();
+    if dir.is_dir() {
+        walk(dir, "", &mut out);
+    }
+    out
+}
+
+/// How many rows `foreign_key_check` reports for the database at `path`.
+fn fk_violations(path: &Path) -> usize {
+    rows(&Connection::open(path).unwrap(), "PRAGMA foreign_key_check").len()
+}
+
+#[test]
+fn import_replaces_the_data_with_the_backup() {
+    let ex = Existing::new();
+    let backup = Backup::synthetic();
+    let file = ex.file("in.jwlibrary");
+    backup.write(&file);
+    let ud = ex.ud();
+    assert_eq!(ex.import(&file).unwrap(), SYNTHETIC_SUMMARY);
+
+    // The database is the backup's, exactly; the old one is kept.
+    assert_eq!(contents(&ex.env.userdata_db()), contents(&backup.db));
+    assert_eq!(schema(&ex.env.userdata_db()), schema(&backup.db));
+    assert_eq!(
+        media_contents(&ex.env.data.join("userData.media")),
+        [("default_thumbnail.png".to_string(), blank_thumbnail())]
+    );
+    assert_eq!(
+        media_contents(&ex.env.data.join("userData.prev.media")),
+        [("old.png".to_string(), b"old media".to_vec())]
+    );
+    assert!(ex.env.data.join("userData.prev.db").is_file());
+    assert!(!dir_names(&ex.env.data).iter().any(|n| n.starts_with('.')));
+
+    // The typed reads see it.
+    let hl = ud.highlights(W_E, &document(W_E, 2026601)).unwrap();
+    assert_eq!(hl.len(), 1);
+    assert_eq!(hl[0].id, "0d2a6b8e-41a1-4c1b-9b7e-3f6f0b1c2d01");
+    assert_eq!(
+        hl[0].range,
+        range(
+            paragraph(W_E, 2026601, 3),
+            paragraph(W_E, 2026601, 5),
+            (Some(2), Some(7))
+        )
+    );
+    assert_eq!(hl[0].color, HighlightColor::Yellow);
+    let es = ud.highlights(NWT_S, &chapter(NWT_S, 43, 3)).unwrap();
+    assert_eq!(
+        es[0].range,
+        range(
+            verse(NWT_S, 43, 3, 16),
+            verse(NWT_S, 43, 3, 17),
+            (Some(0), Some(14))
+        )
+    );
+    assert_eq!(es[0].color, HighlightColor::Blue);
+    assert_eq!(
+        ud.highlights(W_S, &document(W_S, 2026601)).unwrap()[0].color,
+        HighlightColor::Purple
+    );
+    let notes = ud.notes(&NoteFilter::default()).unwrap();
+    assert_eq!(notes.len(), 3);
+    assert_eq!(notes[0].title, "On a highlight");
+    assert_eq!(notes[0].location, Some(paragraph(W_E, 2026601, 3)));
+    assert_eq!(notes[0].highlight_id.as_deref(), Some(hl[0].id.as_str()));
+    assert_eq!(notes[0].tag_ids, [2]);
+    assert_eq!(notes[0].created, "2026-09-01T09:00:00Z");
+    assert_eq!(notes[0].modified, "2026-09-01T10:00:00Z");
+    assert_eq!(notes[1].location, None);
+    assert_eq!(notes[2].location, Some(verse(NWT_E, 43, 3, 16)));
+    assert_eq!(
+        ud.tags().unwrap(),
+        [Tag {
+            id: 2,
+            name: "Study".into()
+        }]
+    );
+    assert_eq!(ud.favorites().unwrap(), [publication(NWT_S)]);
+    assert_eq!(
+        ud.bookmarks(W_E).unwrap(),
+        [Bookmark {
+            pub_key: W_E.into(),
+            slot: 0,
+            location: paragraph(W_E, 2026601, 3),
+            title: "Study Article 1".into(),
+            snippet: Some("snippet".into()),
+        }]
+    );
+    assert_eq!(
+        ud.bookmarks(NWT_S).unwrap()[0].location,
+        verse(NWT_S, 43, 3, 16)
+    );
+
+    // Writes go to the new database, with its constraints.
+    ud.add_tag("After").unwrap();
+    assert!(is_invalid(ud.add_tag("Study")));
+    assert_eq!(fk_violations(&ex.env.userdata_db()), 0);
+}
+
+#[test]
+fn export_then_import_round_trips_every_table() {
+    let ex = Existing::new();
+    let backup = Backup::synthetic();
+    let file = ex.file("in.jwlibrary");
+    backup.write(&file);
+    ex.import(&file).unwrap();
+    // Highlights made here, with and without tokens, go through too.
+    let made = [
+        (Some(3), Some(9)),
+        (None, None),
+        (Some(4), None),
+        (None, Some(2)),
+    ]
+    .map(|t| {
+        ex.ud()
+            .add_highlight(
+                &range(paragraph(W_E, 9, 1), paragraph(W_E, 9, 3), t),
+                HighlightColor::Green,
+            )
+            .unwrap()
+    });
+    let out = ex.file("out.jwlibrary");
+    ex.ud()
+        .export_backup(&out, &no_progress, &CancelToken::new())
+        .unwrap();
+    assert_eq!(
+        zip_members(&out)[2],
+        ("default_thumbnail.png".to_string(), blank_thumbnail())
+    );
+
+    let other = Existing::new();
+    assert_eq!(
+        other.import(&out).unwrap(),
+        ImportSummary {
+            highlights: SYNTHETIC_SUMMARY.highlights + 4,
+            ..SYNTHETIC_SUMMARY
+        }
+    );
+    let ours = contents(&ex.env.userdata_db());
+    assert_eq!(contents(&other.env.userdata_db()), ours);
+    for t in ["InputField", "LastModified", "ZzExtra", "android_metadata"] {
+        let (_, rows) = ours.iter().find(|(name, _)| name == t).unwrap();
+        assert!(!rows.is_empty(), "{t}");
+    }
+    // The same schema; `VACUUM INTO` lists it tables first.
+    let sorted = |path: &Path| {
+        let mut s = schema(path);
+        s.sort();
+        s
+    };
+    assert_eq!(sorted(&other.env.userdata_db()), sorted(&backup.db));
+    assert_eq!(
+        media_contents(&other.env.data.join("userData.media")),
+        [("default_thumbnail.png".to_string(), blank_thumbnail())]
+    );
+    assert_eq!(other.ud().highlights(W_E, &document(W_E, 9)).unwrap(), made);
+}
+
+#[test]
+fn v14_backup_is_upgraded_to_v16() {
+    let ex = Existing::new();
+    let v16 = Backup::synthetic();
+    let mut v14 = Backup::synthetic();
+    v14.alter(DOWNGRADE_V16);
+    assert_eq!(user_version(&v14.db), 14);
+    assert_ne!(location_shape(&v14.db), location_shape(&v16.db));
+    let file = ex.file("v14.jwlibrary");
+    v14.write(&file);
+    assert_eq!(ex.import(&file).unwrap(), SYNTHETIC_SUMMARY);
+
+    let db = ex.env.userdata_db();
+    assert_eq!(user_version(&db), 16);
+    // Location has v16's columns and indexes; every row of every table
+    // survives.
+    let (_blank_dir, blank) = blank_db();
+    assert_eq!(location_shape(&db), location_shape(&blank));
+    assert_eq!(contents(&db), contents(&v16.db));
+    assert_eq!(fk_violations(&db), 0);
+}
+
+/// `Location`'s columns, and its indexes with their columns, uniqueness
+/// and partial-ness.
+type Shape = (Vec<Vec<Value>>, Vec<Vec<Value>>);
+
+fn location_shape(path: &Path) -> Shape {
+    let conn = Connection::open(path).unwrap();
+    let columns = rows(
+        &conn,
+        "SELECT * FROM pragma_table_info('Location') ORDER BY cid",
+    );
+    let indexes = rows(
+        &conn,
+        "SELECT il.name, il.\"unique\", il.partial, ii.seqno, ii.name, ii.desc, ii.coll, ii.key \
+         FROM pragma_index_list('Location') il, pragma_index_xinfo(il.name) ii \
+         WHERE il.origin = 'c' ORDER BY il.name, ii.seqno",
+    );
+    (columns, indexes)
+}
+
+#[test]
+fn bad_backups_are_rejected_without_touching_the_data() {
+    let ex = Existing::new();
+    let before = ex.state();
+    let check = |what: &str, file: &Path, want: fn(&CoreError) -> bool| {
+        let r = ex.import(file);
+        assert!(r.as_ref().is_err_and(want), "{what}: {r:?}");
+        assert_eq!(ex.state(), before, "{what}");
+        assert!(!ex.env.data.join("userData.prev.db").exists(), "{what}");
+    };
+    let corrupt = |e: &CoreError| matches!(e, CoreError::Corrupt);
+    let invalid = |e: &CoreError| matches!(e, CoreError::Invalid(_));
+    let file = ex.file("bad.jwlibrary");
+
+    std::fs::write(&file, b"PK\x03\x04 not really a zip").unwrap();
+    check("corrupt zip", &file, corrupt);
+
+    let good = Backup::synthetic();
+    good.write_with_manifest(&file, None);
+    check("missing manifest", &file, corrupt);
+
+    let mut b = Backup::synthetic();
+    b.manifest["userDataBackup"]["databaseName"] = "missing.db".into();
+    b.write(&file);
+    check("missing database", &file, corrupt);
+
+    let mut b = Backup::synthetic();
+    b.manifest["userDataBackup"]["hash"] = sha256_hex(b"something else").into();
+    b.write(&file);
+    check("wrong hash", &file, corrupt);
+
+    good.write_with_manifest(&file, Some(b"{not json"));
+    check("bad JSON", &file, invalid);
+    good.write_with_manifest(&file, Some(br#"{"name": "x", "version": 1}"#));
+    check("manifest missing fields", &file, invalid);
+
+    let mut b = Backup::synthetic();
+    b.manifest["userDataBackup"]["schemaVersion"] = 14.into();
+    b.write(&file);
+    check("schemaVersion mismatch", &file, corrupt);
+
+    for v in [13, 15, 17] {
+        let mut b = Backup::synthetic();
+        b.alter(&format!("PRAGMA user_version = {v};"));
+        b.write(&file);
+        let r = ex.import(&file);
+        let msg = match &r {
+            Err(CoreError::Invalid(m)) => m.clone(),
+            other => panic!("version {v}: {other:?}"),
+        };
+        match v {
+            13 => assert!(msg.contains("re-export from JW Library"), "{msg}"),
+            17 => assert!(msg.contains("update Berean"), "{msg}"),
+            _ => {}
+        }
+        assert_eq!(ex.state(), before, "version {v}");
+    }
+
+    for name in ["../evil.png", "/abs/evil.png"] {
+        let mut b = Backup::synthetic();
+        b.media.push((name.into(), b"x".to_vec()));
+        b.write(&file);
+        check(name, &file, corrupt);
+        assert!(!ex.env.data.parent().unwrap().join("evil.png").exists());
+    }
+
+    let mut b = Backup::synthetic();
+    b.alter("INSERT INTO BlockRange (BlockType, Identifier, UserMarkId) VALUES (1, 1, 999);");
+    b.write(&file);
+    check("foreign key", &file, corrupt);
+
+    let mut b = Backup::synthetic();
+    b.alter(
+        "CREATE INDEX IX_ZzExtra ON ZzExtra (Key);
+         PRAGMA writable_schema = ON;
+         UPDATE sqlite_master SET sql = 'CREATE INDEX IX_ZzExtra ON ZzExtra (Data)'
+             WHERE name = 'IX_ZzExtra';",
+    );
+    let integrity = rows(&Connection::open(&b.db).unwrap(), "PRAGMA integrity_check");
+    assert_ne!(integrity, [vec![Value::Text("ok".into())]]);
+    b.write(&file);
+    check("integrity", &file, corrupt);
+
+    let mut b = Backup::synthetic();
+    let junk = b"not a database at all, but hashed right";
+    std::fs::write(&b.db, junk).unwrap();
+    b.manifest["userDataBackup"]["hash"] = sha256_hex(junk).into();
+    b.write(&file);
+    check("not a database", &file, corrupt);
+
+    let mut b = Backup::synthetic();
+    b.alter("DROP TABLE Bookmark;");
+    b.write(&file);
+    check("missing a JW table", &file, corrupt);
+
+    // Still usable, and a good backup still imports.
+    good.write(&file);
+    assert_eq!(ex.import(&file).unwrap(), SYNTHETIC_SUMMARY);
+}
+
+#[test]
+fn undo_restores_the_data_before_the_import() {
+    let ex = Existing::new();
+    let ud = ex.ud();
+    assert!(is_not_found(ud.undo_import()));
+    let before = ex.state();
+    let file = ex.file("in.jwlibrary");
+    Backup::synthetic().write(&file);
+    ex.import(&file).unwrap();
+    assert_ne!(ex.state(), before);
+
+    ud.undo_import().unwrap();
+    assert_eq!(ex.state(), before);
+    assert_eq!(ud.tags().unwrap()[0].name, "Study");
+    assert_eq!(ud.notes(&NoteFilter::default()).unwrap().len(), 2);
+    // One undo only.
+    assert!(is_not_found(ud.undo_import()));
+    assert_eq!(ex.state(), before);
+
+    // Two imports: undo goes back to the first one's data.
+    ex.import(&file).unwrap();
+    let after_first = ex.state();
+    let mut second = Backup::synthetic();
+    second.alter("DELETE FROM ZzExtra;");
+    second.media.clear();
+    second.write(&file);
+    ex.import(&file).unwrap();
+    assert!(media_contents(&ex.env.data.join("userData.media")).is_empty());
+    ud.undo_import().unwrap();
+    // The first import's data and media; the undo used up its prev.
+    assert_eq!(ex.state().0, after_first.0);
+    assert_eq!(ex.state().1, after_first.1);
+    assert!(!ex.env.data.join("userData.prev.db").exists());
+    assert!(!ex.env.data.join("userData.prev.media").exists());
+    assert!(is_not_found(ud.undo_import()));
+}
+
+#[test]
+fn import_progress_is_fixed_and_holds_no_lock() {
+    let ex = Existing::new();
+    let ud = ex.ud();
+    let file = ex.file("in.jwlibrary");
+    Backup::synthetic().write(&file);
+    let seen = std::cell::RefCell::new(Vec::new());
+    let progress = |done: u64, total: u64| {
+        // Would deadlock if a lock were held while reporting.
+        ud.tags().unwrap();
+        seen.borrow_mut().push((done, total));
+    };
+    ud.import_backup(&file, &progress, &CancelToken::new())
+        .unwrap();
+    let seen = seen.into_inner();
+    let total = seen[0].1;
+    assert!(total > 2);
+    assert!(seen.iter().all(|&(_, t)| t == total), "{seen:?}");
+    assert!(seen.windows(2).all(|w| w[0].0 <= w[1].0), "{seen:?}");
+    assert_eq!(seen.last(), Some(&(total, total)));
+}
+
+#[test]
+fn cancelled_import_leaves_the_data() {
+    let ex = Existing::new();
+    let ud = ex.ud();
+    let file = ex.file("in.jwlibrary");
+    Backup::synthetic().write(&file);
+    let before = ex.state();
+
+    let cancel = CancelToken::new();
+    cancel.cancel();
+    let r = ud.import_backup(&file, &no_progress, &cancel);
+    assert!(matches!(r, Err(CoreError::Cancelled)), "{r:?}");
+    assert_eq!(ex.state(), before);
+
+    // Cancelled from the progress callback after each step but the last:
+    // nothing changes, and nothing is left behind.
+    let total = std::cell::Cell::new(0);
+    Existing::new()
+        .ud()
+        .import_backup(&file, &|_, t| total.set(t), &CancelToken::new())
+        .unwrap();
+    assert!(total.get() > 2);
+    for at in 1..total.get() {
+        let cancel = CancelToken::new();
+        let progress = |done: u64, _: u64| {
+            if done == at {
+                cancel.cancel();
+            }
+        };
+        let r = ud.import_backup(&file, &progress, &cancel);
+        assert!(matches!(r, Err(CoreError::Cancelled)), "step {at}: {r:?}");
+        assert_eq!(ex.state(), before, "step {at}");
+    }
+    // Once the swap has been made, cancelling no longer undoes it.
+    let cancel = CancelToken::new();
+    let progress = |done: u64, total: u64| {
+        if done == total {
+            cancel.cancel();
+        }
+    };
+    assert_eq!(
+        ud.import_backup(&file, &progress, &cancel).unwrap(),
+        SYNTHETIC_SUMMARY
+    );
 }

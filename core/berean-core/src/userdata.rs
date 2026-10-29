@@ -35,10 +35,13 @@
 //! A `.jwlibrary` file is a zip of `manifest.json`, the database and any
 //! media files (playlist media and thumbnails), which the core keeps under
 //! `<data_dir>/userData.media/` by their names in the zip.
-//! [`UserData::export_backup`] writes one.
+//! [`UserData::export_backup`] writes one. [`UserData::import_backup`]
+//! replaces all the user data with one, as JW Library's restore does,
+//! keeping the previous database as `userData.prev.db` (and its media as
+//! `userData.prev.media/`) so that [`UserData::undo_import`] can put it back.
 
 use std::fs::File;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -61,11 +64,21 @@ pub(crate) const DB_FILE: &str = "userData.db";
 /// The directory under the data dir that holds a backup's media files.
 pub(crate) const MEDIA_DIR: &str = "userData.media";
 
+/// The previous database and media an import keeps, for one undo.
+const PREV_DB: &str = "userData.prev.db";
+const PREV_MEDIA: &str = "userData.prev.media";
+
 /// The member of a backup that describes it.
 const MANIFEST: &str = "manifest.json";
 
 /// The schema version Berean writes, and the newest it reads.
 const SCHEMA_VERSION: u32 = 16;
+
+/// The oldest schema version an import reads (and upgrades).
+const OLDEST_SCHEMA_VERSION: u32 = 14;
+
+/// jwlManager's v14 → v16 upgrade; see the file's header.
+const UPGRADE_V14: &str = include_str!("userdata_v14_to_v16.sql");
 
 /// The `name` and `deviceName` Berean writes into a backup's manifest.
 const DEVICE_NAME: &str = "Berean";
@@ -73,6 +86,11 @@ const DEVICE_NAME: &str = "Berean";
 /// The steps [`UserData::export_backup`] reports: copy the database, read
 /// its `LastModified`, hash it, write the zip, move it into place.
 const EXPORT_STEPS: u64 = 5;
+
+/// The steps [`UserData::import_backup`] reports: open the zip and extract
+/// the database, check its hash, check its version, upgrade and check it
+/// (and count what it holds), extract the media, swap it in.
+const IMPORT_STEPS: u64 = 6;
 
 /// JW Library's v16 user-data schema, with its initial rows; see the file's
 /// header for where it comes from.
@@ -293,6 +311,10 @@ const NOW: &str = "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')";
 /// The `Location` columns [`read_place`] reads, for the alias `l`.
 const LOC_COLS: &str = "l.Type, l.KeySymbol, l.MepsLanguage, l.IssueTagNumber, l.DocumentId, \
      l.BookNumber, l.ChapterNumber, l.Track, l.Specialty, l.Edition";
+
+/// [`LOC_COLS`] for the alias `p`.
+const PUB_COLS: &str = "p.Type, p.KeySymbol, p.MepsLanguage, p.IssueTagNumber, p.DocumentId, \
+     p.BookNumber, p.ChapterNumber, p.Track, p.Specialty, p.Edition";
 
 /// A `Location` row we can map: a publication, and what in it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -782,6 +804,256 @@ fn favorite_rows(conn: &Connection, tag: i64) -> Result<Vec<(i64, Option<Locatio
     Ok(rows)
 }
 
+/// The favorites the reads see, in order.
+fn read_favorites(conn: &Connection) -> Result<Vec<Location>, CoreError> {
+    let Some(tag) = favorites_tag(conn)? else {
+        return Ok(Vec::new());
+    };
+    Ok(favorite_rows(conn, tag)?
+        .into_iter()
+        .filter_map(|(_, loc)| loc)
+        .collect())
+}
+
+/// The bookmarks the reads see, of `publication` or of every publication,
+/// by slot.
+fn read_bookmarks(
+    conn: &Connection,
+    publication: Option<&Place>,
+) -> Result<Vec<Bookmark>, CoreError> {
+    let (filter, values) = match publication {
+        Some(p) => (format!("WHERE {}", place_match("p")), p.values()),
+        None => (String::new(), Vec::new()),
+    };
+    let mut stmt = conn.prepare(&format!(
+        "SELECT b.Slot, b.Title, b.Snippet, b.BlockType, b.BlockIdentifier, {LOC_COLS}, \
+         {PUB_COLS} FROM Bookmark b JOIN Location p ON p.LocationId = b.PublicationLocationId \
+         JOIN Location l ON l.LocationId = b.LocationId {filter} \
+         ORDER BY b.Slot, b.BookmarkId"
+    ))?;
+    let rows = stmt.query_map(params_from_iter(values), |r| {
+        let slot = u8::try_from(r.get::<_, i64>(0)?)
+            .ok()
+            .filter(|&s| s <= MAX_SLOT);
+        let location = match read_place(r, 5)? {
+            Some(place) => read_block(&place, r.get(3)?, r.get(4)?).map(|b| place.location(b)),
+            None => None,
+        };
+        let publication = read_place(r, 15)?.filter(|p| p.kind == PlaceKind::Publication);
+        Ok(match (slot, location, publication) {
+            (Some(slot), Some(location), Some(publication)) => Some(Bookmark {
+                pub_key: publication.pub_key(),
+                slot,
+                location,
+                title: r.get(1)?,
+                snippet: r.get(2)?,
+            }),
+            _ => None,
+        })
+    })?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.extend(row?);
+    }
+    Ok(out)
+}
+
+/// What the typed reads see in the database on `conn`.
+fn summary(conn: &Connection) -> Result<ImportSummary, CoreError> {
+    let marks: Vec<i64> = conn
+        .prepare("SELECT UserMarkId FROM UserMark")?
+        .query_map([], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    let mut highlights = 0;
+    for mark in marks {
+        if read_highlight(conn, mark)?.is_some() {
+            highlights += 1;
+        }
+    }
+    let tags: i64 = conn.query_row("SELECT COUNT(*) FROM Tag WHERE Type = 1", [], |r| r.get(0))?;
+    Ok(ImportSummary {
+        highlights,
+        notes: read_notes(conn, None, None)?.len() as u64,
+        tags: tags as u64,
+        bookmarks: read_bookmarks(conn, None)?.len() as u64,
+        favorites: read_favorites(conn)?.len() as u64,
+    })
+}
+
+/// A read error from a zip member: damaged data is `Corrupt`, anything else
+/// (a full disk, say) `Io`.
+fn zip_read_error(e: std::io::Error) -> CoreError {
+    use std::io::ErrorKind;
+    match e.kind() {
+        ErrorKind::InvalidData | ErrorKind::InvalidInput | ErrorKind::UnexpectedEof => {
+            CoreError::Corrupt
+        }
+        _ => e.into(),
+    }
+}
+
+/// Extract the zip member `name` to `dest`, creating its directory.
+fn extract(zip: &mut zip::ZipArchive<File>, name: &str, dest: &Path) -> Result<(), CoreError> {
+    let mut member = zip.by_name(name).map_err(|_| CoreError::Corrupt)?;
+    if let Some(dir) = dest.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let mut out = File::create(dest)?;
+    std::io::copy(&mut member, &mut out).map_err(zip_read_error)?;
+    out.sync_all()?;
+    Ok(())
+}
+
+/// Steps 1–5 of an import (see [`IMPORT_STEPS`]): validate the backup at
+/// `file` and stage it under `staging` as `userData.db` (upgraded to v16)
+/// and `media/`, reporting progress and checking `cancel` between steps.
+/// Returns what the staged database holds. Touches nothing outside
+/// `staging` and takes no lock.
+fn stage_backup(
+    file: &Path,
+    staging: &Path,
+    progress: &dyn ProgressSink,
+    cancel: &CancelToken,
+) -> Result<ImportSummary, CoreError> {
+    let db = staging.join(DB_FILE);
+    let media = staging.join("media");
+
+    let mut zip = zip::ZipArchive::new(File::open(file)?).map_err(|_| CoreError::Corrupt)?;
+    // Every member's name must stay inside the directory it's extracted to.
+    let mut members = Vec::new();
+    for i in 0..zip.len() {
+        let member = zip.by_index_raw(i).map_err(|_| CoreError::Corrupt)?;
+        let path = member.enclosed_name().ok_or(CoreError::Corrupt)?;
+        if !member.is_dir() {
+            members.push((member.name().to_string(), path));
+        }
+    }
+    let manifest: Manifest = {
+        let mut bytes = Vec::new();
+        zip.by_name(MANIFEST)
+            .map_err(|_| CoreError::Corrupt)?
+            .read_to_end(&mut bytes)
+            .map_err(zip_read_error)?;
+        serde_json::from_slice(&bytes)
+            .map_err(|e| CoreError::Invalid(format!("backup manifest: {e}")))?
+    };
+    let info = manifest.user_data_backup;
+    let db_name = info.database_name;
+    if db_name == MANIFEST || !members.iter().any(|(name, _)| *name == db_name) {
+        return Err(CoreError::Corrupt);
+    }
+    extract(&mut zip, &db_name, &db)?;
+    progress.on_progress(1, IMPORT_STEPS);
+
+    cancel.check()?;
+    if !sha256_file(&db)?.eq_ignore_ascii_case(&info.hash) {
+        return Err(CoreError::Corrupt);
+    }
+    progress.on_progress(2, IMPORT_STEPS);
+
+    cancel.check()?;
+    // Foreign keys off (the bundled SQLite turns them on by default): the
+    // upgrade rebuilds a table others refer to, and `foreign_key_check`
+    // vets the result.
+    let conn = Connection::open(&db)?;
+    conn.execute_batch("PRAGMA foreign_keys = OFF;")?;
+    let version: u32 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+    if version != info.schema_version {
+        return Err(CoreError::Corrupt);
+    }
+    match version {
+        v if v < OLDEST_SCHEMA_VERSION => {
+            return Err(CoreError::Invalid(format!(
+                "backup schema v{v} is too old: re-export from JW Library"
+            )))
+        }
+        v if v > SCHEMA_VERSION => {
+            return Err(CoreError::Invalid(format!(
+                "backup schema v{v} is newer than this version reads: update Berean"
+            )))
+        }
+        OLDEST_SCHEMA_VERSION | SCHEMA_VERSION => {}
+        v => {
+            return Err(CoreError::Invalid(format!(
+                "backup schema v{v} is not one JW Library writes"
+            )))
+        }
+    }
+    progress.on_progress(3, IMPORT_STEPS);
+
+    cancel.check()?;
+    if version == OLDEST_SCHEMA_VERSION {
+        conn.execute_batch(&format!("BEGIN;\n{UPGRADE_V14}\nCOMMIT;"))
+            .map_err(|_| CoreError::Corrupt)?;
+    }
+    let integrity: Vec<String> = conn
+        .prepare("PRAGMA integrity_check")?
+        .query_map([], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    if integrity != ["ok"] {
+        return Err(CoreError::Corrupt);
+    }
+    if conn
+        .prepare("PRAGMA foreign_key_check")?
+        .query([])?
+        .next()?
+        .is_some()
+    {
+        return Err(CoreError::Corrupt);
+    }
+    // A database without JW's tables can't be read: corrupt as a backup.
+    let summary = summary(&conn).map_err(|_| CoreError::Corrupt)?;
+    drop(conn);
+    progress.on_progress(4, IMPORT_STEPS);
+
+    cancel.check()?;
+    std::fs::create_dir(&media)?;
+    for (name, path) in &members {
+        if *name != MANIFEST && *name != db_name {
+            extract(&mut zip, name, &media.join(path))?;
+        }
+    }
+    progress.on_progress(5, IMPORT_STEPS);
+    Ok(summary)
+}
+
+/// Close the user-data connection behind `conn`, make the renames `moves`
+/// lists (`from`, `to`, whether `from` must exist; a missing optional one
+/// is skipped), and reopen it. If a rename or the reopen fails, the renames
+/// made are reversed and the old database reopened.
+fn swap_files(
+    data_dir: &Path,
+    conn: &mut Connection,
+    moves: &[(PathBuf, PathBuf, bool)],
+) -> Result<(), CoreError> {
+    // Dropping the old connection closes it, so its file can move.
+    drop(std::mem::replace(conn, Connection::open_in_memory()?));
+    let mut done: Vec<(&Path, &Path)> = Vec::new();
+    let result = (|| {
+        for (from, to, required) in moves {
+            if !required && !from.exists() {
+                continue;
+            }
+            std::fs::rename(from, to)?;
+            done.push((from, to));
+        }
+        open(data_dir)
+    })();
+    match result {
+        Ok(new) => {
+            *conn = new;
+            Ok(())
+        }
+        Err(e) => {
+            for (from, to) in done.into_iter().rev() {
+                let _ = std::fs::rename(to, from);
+            }
+            *conn = open(data_dir)?;
+            Err(e)
+        }
+    }
+}
+
 /// Handle to the user's notes, highlights, tags, favorites and bookmarks.
 /// Cheap to clone; shares the core's state.
 #[derive(Clone)]
@@ -1117,14 +1389,7 @@ impl UserData {
 
     /// The favorites, in their order.
     pub fn favorites(&self) -> Result<Vec<Location>, CoreError> {
-        let conn = self.inner.userdata();
-        let Some(tag) = favorites_tag(&conn)? else {
-            return Ok(Vec::new());
-        };
-        Ok(favorite_rows(&conn, tag)?
-            .into_iter()
-            .filter_map(|(_, loc)| loc)
-            .collect())
+        read_favorites(&self.inner.userdata())
     }
 
     /// Add `location` (a publication, document, Bible book or chapter) last
@@ -1225,38 +1490,7 @@ impl UserData {
     /// The bookmarks of `pub_key`, by slot. A malformed key => `Invalid`.
     pub fn bookmarks(&self, pub_key: &str) -> Result<Vec<Bookmark>, CoreError> {
         let publication = Place::publication(pub_key)?;
-        let conn = self.inner.userdata();
-        let mut stmt = conn.prepare(&format!(
-            "SELECT b.Slot, b.Title, b.Snippet, b.BlockType, b.BlockIdentifier, {LOC_COLS} \
-             FROM Bookmark b JOIN Location p ON p.LocationId = b.PublicationLocationId \
-             JOIN Location l ON l.LocationId = b.LocationId WHERE {} \
-             ORDER BY b.Slot, b.BookmarkId",
-            place_match("p")
-        ))?;
-        let rows = stmt.query_map(params_from_iter(publication.values()), |r| {
-            let slot = u8::try_from(r.get::<_, i64>(0)?)
-                .ok()
-                .filter(|&s| s <= MAX_SLOT);
-            let location = match read_place(r, 5)? {
-                Some(place) => read_block(&place, r.get(3)?, r.get(4)?).map(|b| place.location(b)),
-                None => None,
-            };
-            Ok(match (slot, location) {
-                (Some(slot), Some(location)) => Some(Bookmark {
-                    pub_key: pub_key.to_string(),
-                    slot,
-                    location,
-                    title: r.get(1)?,
-                    snippet: r.get(2)?,
-                }),
-                _ => None,
-            })
-        })?;
-        let mut out = Vec::new();
-        for row in rows {
-            out.extend(row?);
-        }
-        Ok(out)
+        read_bookmarks(&self.inner.userdata(), Some(&publication))
     }
 
     /// Bookmark `location` (in `pub_key`) in `slot`, replacing whatever was
@@ -1417,5 +1651,71 @@ impl UserData {
             .map_err(|e| CoreError::Io(e.error.to_string()))?;
         progress.on_progress(EXPORT_STEPS, EXPORT_STEPS);
         Ok(())
+    }
+
+    /// Replace all the user data with the `.jwlibrary` backup at `path`, as
+    /// JW Library's restore does, and say what it holds. Schema v14 is
+    /// upgraded to v16; tables and columns Berean doesn't know are kept.
+    /// The previous data is kept for one [`undo_import`](Self::undo_import).
+    /// Progress counts [`IMPORT_STEPS`] steps; cancel is honoured until the
+    /// new data is swapped in, the last step.
+    ///
+    /// A damaged zip, a missing member, a member whose name leaves the
+    /// directory, a hash or schema version that doesn't match the manifest,
+    /// or a database that fails its integrity or foreign-key check =>
+    /// `Corrupt`. A malformed manifest or a schema version other than 14 or
+    /// 16 => `Invalid`. Cancelled => `Cancelled`. On any error the current
+    /// data is untouched.
+    pub fn import_backup(
+        &self,
+        path: impl AsRef<Path>,
+        progress: &dyn ProgressSink,
+        cancel: &CancelToken,
+    ) -> Result<ImportSummary, CoreError> {
+        cancel.check()?;
+        let dir = &self.inner.data_dir;
+        // Dropping `staging` deletes whatever is left in it, on every path.
+        let staging = TempDir::with_prefix_in(".userData-import.", dir)?;
+        let summary = stage_backup(path.as_ref(), staging.path(), progress, cancel)?;
+
+        cancel.check()?;
+        let trash = staging.path();
+        swap_files(
+            dir,
+            &mut self.inner.userdata(),
+            &[
+                (dir.join(PREV_DB), trash.join("old.prev.db"), false),
+                (dir.join(PREV_MEDIA), trash.join("old.prev.media"), false),
+                (dir.join(DB_FILE), dir.join(PREV_DB), true),
+                (dir.join(MEDIA_DIR), dir.join(PREV_MEDIA), false),
+                (trash.join(DB_FILE), dir.join(DB_FILE), true),
+                (trash.join("media"), dir.join(MEDIA_DIR), true),
+            ],
+        )?;
+        progress.on_progress(IMPORT_STEPS, IMPORT_STEPS);
+        Ok(summary)
+    }
+
+    /// Put back the data the last [`import_backup`](Self::import_backup)
+    /// replaced, dropping what it brought in. There is one undo: after it,
+    /// or before any import, => `NotFound`.
+    pub fn undo_import(&self) -> Result<(), CoreError> {
+        let dir = &self.inner.data_dir;
+        let staging = TempDir::with_prefix_in(".userData-undo.", dir)?;
+        let trash = staging.path();
+        let mut conn = self.inner.userdata();
+        if !dir.join(PREV_DB).is_file() {
+            return Err(CoreError::NotFound);
+        }
+        swap_files(
+            dir,
+            &mut conn,
+            &[
+                (dir.join(DB_FILE), trash.join(DB_FILE), true),
+                (dir.join(MEDIA_DIR), trash.join("media"), false),
+                (dir.join(PREV_DB), dir.join(DB_FILE), true),
+                (dir.join(PREV_MEDIA), dir.join(MEDIA_DIR), false),
+            ],
+        )
     }
 }
