@@ -32,7 +32,13 @@ import { ScriptureText, UIText } from '@/components/text';
 import { TextButton } from '@/components/text-button';
 import { useContentInsets } from '@/design/tab-chrome';
 import { useBerean } from '@/design/theme';
-import { hairline, readingMeasure, spacing } from '@/design/tokens';
+import {
+  hairline,
+  radii,
+  readingColumnPadding,
+  readingMeasure,
+  spacing,
+} from '@/design/tokens';
 import { reader } from '@/ffi/core';
 import { load } from '@/library/load';
 import { forgetVerse, rememberVerse, restoredVerse } from '@/reader/session';
@@ -46,6 +52,10 @@ import {
 // The core does not yet report study content per verse (pending Echo's
 // verseStudy / studyReferences / markers), so every verse is Empty.
 const NO_STUDY_CONTENT: readonly PaneTab[] = [];
+
+// Study guide installation isn't modelled yet, so the guide is treated as
+// not installed (the pane offers a Research tab when there is content).
+const GUIDE_INSTALLED = false;
 
 // Spec §5: opening a verse in the bottom 35% of the viewport scrolls it to
 // about 20% from the top so the pane fits.
@@ -93,10 +103,11 @@ function ReadingColumn({
   ComponentProps<typeof ScrollView>,
   'ref' | 'onScroll' | 'onLayout' | 'scrollEventThrottle'
 >) {
-  const { colors } = useBerean();
+  const { look, colors } = useBerean();
   const { fontScale } = useWindowDimensions();
   const insets = useContentInsets();
   const measure = readingMeasure * fontScale;
+  const padding = readingColumnPadding[look];
   return (
     <ScrollView
       {...scrollProps}
@@ -105,8 +116,8 @@ function ReadingColumn({
       contentContainerStyle={{
         paddingTop: CONTENT_PADDING_TOP,
         paddingBottom: insets.bottom + spacing.lg,
-        paddingLeft: insets.left + spacing.lg,
-        paddingRight: insets.right + spacing.lg,
+        paddingLeft: insets.left + padding,
+        paddingRight: insets.right + padding,
       }}
     >
       <View style={[styles.column, { maxWidth: measure }]}>{children}</View>
@@ -130,7 +141,7 @@ function BibleChapterView({
   book: number;
   chapter: number;
 }) {
-  const { look, colors, m3, type, radii } = useBerean();
+  const { colors, type } = useBerean();
   const reducedMotion = useReducedMotion();
   // A synchronous FFI call on the JS thread; agreed for now.
   const loaded = useMemo(
@@ -164,8 +175,8 @@ function BibleChapterView({
     if (selected === undefined) return;
     forgetVerse(chapterKey);
     setSelection(undefined);
-    // The verse number is a nested Text, which is not an accessibility
-    // element of its own, so focus returns to the verse's element.
+    // The verse number is inline in the verse's Text and not an
+    // accessibility element of its own, so focus returns to the verse.
     const verseNode = verseRefs.current.get(selected);
     requestAnimationFrame(() => moveAccessibilityFocus(verseNode));
   }, [chapterKey, selected]);
@@ -235,7 +246,6 @@ function BibleChapterView({
   }
 
   const layout = reducedMotion ? undefined : verseShift;
-  const selectedFill = look === 'material' ? m3.secondaryContainer : colors.separator;
   const reference = `${title} ${chapter}:${selected ?? ''}`.trim();
 
   return (
@@ -268,10 +278,6 @@ function BibleChapterView({
               onLayout={(e) => {
                 rowTops.current.set(verse.verse, e.nativeEvent.layout.y);
               }}
-              style={[
-                styles.verse,
-                isSelected && { backgroundColor: selectedFill, borderRadius: radii.chip },
-              ]}
             >
               {/* A plain Text (styled as ScriptureText) so it can take a ref. */}
               <Text
@@ -280,7 +286,9 @@ function BibleChapterView({
                   else verseRefs.current.delete(verse.verse);
                 }}
                 style={[type.reading.scripture, { color: colors.text }]}
-                accessibilityLabel={`Verse ${verse.verse}. ${verse.text}`}
+                accessibilityLabel={`Verse ${verse.verse}, ${
+                  isSelected ? 'study open' : 'opens study'
+                }. ${verse.text}`}
                 accessibilityHint={
                   isSelected
                     ? 'Double tap to close the study pane'
@@ -292,15 +300,26 @@ function BibleChapterView({
                   if (e.nativeEvent.actionName === 'activate') toggle(verse.verse);
                 }}
               >
-                <Text
-                  accessibilityRole="button"
-                  accessibilityLabel={`Study verse ${verse.verse}`}
+                {/* An inline view so the selected number can be a pill. Its
+                    padding is the same selected or not, so selecting never
+                    reflows the verse; hitSlop pads the target without layout.
+                    A note-count badge will sit beside the number later. */}
+                <Pressable
+                  accessible={false}
+                  importantForAccessibility="no-hide-descendants"
                   onPress={() => toggle(verse.verse)}
-                  suppressHighlighting
-                  style={[type.verseNumber, { color: colors.textSecondary }]}
+                  hitSlop={spacing.sm}
+                  style={[styles.verseNumber, isSelected && { backgroundColor: colors.accent }]}
                 >
-                  {verse.label === '' ? verse.verse : verse.label}{' '}
-                </Text>
+                  <Text
+                    style={[
+                      type.verseNumber,
+                      { color: isSelected ? colors.surfaceRaised : colors.textSecondary },
+                    ]}
+                  >
+                    {verse.label === '' ? verse.verse : verse.label}
+                  </Text>
+                </Pressable>{' '}
                 {verse.text}
               </Text>
             </Animated.View>,
@@ -308,8 +327,10 @@ function BibleChapterView({
               <StudyPane
                 key="pane"
                 reference={reference}
+                subtitle={title}
                 pubKey={pubKey}
                 available={NO_STUDY_CONTENT}
+                guideInstalled={GUIDE_INSTALLED}
                 restored={selection?.restored ?? false}
                 onClose={close}
               />
@@ -415,8 +436,8 @@ function DocumentView({ pubKey, docId }: { pubKey: string; docId: string }) {
 
 const styles = StyleSheet.create({
   column: { width: '100%', alignSelf: 'center', gap: spacing.md },
-  // The fill of a selected verse extends a little past the text.
-  verse: { marginHorizontal: -spacing.xs, paddingHorizontal: spacing.xs },
+  // The selected number's accent pill: radii.chip, 1 x 4 padding.
+  verseNumber: { borderRadius: radii.chip, paddingVertical: 1, paddingHorizontal: spacing.xs },
   navRow: { flexDirection: 'row', alignItems: 'center' },
   navSpacer: { flex: 1 },
   list: { flex: 1 },
