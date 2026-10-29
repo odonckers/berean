@@ -47,7 +47,7 @@ use rusqlite::{params, params_from_iter, OptionalExtension, Transaction};
 use crate::jwpub::Publication;
 use crate::library::{parse_pub_key, Library, PubKind};
 use crate::reader::{self, Location};
-use crate::{CancelToken, CoreError, Inner, ProgressSink};
+use crate::{CancelToken, CoreError, Inner, ProgressSink, Steps};
 
 /// The most hits one query returns; a larger `limit` is capped to it.
 pub const MAX_LIMIT: u32 = 500;
@@ -287,14 +287,7 @@ pub(crate) fn index_rows(
     }
 
     let units = (chapters.len() + docs.len()) as u64;
-    let mut reported = base;
-    let mut step = |done: u64| {
-        let at = base + done * INDEX_STEPS / units.max(1);
-        if at > reported {
-            reported = at;
-            progress.on_progress(at, total);
-        }
-    };
+    let mut steps = Steps::new(progress, base, INDEX_STEPS, units, total);
 
     let mut rows = Vec::new();
     let mut done = 0;
@@ -321,7 +314,7 @@ pub(crate) fn index_rows(
             }
         }
         done += 1;
-        step(done);
+        steps.report(done);
     }
     for doc in docs {
         cancel.check()?;
@@ -344,7 +337,7 @@ pub(crate) fn index_rows(
             }
         }
         done += 1;
-        step(done);
+        steps.report(done);
     }
     if units == 0 {
         progress.on_progress(base + INDEX_STEPS, total);
