@@ -955,6 +955,30 @@ impl From<berean_core::userdata::ImportSummary> for ImportSummary {
     }
 }
 
+/// The FFI mirror of [`berean_core::userdata::ImportPreview`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ImportPreview {
+    pub backup: ImportSummary,
+    pub current: ImportSummary,
+    pub folders: u32,
+    pub filed_notes: u32,
+    pub device_name: String,
+    pub created: String,
+}
+
+impl From<berean_core::userdata::ImportPreview> for ImportPreview {
+    fn from(p: berean_core::userdata::ImportPreview) -> Self {
+        ImportPreview {
+            backup: p.backup.into(),
+            current: p.current.into(),
+            folders: p.folders,
+            filed_notes: p.filed_notes,
+            device_name: p.device_name,
+            created: p.created,
+        }
+    }
+}
+
 /// The `berean://bible/...` URL of `span`; `Invalid` if it isn't a Bible
 /// passage within one book.
 #[uniffi::export]
@@ -1402,6 +1426,24 @@ impl UserData {
             .await
     }
 
+    /// Check the `.jwlibrary` backup at `path` as
+    /// [`import_backup`](Self::import_backup) does, without importing it,
+    /// and say what an import would bring in, replace and clear.
+    pub async fn import_preview(
+        &self,
+        path: String,
+        progress: Arc<dyn ProgressSink>,
+        cancel: Arc<CancelToken>,
+    ) -> Result<ImportPreview, CoreError> {
+        let inner = self.inner.clone();
+        run_on_thread(move || {
+            Ok(inner
+                .import_preview(path, &Progress(progress), &cancel.inner)?
+                .into())
+        })
+        .await
+    }
+
     /// Replace all the user data with the `.jwlibrary` backup at `path`.
     pub async fn import_backup(
         &self,
@@ -1801,6 +1843,51 @@ mod tests {
         ))
         .unwrap_err();
         assert!(matches!(err, CoreError::Corrupt), "{err:?}");
+        let err = block_on(other.import_preview(
+            junk.display().to_string(),
+            recorder.clone(),
+            CancelToken::new(),
+        ))
+        .unwrap_err();
+        assert!(matches!(err, CoreError::Corrupt), "{err:?}");
+
+        // The preview says what the import brings and replaces, and changes
+        // nothing.
+        let folder = other.create_folder("Kept".into(), None).unwrap();
+        let filed = other
+            .add_note("F".into(), "".into(), None, None, Some(folder.id))
+            .unwrap();
+        recorder.calls.lock().unwrap().clear();
+        let preview =
+            block_on(other.import_preview(backup.clone(), recorder.clone(), CancelToken::new()))
+                .unwrap();
+        let one = ImportSummary {
+            highlights: 1,
+            notes: 1,
+            tags: 1,
+            bookmarks: 1,
+            favorites: 1,
+        };
+        assert_eq!(
+            preview,
+            ImportPreview {
+                backup: one,
+                current: ImportSummary {
+                    tags: 1,
+                    notes: 1,
+                    ..ImportSummary::from(berean_core::userdata::ImportSummary::default())
+                },
+                folders: 1,
+                filed_notes: 1,
+                device_name: "Berean".into(),
+                created: preview.created.clone(),
+            }
+        );
+        let (done, total) = *recorder.calls.lock().unwrap().last().unwrap();
+        assert_eq!(done, total);
+        assert_eq!(other.folders().unwrap().len(), 1);
+        other.remove_note(filed.id).unwrap();
+        other.delete_folder(folder.id).unwrap();
 
         let summary =
             block_on(other.import_backup(backup, recorder.clone(), CancelToken::new())).unwrap();

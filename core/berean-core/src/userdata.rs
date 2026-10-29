@@ -94,6 +94,10 @@ const EXPORT_STEPS: u64 = 5;
 /// (and count what it holds), extract the media, swap it in.
 const IMPORT_STEPS: u64 = 6;
 
+/// The steps [`UserData::import_preview`] reports: an import's first five,
+/// the ones that stage and check the backup, with no swap.
+const STAGE_STEPS: u64 = 5;
+
 /// JW Library's v16 user-data schema, with its initial rows; see the file's
 /// header for where it comes from.
 const SCHEMA_V16: &str = include_str!("userdata_v16.sql");
@@ -347,6 +351,26 @@ pub struct ImportSummary {
     pub tags: u64,
     pub bookmarks: u64,
     pub favorites: u64,
+}
+
+/// What an import of a backup would bring in and replace, for the warning
+/// the UI shows first.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportPreview {
+    /// What the backup holds, counted as [`UserData::import_backup`] does.
+    pub backup: ImportSummary,
+    /// What the current data holds, counted the same way: what the import
+    /// replaces.
+    pub current: ImportSummary,
+    /// The Berean folders the import clears.
+    pub folders: u32,
+    /// The current notes that are in a folder.
+    pub filed_notes: u32,
+    /// The device the backup was made on, from its manifest.
+    pub device_name: String,
+    /// When the backup was made: the manifest's `creationDate`, as given
+    /// (ISO-8601, as JW Library and Berean write it).
+    pub created: String,
 }
 
 /// The highest bookmark slot: JW gives each publication ten.
@@ -1179,17 +1203,28 @@ fn extract(zip: &mut zip::ZipArchive<File>, name: &str, dest: &Path) -> Result<(
     Ok(())
 }
 
+/// What [`stage_backup`] found in a backup.
+struct Staged {
+    /// What the staged database holds.
+    summary: ImportSummary,
+    /// The manifest's `userDataBackup.deviceName`.
+    device_name: String,
+    /// The manifest's `creationDate`.
+    created: String,
+}
+
 /// Steps 1–5 of an import (see [`IMPORT_STEPS`]): validate the backup at
 /// `file` and stage it under `staging` as `userData.db` (upgraded to v16)
-/// and `media/`, reporting progress and checking `cancel` between steps.
-/// Returns what the staged database holds. Touches nothing outside
-/// `staging` and takes no lock.
+/// and `media/`, reporting progress out of `total` steps and checking
+/// `cancel` between steps. Touches nothing outside `staging` and takes no
+/// lock.
 fn stage_backup(
     file: &Path,
     staging: &Path,
+    total: u64,
     progress: &dyn ProgressSink,
     cancel: &CancelToken,
-) -> Result<ImportSummary, CoreError> {
+) -> Result<Staged, CoreError> {
     let db = staging.join(DB_FILE);
     let media = staging.join("media");
 
@@ -1212,19 +1247,20 @@ fn stage_backup(
         serde_json::from_slice(&bytes)
             .map_err(|e| CoreError::Invalid(format!("backup manifest: {e}")))?
     };
+    let created = manifest.creation_date;
     let info = manifest.user_data_backup;
     let db_name = info.database_name;
     if db_name == MANIFEST || !members.iter().any(|(name, _)| *name == db_name) {
         return Err(CoreError::Corrupt);
     }
     extract(&mut zip, &db_name, &db)?;
-    progress.on_progress(1, IMPORT_STEPS);
+    progress.on_progress(1, total);
 
     cancel.check()?;
     if !sha256_file(&db)?.eq_ignore_ascii_case(&info.hash) {
         return Err(CoreError::Corrupt);
     }
-    progress.on_progress(2, IMPORT_STEPS);
+    progress.on_progress(2, total);
 
     cancel.check()?;
     // Foreign keys off (the bundled SQLite turns them on by default): the
@@ -1254,7 +1290,7 @@ fn stage_backup(
             )))
         }
     }
-    progress.on_progress(3, IMPORT_STEPS);
+    progress.on_progress(3, total);
 
     cancel.check()?;
     if version == OLDEST_SCHEMA_VERSION {
@@ -1284,7 +1320,7 @@ fn stage_backup(
     // A database without JW's tables can't be read: corrupt as a backup.
     let summary = summary(&conn).map_err(|_| CoreError::Corrupt)?;
     drop(conn);
-    progress.on_progress(4, IMPORT_STEPS);
+    progress.on_progress(4, total);
 
     cancel.check()?;
     std::fs::create_dir(&media)?;
@@ -1293,8 +1329,12 @@ fn stage_backup(
             extract(&mut zip, name, &media.join(path))?;
         }
     }
-    progress.on_progress(5, IMPORT_STEPS);
-    Ok(summary)
+    progress.on_progress(STAGE_STEPS, total);
+    Ok(Staged {
+        summary,
+        device_name: info.device_name,
+        created,
+    })
 }
 
 /// Close the user-data connection behind `conn`, make the renames `moves`
@@ -2151,8 +2191,10 @@ impl UserData {
     // Backups.
 
     /// Write a `.jwlibrary` backup of all the user data to `path`, replacing
-    /// any file there: the database exactly as stored (every table, those
-    /// Berean doesn't surface included), its manifest, and the media files.
+    /// any file there: the database as stored (every JW table, those Berean
+    /// doesn't surface included, and note bodies as written, in Markdown),
+    /// its manifest, and the media files. Berean's own tables (note folders)
+    /// are left out, so the file is the JW schema alone.
     /// The file appears at `path` whole or not at all: it is written beside
     /// it and renamed into place. Progress counts [`EXPORT_STEPS`] steps.
     ///
@@ -2179,6 +2221,18 @@ impl UserData {
         {
             let conn = self.inner.userdata();
             conn.execute("VACUUM INTO ?1", [copy_str])?;
+        }
+        {
+            // The file JW sees is pure v16: Berean's tables (and their
+            // indexes) go, and the VACUUM rebuilds the schema without the
+            // `sqlite_sequence` their `AUTOINCREMENT` added, which can't be
+            // dropped and isn't in JW's schema.
+            let conn = Connection::open(&copy)?;
+            conn.execute_batch(
+                "DROP TABLE IF EXISTS BereanNoteFolder;
+                 DROP TABLE IF EXISTS BereanFolder;
+                 VACUUM;",
+            )?;
         }
         progress.on_progress(1, EXPORT_STEPS);
 
@@ -2264,7 +2318,13 @@ impl UserData {
         let dir = &self.inner.data_dir;
         // Dropping `staging` deletes whatever is left in it, on every path.
         let staging = TempDir::with_prefix_in(".userData-import.", dir)?;
-        let summary = stage_backup(path.as_ref(), staging.path(), progress, cancel)?;
+        let staged = stage_backup(
+            path.as_ref(),
+            staging.path(),
+            IMPORT_STEPS,
+            progress,
+            cancel,
+        )?;
 
         cancel.check()?;
         let trash = staging.path();
@@ -2281,7 +2341,53 @@ impl UserData {
             ],
         )?;
         progress.on_progress(IMPORT_STEPS, IMPORT_STEPS);
-        Ok(summary)
+        Ok(staged.summary)
+    }
+
+    /// Check the `.jwlibrary` backup at `path` exactly as
+    /// [`import_backup`](Self::import_backup) does, without importing it,
+    /// and say what an import would bring in and what it would replace and
+    /// clear, for the warning the UI shows first. The backup is staged in a
+    /// temporary dir in the data dir and discarded; nothing else changes.
+    /// Progress counts [`STAGE_STEPS`] steps, the import's own but the swap;
+    /// cancel is honoured between them.
+    ///
+    /// The same errors as `import_backup`. A preview that passes means the
+    /// import passes too, unless the file changes in between.
+    pub fn import_preview(
+        &self,
+        path: impl AsRef<Path>,
+        progress: &dyn ProgressSink,
+        cancel: &CancelToken,
+    ) -> Result<ImportPreview, CoreError> {
+        cancel.check()?;
+        // Counted first, under the lock only while counting: progress is
+        // never reported with it held.
+        let (current, folders, filed_notes) = {
+            let conn = self.inner.userdata();
+            let count = |table: &str| -> Result<u32, CoreError> {
+                let n: i64 =
+                    conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))?;
+                Ok(to_u32(n).unwrap_or(u32::MAX))
+            };
+            (
+                summary(&conn)?,
+                count("BereanFolder")?,
+                count("BereanNoteFolder")?,
+            )
+        };
+        // Dropping `staging` deletes it, on every path.
+        let staging = TempDir::with_prefix_in(".userData-preview.", &self.inner.data_dir)?;
+        let staged = stage_backup(path.as_ref(), staging.path(), STAGE_STEPS, progress, cancel)?;
+        staging.close()?;
+        Ok(ImportPreview {
+            backup: staged.summary,
+            current,
+            folders,
+            filed_notes,
+            device_name: staged.device_name,
+            created: staged.created,
+        })
     }
 
     /// Put back the data the last [`import_backup`](Self::import_backup)

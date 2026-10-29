@@ -10,7 +10,8 @@ use std::path::{Path, PathBuf};
 
 use berean_core::reader::{Location, LocationSpan};
 use berean_core::userdata::{
-    Bookmark, Highlight, HighlightColor, ImportSummary, NoteFilter, Tag, TextRange, UserData,
+    Bookmark, Highlight, HighlightColor, ImportPreview, ImportSummary, NoteFilter, Tag, TextRange,
+    UserData,
 };
 use berean_core::{CancelToken, Core, CoreError};
 use common::fixture;
@@ -1138,22 +1139,148 @@ fn export_writes_the_database_and_its_manifest() {
         })
     );
 
-    // The database is the live one: same schema, user_version and rows.
+    // The database is the live one without Berean's tables: JW's schema,
+    // user_version and rows, and nothing else.
     let copy_dir = tempfile::tempdir().unwrap();
     let copy = copy_dir.path().join("userData.db");
     std::fs::write(&copy, db).unwrap();
     assert_eq!(user_version(&copy), 16);
-    // `VACUUM INTO` lists tables first, so Berean's indexes move.
-    let sorted = |path: &Path| {
-        let mut s = schema(path);
-        s.sort();
-        s
-    };
-    assert_eq!(sorted(&copy), sorted(&env.userdata_db()));
-    assert_eq!(contents(&copy), contents(&env.userdata_db()));
+    assert_eq!(contents(&copy), jw_contents(&env.userdata_db()));
     let (_blank_dir, blank) = blank_db();
-    // Berean's tables are still in the copy; dropping them is a later change.
-    assert_eq!(jw_schema(&copy), schema(&blank));
+    assert_eq!(schema(&copy), schema(&blank));
+}
+
+/// The (type, name) of every schema object the vendored v16 DDL makes, on a
+/// database with no Berean tables yet, sorted.
+fn vendored_v16_names() -> Vec<(String, String)> {
+    let conn = Connection::open_in_memory().unwrap();
+    conn.execute_batch(include_str!("../src/userdata_v16.sql"))
+        .unwrap();
+    names(&conn)
+}
+
+fn names(conn: &Connection) -> Vec<(String, String)> {
+    let mut names: Vec<(String, String)> = conn
+        .prepare("SELECT type, name FROM sqlite_master")
+        .unwrap()
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    names.sort();
+    names
+}
+
+/// The `userData.db` member of the backup at `path`, written to a file.
+fn exported_db(path: &Path) -> (tempfile::TempDir, PathBuf) {
+    let (_, bytes) = zip_members(path)
+        .into_iter()
+        .find(|(n, _)| n == "userData.db")
+        .unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("userData.db");
+    std::fs::write(&db, bytes).unwrap();
+    (dir, db)
+}
+
+#[test]
+fn export_drops_the_berean_tables() {
+    let env = Env::new();
+    let ud = env.core().userdata();
+    populate(&ud);
+    let top = ud.create_folder("Gospel of John", None).unwrap();
+    let sub = ud.create_folder("Signs", Some(top.id)).unwrap();
+    ud.add_note("Filed", "", None, None, Some(sub.id)).unwrap();
+    // The live file has Berean's tables, and the `sqlite_sequence` their
+    // `AUTOINCREMENT` adds.
+    let live = names(&env.raw());
+    assert!(live.iter().any(|(_, n)| n == "BereanFolder"), "{live:?}");
+    assert!(live.iter().any(|(_, n)| n == "sqlite_sequence"), "{live:?}");
+
+    let out_dir = tempfile::tempdir().unwrap();
+    let out = out_dir.path().join("backup.jwlibrary");
+    ud.export_backup(&out, &no_progress, &CancelToken::new())
+        .unwrap();
+    let (_db_dir, db) = exported_db(&out);
+    let conn = Connection::open(&db).unwrap();
+    let exported = names(&conn);
+    assert!(
+        !exported
+            .iter()
+            .any(|(_, n)| n.starts_with("Berean") || n.starts_with("IX_Berean")),
+        "{exported:?}"
+    );
+    // Exactly JW's schema objects, `sqlite_sequence` not among them.
+    assert_eq!(exported, vendored_v16_names());
+    let integrity: String = conn
+        .query_row("PRAGMA integrity_check", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(integrity, "ok");
+    // No free pages are left over from the dropped tables.
+    let free: i64 = conn
+        .query_row("PRAGMA freelist_count", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(free, 0);
+    // The manifest's hash is of the database as written.
+    let members = zip_members(&out);
+    let manifest: serde_json::Value = serde_json::from_slice(&members[0].1).unwrap();
+    assert_eq!(
+        manifest["userDataBackup"]["hash"],
+        sha256_hex(&std::fs::read(&db).unwrap())
+    );
+    // The live data still has its folders.
+    assert_eq!(ud.folders().unwrap().len(), 2);
+}
+
+#[test]
+fn markdown_note_bodies_round_trip_byte_identical() {
+    let ex = Existing::new();
+    let body = "# Light\r\n\nIn **him** was _life_ ~~not~~ — see \
+                [John 1:4](berean://bible/nwtsty:0:0/43/1/4).\n\n\
+                - [ ] read\n- [x] pray  \n\t`code` #study #wörd\n\n\
+                > quote\n\n```\nfenced\n```\n<b>raw</b>\n\n\n";
+    let note = ex
+        .ud()
+        .add_note("Markdown", body, None, None, None)
+        .unwrap();
+    let out = ex.file("out.jwlibrary");
+    ex.ud()
+        .export_backup(&out, &no_progress, &CancelToken::new())
+        .unwrap();
+
+    // The file holds the body as written.
+    let (_db_dir, db) = exported_db(&out);
+    let stored: Vec<u8> = Connection::open(&db)
+        .unwrap()
+        .query_row(
+            "SELECT CAST(Content AS BLOB) FROM Note WHERE Guid = ?1",
+            [&note.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(stored, body.as_bytes());
+
+    // And it comes back the same through an import.
+    let other = Existing::new();
+    other.import(&out).unwrap();
+    let back = other
+        .ud()
+        .notes(&NoteFilter::default())
+        .unwrap()
+        .into_iter()
+        .find(|n| n.id == note.id)
+        .unwrap();
+    assert_eq!(back.content.as_bytes(), body.as_bytes());
+    let raw: Vec<u8> = other
+        .env
+        .raw()
+        .query_row(
+            "SELECT CAST(Content AS BLOB) FROM Note WHERE Guid = ?1",
+            [&note.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(raw, body.as_bytes());
 }
 
 #[test]
@@ -1405,6 +1532,19 @@ impl Backup {
         };
         b.seal();
         b
+    }
+
+    /// A copy of this backup, database rows (`LastModified` too) included.
+    fn duplicate(&self) -> Self {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("userData.db");
+        std::fs::copy(&self.db, &db).unwrap();
+        Backup {
+            _dir: dir,
+            db,
+            manifest: self.manifest.clone(),
+            media: self.media.clone(),
+        }
     }
 
     /// Run `sql` on the database (foreign keys off), then
@@ -1686,7 +1826,9 @@ fn export_then_import_round_trips_every_table() {
 fn v14_backup_is_upgraded_to_v16() {
     let ex = Existing::new();
     let v16 = Backup::synthetic();
-    let mut v14 = Backup::synthetic();
+    // A copy, not a second fill: the fill stamps `LastModified` with the
+    // time, which could tick between two.
+    let mut v14 = v16.duplicate();
     v14.alter(DOWNGRADE_V16);
     assert_eq!(user_version(&v14.db), 14);
     assert_ne!(location_shape(&v14.db), location_shape(&v16.db));
@@ -1926,6 +2068,189 @@ fn cancelled_import_leaves_the_data() {
         ud.import_backup(&file, &progress, &cancel).unwrap(),
         SYNTHETIC_SUMMARY
     );
+}
+
+/// What [`populate`] makes, as the typed reads count it.
+const POPULATED_SUMMARY: ImportSummary = ImportSummary {
+    highlights: 2,
+    notes: 2,
+    tags: 1,
+    bookmarks: 1,
+    favorites: 1,
+};
+
+impl Existing {
+    fn preview(&self, path: &Path) -> Result<ImportPreview, CoreError> {
+        self.ud()
+            .import_preview(path, &no_progress, &CancelToken::new())
+    }
+
+    /// The bytes of `userData.db`, for checking a call left it alone.
+    fn db_bytes(&self) -> Vec<u8> {
+        std::fs::read(self.env.userdata_db()).unwrap()
+    }
+}
+
+#[test]
+fn import_preview_counts_the_backup_and_the_current_data() {
+    let ex = Existing::new();
+    let ud = ex.ud();
+    let top = ud.create_folder("Gospel of John", None).unwrap();
+    let sub = ud.create_folder("Signs", Some(top.id)).unwrap();
+    ud.create_folder("Psalms", None).unwrap();
+    let filed = ud.add_note("Cana", "", None, None, Some(sub.id)).unwrap();
+    let notes = ud.notes(&NoteFilter::default()).unwrap();
+    ud.set_note_folder(&notes[0].id, Some(top.id)).unwrap();
+    let file = ex.file("in.jwlibrary");
+    Backup::synthetic().write(&file);
+    let before = ex.state();
+    let bytes = ex.db_bytes();
+
+    let preview = ex.preview(&file).unwrap();
+    assert_eq!(
+        preview,
+        ImportPreview {
+            backup: SYNTHETIC_SUMMARY,
+            current: ImportSummary {
+                notes: POPULATED_SUMMARY.notes + 1,
+                ..POPULATED_SUMMARY
+            },
+            folders: 3,
+            filed_notes: 2,
+            device_name: "Synthetic".into(),
+            created: "2026-10-28T06:54:00Z".into(),
+        }
+    );
+    // Nothing changed: the database to the byte, the media, and the data
+    // dir (no staging dir left, no undo copy).
+    assert_eq!(ex.db_bytes(), bytes);
+    assert_eq!(ex.state(), before);
+    assert!(!dir_names(&ex.env.data).iter().any(|n| n.starts_with('.')));
+    assert!(!ud.undo_import().unwrap());
+    assert_eq!(ud.folders().unwrap().len(), 3);
+
+    // The import that follows brings what the preview said.
+    assert_eq!(ex.import(&file).unwrap(), preview.backup);
+    // A preview after it sees the imported data as current, with no
+    // folders; the undo copy is untouched by it.
+    let again = ex.preview(&file).unwrap();
+    assert_eq!(again.current, SYNTHETIC_SUMMARY);
+    assert_eq!((again.folders, again.filed_notes), (0, 0));
+    assert!(ud.undo_import().unwrap());
+    let back = ud.notes(&NoteFilter::default()).unwrap();
+    let back = back.iter().find(|n| n.id == filed.id).unwrap();
+    assert_eq!(back.folder_id, Some(sub.id));
+
+    // A v14 backup previews as its upgraded self, and a Berean export
+    // carries Berean's device name and its own creation date.
+    let mut v14 = Backup::synthetic();
+    v14.alter(DOWNGRADE_V16);
+    v14.write(&file);
+    assert_eq!(ex.preview(&file).unwrap().backup, SYNTHETIC_SUMMARY);
+    let out = ex.file("out.jwlibrary");
+    ud.export_backup(&out, &no_progress, &CancelToken::new())
+        .unwrap();
+    let exported = ex.preview(&out).unwrap();
+    assert_eq!(exported.device_name, "Berean");
+    assert!(is_iso_utc(&exported.created), "{}", exported.created);
+    assert_eq!(exported.backup, exported.current);
+}
+
+#[test]
+fn import_preview_rejects_what_import_rejects() {
+    let ex = Existing::new();
+    let before = ex.state();
+    let bytes = ex.db_bytes();
+    let file = ex.file("bad.jwlibrary");
+    let check = |what: &str, want: fn(&CoreError) -> bool| {
+        let r = ex.preview(&file);
+        assert!(r.as_ref().is_err_and(want), "{what}: {r:?}");
+        // Import agrees.
+        let r = ex.import(&file);
+        assert!(r.as_ref().is_err_and(want), "{what} (import): {r:?}");
+        assert_eq!(ex.state(), before, "{what}");
+        assert_eq!(ex.db_bytes(), bytes, "{what}");
+    };
+    let corrupt = |e: &CoreError| matches!(e, CoreError::Corrupt);
+    let invalid = |e: &CoreError| matches!(e, CoreError::Invalid(_));
+
+    std::fs::write(&file, b"PK\x03\x04 not really a zip").unwrap();
+    check("corrupt zip", corrupt);
+
+    let mut b = Backup::synthetic();
+    b.manifest["userDataBackup"]["hash"] = sha256_hex(b"something else").into();
+    b.write(&file);
+    check("wrong hash", corrupt);
+
+    Backup::synthetic().write_with_manifest(&file, Some(b"{not json"));
+    check("bad JSON", invalid);
+
+    let mut b = Backup::synthetic();
+    b.alter("PRAGMA user_version = 17;");
+    b.write(&file);
+    check("v17", invalid);
+
+    let mut b = Backup::synthetic();
+    b.alter("INSERT INTO BlockRange (BlockType, Identifier, UserMarkId) VALUES (1, 1, 999);");
+    b.write(&file);
+    check("foreign key", corrupt);
+
+    let r = ex.preview(&ex.file("missing.jwlibrary"));
+    assert!(matches!(r, Err(CoreError::Io(_))), "{r:?}");
+    assert_eq!(ex.state(), before);
+}
+
+#[test]
+fn import_preview_progress_holds_no_lock_and_honours_cancel() {
+    let ex = Existing::new();
+    let ud = ex.ud();
+    ud.create_folder("Kept", None).unwrap();
+    let file = ex.file("in.jwlibrary");
+    Backup::synthetic().write(&file);
+    let before = ex.state();
+
+    let seen = std::cell::RefCell::new(Vec::new());
+    let progress = |done: u64, total: u64| {
+        // Would deadlock if a lock were held while reporting.
+        assert_eq!(ud.folders().unwrap().len(), 1);
+        ud.tags().unwrap();
+        seen.borrow_mut().push((done, total));
+    };
+    ud.import_preview(&file, &progress, &CancelToken::new())
+        .unwrap();
+    let seen = seen.into_inner();
+    let total = seen[0].1;
+    // The import's steps but the swap.
+    let import_total = std::cell::Cell::new(0);
+    Existing::new()
+        .ud()
+        .import_backup(&file, &|_, t| import_total.set(t), &CancelToken::new())
+        .unwrap();
+    assert_eq!(total, import_total.get() - 1);
+    assert_eq!(
+        seen,
+        (1..=total).map(|d| (d, total)).collect::<Vec<_>>(),
+        "{seen:?}"
+    );
+
+    // Cancelled up front, or from the callback after each step but the
+    // last: `Cancelled`, and nothing changes or is left behind.
+    let cancel = CancelToken::new();
+    cancel.cancel();
+    let r = ud.import_preview(&file, &no_progress, &cancel);
+    assert!(matches!(r, Err(CoreError::Cancelled)), "{r:?}");
+    assert_eq!(ex.state(), before);
+    for at in 1..total {
+        let cancel = CancelToken::new();
+        let progress = |done: u64, _: u64| {
+            if done == at {
+                cancel.cancel();
+            }
+        };
+        let r = ud.import_preview(&file, &progress, &cancel);
+        assert!(matches!(r, Err(CoreError::Cancelled)), "step {at}: {r:?}");
+        assert_eq!(ex.state(), before, "step {at}");
+    }
 }
 
 /// The Berean tables in the database at `path`, by name.
