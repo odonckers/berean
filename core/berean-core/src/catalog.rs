@@ -395,7 +395,7 @@ impl Catalog {
         }
         let sql = format!(
             "SELECT p.Symbol, p.MepsLanguageId, p.IssueTagNumber, p.Year, p.Title, \
-                    p.PublicationTypeId \
+                    p.PublicationTypeId, p.IssueTitle \
              FROM Publication p JOIN PublicationAsset a ON a.PublicationId = p.Id \
              WHERE {} \
              ORDER BY p.Year DESC, p.IssueTagNumber DESC, p.Title, p.Symbol, p.MepsLanguageId",
@@ -413,6 +413,7 @@ impl Catalog {
                 issue_tag,
                 year: r.get(3)?,
                 title: r.get(4)?,
+                issue_title: r.get::<_, Option<String>>(6)?.filter(|t| !t.is_empty()),
                 kind: kind_of(r.get(5)?),
             })
         })?;

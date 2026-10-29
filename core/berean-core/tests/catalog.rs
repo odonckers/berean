@@ -252,6 +252,7 @@ fn trimmed_catalog_queries() {
             issue_tag: 20260800,
             year: 2026,
             title: W_S_TITLE.into(),
+            issue_title: Some("La Atalaya, agosto de 2026".into()),
             kind: PubKind::Watchtower,
         })
     );
@@ -278,6 +279,7 @@ fn trimmed_catalog_queries() {
             issue_tag: 20260900,
             year: 2026,
             title: "Our Christian Life and Ministry—Meeting Workbook—2026".into(),
+            issue_title: Some("Life and Ministry Meeting Workbook, September-October 2026".into()),
             kind: PubKind::MeetingWorkbook,
         })
     );
@@ -350,6 +352,52 @@ fn trimmed_catalog_queries() {
     assert!(none.is_empty());
 }
 
+const MWB27_JAN: &str = "mwb27:0:20270100";
+const MWB27_MAR: &str = "mwb27:0:20270300";
+
+#[test]
+fn issue_titles() {
+    let env = Env::new();
+    let catalog = env.core().catalog();
+    ingest(&catalog, trimmed()).unwrap();
+    let english = catalog.publications(&filter(Some(0), None)).unwrap();
+
+    // Dated issues share a title; the issue title tells them apart.
+    let jan = find(&english, MWB27_JAN).unwrap();
+    let mar = find(&english, MWB27_MAR).unwrap();
+    assert_eq!(
+        jan.issue_title.as_deref(),
+        Some("Life and Ministry Meeting Workbook, January-February 2027")
+    );
+    assert_eq!(
+        mar.issue_title.as_deref(),
+        Some("Life and Ministry Meeting Workbook, March-April 2027")
+    );
+    assert_eq!(jan.title, mar.title);
+
+    // Undated publications have none.
+    assert_eq!(find(&english, LL_E).unwrap().issue_title, None);
+    assert!(english
+        .iter()
+        .filter(|s| s.issue_tag == 0)
+        .all(|s| s.issue_title.is_none()));
+}
+
+#[test]
+fn empty_issue_title_is_none() {
+    let env = Env::new();
+    let catalog = env.core().catalog();
+    let edited = env.edited_trimmed(
+        "empty-issue-title.db",
+        "UPDATE Publication SET IssueTitle = '' \
+         WHERE Symbol = 'mwb27' AND MepsLanguageId = 0 AND IssueTagNumber = 20270100;",
+    );
+    ingest(&catalog, edited).unwrap();
+    let english = catalog.publications(&filter(Some(0), None)).unwrap();
+    assert_eq!(find(&english, MWB27_JAN).unwrap().issue_title, None);
+    assert!(find(&english, MWB27_MAR).unwrap().issue_title.is_some());
+}
+
 #[test]
 fn assets_match_the_jwpub_files() {
     let env = Env::new();
@@ -372,12 +420,17 @@ fn assets_match_the_jwpub_files() {
         assert_eq!(asset.size, std::fs::metadata(&path).unwrap().len(), "{key}");
         assert_eq!(asset.sha1, sha1_hex(&path), "{key}");
 
-        // And installing it lists the same summary the catalog does.
+        // And installing it lists the same summary the catalog does, less
+        // the issue title, which a .jwpub does not carry.
         library
             .install(key, &path, &|_, _| {}, &CancelToken::new())
             .unwrap();
         let installed = library.installed().unwrap();
-        assert_eq!(find(&installed, key), find(&listed, key), "{key}");
+        let catalogued = PublicationSummary {
+            issue_title: None,
+            ..find(&listed, key).unwrap().clone()
+        };
+        assert_eq!(find(&installed, key), Some(&catalogued), "{key}");
     }
 
     let w_e = catalog.asset(W_E).unwrap();

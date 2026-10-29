@@ -255,6 +255,7 @@ pub struct PublicationSummary {
     pub issue_tag: u32,
     pub year: u32,
     pub title: String,
+    pub issue_title: Option<String>,
     pub kind: PubKind,
 }
 
@@ -267,6 +268,7 @@ impl From<berean_core::library::PublicationSummary> for PublicationSummary {
             issue_tag: s.issue_tag,
             year: s.year,
             title: s.title,
+            issue_title: s.issue_title,
             kind: s.kind.into(),
         }
     }
@@ -1725,6 +1727,7 @@ mod tests {
                 issue_tag: 0,
                 year: 2011,
                 title: "Listen to God and Live Forever".into(),
+                issue_title: None,
                 kind: PubKind::Brochure,
             }]
         );
