@@ -1,5 +1,5 @@
 {
- "version": "pilot-2026-10-28",
+ "version": "pilot-2026-10-28.2",
  "events": [
   {
    "id": "event:acts-13-1-3",
@@ -9,6 +9,18 @@
     "alternate": []
    },
    "scripture": "Ac 13:1-3",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 13,
+     "verse": 1
+    },
+    "end": {
+     "chapter": 13,
+     "verse": 3
+    }
+   },
    "sequence": 1,
    "periods": [
     "period:paul-first-missionary-journey"
@@ -48,6 +60,18 @@
     "alternate": []
    },
    "scripture": "Ac 13:4-12",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 13,
+     "verse": 4
+    },
+    "end": {
+     "chapter": 13,
+     "verse": 12
+    }
+   },
    "sequence": 2,
    "periods": [
     "period:paul-first-missionary-journey"
@@ -92,6 +116,18 @@
     "alternate": []
    },
    "scripture": "Ac 13:13-41",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 13,
+     "verse": 13
+    },
+    "end": {
+     "chapter": 13,
+     "verse": 41
+    }
+   },
    "sequence": 3,
    "periods": [
     "period:paul-first-missionary-journey"
@@ -134,6 +170,18 @@
     "alternate": []
    },
    "scripture": "Ac 13:42-52",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 13,
+     "verse": 42
+    },
+    "end": {
+     "chapter": 13,
+     "verse": 52
+    }
+   },
    "sequence": 4,
    "periods": [
     "period:paul-first-missionary-journey"
@@ -173,6 +221,18 @@
     "alternate": []
    },
    "scripture": "Ac 14:1-7",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 14,
+     "verse": 1
+    },
+    "end": {
+     "chapter": 14,
+     "verse": 7
+    }
+   },
    "sequence": 5,
    "periods": [
     "period:paul-first-missionary-journey"
@@ -212,6 +272,18 @@
     "alternate": []
    },
    "scripture": "Ac 14:8-18",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 14,
+     "verse": 8
+    },
+    "end": {
+     "chapter": 14,
+     "verse": 18
+    }
+   },
    "sequence": 6,
    "periods": [
     "period:paul-first-missionary-journey"
@@ -251,6 +323,18 @@
     "alternate": []
    },
    "scripture": "Ac 14:21-23",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 14,
+     "verse": 21
+    },
+    "end": {
+     "chapter": 14,
+     "verse": 23
+    }
+   },
    "sequence": 7,
    "periods": [
     "period:paul-first-missionary-journey"
@@ -293,6 +377,18 @@
     "alternate": []
    },
    "scripture": "Ac 14:24-28",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 14,
+     "verse": 24
+    },
+    "end": {
+     "chapter": 14,
+     "verse": 28
+    }
+   },
    "sequence": 8,
    "periods": [
     "period:paul-first-missionary-journey"
@@ -336,6 +432,18 @@
     "alternate": []
    },
    "scripture": "Ac 15:1-5",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 15,
+     "verse": 1
+    },
+    "end": {
+     "chapter": 15,
+     "verse": 5
+    }
+   },
    "sequence": 9,
    "periods": [],
    "places": [
@@ -381,6 +489,18 @@
     "alternate": []
    },
    "scripture": "Ac 15:6-12",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 15,
+     "verse": 6
+    },
+    "end": {
+     "chapter": 15,
+     "verse": 12
+    }
+   },
    "sequence": 10,
    "periods": [],
    "places": [
@@ -424,6 +544,18 @@
     "alternate": []
    },
    "scripture": "Ac 15:22-29",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 15,
+     "verse": 22
+    },
+    "end": {
+     "chapter": 15,
+     "verse": 29
+    }
+   },
    "sequence": 11,
    "periods": [],
    "places": [
@@ -469,6 +601,18 @@
     "alternate": []
    },
    "scripture": "Ac 15:36-41",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 15,
+     "verse": 36
+    },
+    "end": {
+     "chapter": 15,
+     "verse": 41
+    }
+   },
    "sequence": 12,
    "periods": [
     "period:paul-second-missionary-journey"
@@ -513,6 +657,18 @@
     "alternate": []
    },
    "scripture": "Ac 16:1-5",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 16,
+     "verse": 1
+    },
+    "end": {
+     "chapter": 16,
+     "verse": 5
+    }
+   },
    "sequence": 13,
    "periods": [
     "period:paul-second-missionary-journey"
@@ -554,6 +710,18 @@
     "alternate": []
    },
    "scripture": "Ac 16:6-10",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 16,
+     "verse": 6
+    },
+    "end": {
+     "chapter": 16,
+     "verse": 10
+    }
+   },
    "sequence": 14,
    "periods": [
     "period:paul-second-missionary-journey"
@@ -599,6 +767,18 @@
     "alternate": []
    },
    "scripture": "Ac 16:11-15",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 16,
+     "verse": 11
+    },
+    "end": {
+     "chapter": 16,
+     "verse": 15
+    }
+   },
    "sequence": 15,
    "periods": [
     "period:paul-second-missionary-journey"
@@ -650,6 +830,18 @@
     "alternate": []
    },
    "scripture": "Ac 16:16-24",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 16,
+     "verse": 16
+    },
+    "end": {
+     "chapter": 16,
+     "verse": 24
+    }
+   },
    "sequence": 16,
    "periods": [
     "period:paul-second-missionary-journey"
@@ -689,6 +881,18 @@
     "alternate": []
    },
    "scripture": "Ac 16:25-34",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 16,
+     "verse": 25
+    },
+    "end": {
+     "chapter": 16,
+     "verse": 34
+    }
+   },
    "sequence": 17,
    "periods": [
     "period:paul-second-missionary-journey"
@@ -728,6 +932,18 @@
     "alternate": []
    },
    "scripture": "Ac 16:35-40",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 16,
+     "verse": 35
+    },
+    "end": {
+     "chapter": 16,
+     "verse": 40
+    }
+   },
    "sequence": 18,
    "periods": [
     "period:paul-second-missionary-journey"
@@ -767,6 +983,18 @@
     "alternate": []
    },
    "scripture": "Ac 17:1-9",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 17,
+     "verse": 1
+    },
+    "end": {
+     "chapter": 17,
+     "verse": 9
+    }
+   },
    "sequence": 19,
    "periods": [
     "period:paul-second-missionary-journey"
@@ -808,6 +1036,18 @@
     "alternate": []
    },
    "scripture": "Ac 17:10-15",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 17,
+     "verse": 10
+    },
+    "end": {
+     "chapter": 17,
+     "verse": 15
+    }
+   },
    "sequence": 20,
    "periods": [
     "period:paul-second-missionary-journey"
@@ -849,6 +1089,19 @@
     "alternate": []
    },
    "scripture": "Ac 17:16-22a",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 17,
+     "verse": 16
+    },
+    "end": {
+     "chapter": 17,
+     "verse": 22,
+     "part": "a"
+    }
+   },
    "sequence": 21,
    "periods": [
     "period:paul-second-missionary-journey"
@@ -887,6 +1140,19 @@
     "alternate": []
    },
    "scripture": "Ac 17:22b-31",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 17,
+     "verse": 22,
+     "part": "b"
+    },
+    "end": {
+     "chapter": 17,
+     "verse": 31
+    }
+   },
    "sequence": 22,
    "periods": [
     "period:paul-second-missionary-journey"
@@ -925,6 +1191,18 @@
     "alternate": []
    },
    "scripture": "Ac 17:32-34",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 17,
+     "verse": 32
+    },
+    "end": {
+     "chapter": 17,
+     "verse": 34
+    }
+   },
    "sequence": 23,
    "periods": [
     "period:paul-second-missionary-journey"
@@ -963,6 +1241,18 @@
     "alternate": []
    },
    "scripture": "Ac 18:1-17",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 18,
+     "verse": 1
+    },
+    "end": {
+     "chapter": 18,
+     "verse": 17
+    }
+   },
    "sequence": 24,
    "periods": [
     "period:paul-second-missionary-journey"
@@ -1012,6 +1302,18 @@
     "alternate": []
    },
    "scripture": "Ac 18:18-22",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 18,
+     "verse": 18
+    },
+    "end": {
+     "chapter": 18,
+     "verse": 22
+    }
+   },
    "sequence": 25,
    "periods": [
     "period:paul-second-missionary-journey"
@@ -1055,6 +1357,18 @@
     "alternate": []
    },
    "scripture": "Ac 18:23",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 18,
+     "verse": 23
+    },
+    "end": {
+     "chapter": 18,
+     "verse": 23
+    }
+   },
    "sequence": 26,
    "periods": [
     "period:paul-third-missionary-journey"
@@ -1094,6 +1408,18 @@
     "alternate": []
    },
    "scripture": "Ac 19:1-7",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 19,
+     "verse": 1
+    },
+    "end": {
+     "chapter": 19,
+     "verse": 7
+    }
+   },
    "sequence": 27,
    "periods": [
     "period:paul-third-missionary-journey"
@@ -1132,6 +1458,18 @@
     "alternate": []
    },
    "scripture": "Ac 19:8-10",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 19,
+     "verse": 8
+    },
+    "end": {
+     "chapter": 19,
+     "verse": 10
+    }
+   },
    "sequence": 28,
    "periods": [
     "period:paul-third-missionary-journey"
@@ -1170,6 +1508,18 @@
     "alternate": []
    },
    "scripture": "Ac 19:21-34",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 19,
+     "verse": 21
+    },
+    "end": {
+     "chapter": 19,
+     "verse": 34
+    }
+   },
    "sequence": 29,
    "periods": [
     "period:paul-third-missionary-journey"
@@ -1208,6 +1558,18 @@
     "alternate": []
    },
    "scripture": "Ac 20:1-6",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 20,
+     "verse": 1
+    },
+    "end": {
+     "chapter": 20,
+     "verse": 6
+    }
+   },
    "sequence": 30,
    "periods": [
     "period:paul-third-missionary-journey"
@@ -1251,6 +1613,18 @@
     "alternate": []
    },
    "scripture": "Ac 20:7-12",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 20,
+     "verse": 7
+    },
+    "end": {
+     "chapter": 20,
+     "verse": 12
+    }
+   },
    "sequence": 31,
    "periods": [
     "period:paul-third-missionary-journey"
@@ -1291,6 +1665,18 @@
     "alternate": []
    },
    "scripture": "Ac 20:13-16",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 20,
+     "verse": 13
+    },
+    "end": {
+     "chapter": 20,
+     "verse": 16
+    }
+   },
    "sequence": 32,
    "periods": [
     "period:paul-third-missionary-journey"
@@ -1341,6 +1727,18 @@
     "alternate": []
    },
    "scripture": "Ac 20:17-38",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 20,
+     "verse": 17
+    },
+    "end": {
+     "chapter": 20,
+     "verse": 38
+    }
+   },
    "sequence": 33,
    "periods": [
     "period:paul-third-missionary-journey"
@@ -1380,6 +1778,18 @@
     "alternate": []
    },
    "scripture": "Ac 21:1-14",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 21,
+     "verse": 1
+    },
+    "end": {
+     "chapter": 21,
+     "verse": 14
+    }
+   },
    "sequence": 34,
    "periods": [
     "period:paul-third-missionary-journey"
@@ -1424,6 +1834,18 @@
     "alternate": []
    },
    "scripture": "Ac 21:15-17",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 21,
+     "verse": 15
+    },
+    "end": {
+     "chapter": 21,
+     "verse": 17
+    }
+   },
    "sequence": 35,
    "periods": [
     "period:paul-third-missionary-journey"
@@ -1463,8 +1885,22 @@
     "alternate": []
    },
    "scripture": "Ac 21:27-36",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 21,
+     "verse": 27
+    },
+    "end": {
+     "chapter": 21,
+     "verse": 36
+    }
+   },
    "sequence": 36,
-   "periods": [],
+   "periods": [
+    "period:paul-arrest-and-custody-in-caesarea"
+   ],
    "places": [
     "place:jerusalem"
    ],
@@ -1476,9 +1912,26 @@
      "publication": "nwtsty",
      "location": "Acts outline, “Riot in the temple; Romans arrest Paul” (21:27-36)",
      "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/21#h=152:0-154:0"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "Study note on Ac 21:31 (“the commander”)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/21",
+     "quote": "In about 56 C.E., Claudius Lysias was the military commander of the Jerusalem garrison."
     }
    ],
-   "date": null
+   "date": {
+    "start": {
+     "year": 56,
+     "approx": true
+    },
+    "end": {
+     "year": 56,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "cited"
+   }
   },
   {
    "id": "event:acts-23-23-35",
@@ -1488,8 +1941,22 @@
     "alternate": []
    },
    "scripture": "Ac 23:23-35",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 23,
+     "verse": 23
+    },
+    "end": {
+     "chapter": 23,
+     "verse": 35
+    }
+   },
    "sequence": 37,
-   "periods": [],
+   "periods": [
+    "period:paul-arrest-and-custody-in-caesarea"
+   ],
    "places": [
     "place:jerusalem",
     "place:caesarea"
@@ -1503,9 +1970,26 @@
      "publication": "nwtsty",
      "location": "Acts outline, “Roman soldiers transfer Paul to Caesarea” (23:23-35)",
      "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/23#h=167:0-170:0"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "Study note on Ac 23:35 (“palace”)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/23",
+     "quote": "At this time, about 56 C.E., it served as the residence of the Roman governor."
     }
    ],
-   "date": null
+   "date": {
+    "start": {
+     "year": 56,
+     "approx": true
+    },
+    "end": {
+     "year": 56,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "cited"
+   }
   },
   {
    "id": "event:acts-24-22-27",
@@ -1515,8 +1999,22 @@
     "alternate": []
    },
    "scripture": "Ac 24:22-27",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 24,
+     "verse": 22
+    },
+    "end": {
+     "chapter": 24,
+     "verse": 27
+    }
+   },
    "sequence": 38,
-   "periods": [],
+   "periods": [
+    "period:paul-arrest-and-custody-in-caesarea"
+   ],
    "places": [
     "place:caesarea"
    ],
@@ -1532,7 +2030,18 @@
      "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/24#h=174:0-176:0"
     }
    ],
-   "date": null
+   "date": {
+    "start": {
+     "year": 56,
+     "approx": true
+    },
+    "end": {
+     "year": 58,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
   },
   {
    "id": "event:acts-25-1-12",
@@ -1542,8 +2051,22 @@
     "alternate": []
    },
    "scripture": "Ac 25:1-12",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 25,
+     "verse": 1
+    },
+    "end": {
+     "chapter": 25,
+     "verse": 12
+    }
+   },
    "sequence": 39,
-   "periods": [],
+   "periods": [
+    "period:paul-arrest-and-custody-in-caesarea"
+   ],
    "places": [
     "place:caesarea"
    ],
@@ -1556,9 +2079,26 @@
      "publication": "nwtsty",
      "location": "Acts outline, “Paul’s trial before Festus; “I appeal to Caesar!”” (25:1-12)",
      "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/25#h=176:0-179:0"
+    },
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 819, “FELIX” (WOL ¶7)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200001502",
+     "quote": "Perhaps in 58 C.E. “Felix was succeeded by Porcius Festus; and because Felix desired to gain favor with the Jews, he left Paul bound.”"
     }
    ],
-   "date": null
+   "date": {
+    "start": {
+     "year": 58,
+     "approx": true
+    },
+    "end": {
+     "year": 58,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "cited"
+   }
   },
   {
    "id": "event:acts-25-23-26-11",
@@ -1568,8 +2108,22 @@
     "alternate": []
    },
    "scripture": "Ac 25:23–26:11",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 25,
+     "verse": 23
+    },
+    "end": {
+     "chapter": 26,
+     "verse": 11
+    }
+   },
    "sequence": 40,
-   "periods": [],
+   "periods": [
+    "period:paul-arrest-and-custody-in-caesarea"
+   ],
    "places": [
     "place:caesarea"
    ],
@@ -1585,7 +2139,18 @@
      "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/25#h=181:116-186:0"
     }
    ],
-   "date": null
+   "date": {
+    "start": {
+     "year": 56,
+     "approx": true
+    },
+    "end": {
+     "year": 58,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
   },
   {
    "id": "event:acts-27-1-12",
@@ -1595,6 +2160,18 @@
     "alternate": []
    },
    "scripture": "Ac 27:1-12",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 27,
+     "verse": 1
+    },
+    "end": {
+     "chapter": 27,
+     "verse": 12
+    }
+   },
    "sequence": 41,
    "periods": [
     "period:paul-trip-to-rome"
@@ -1650,6 +2227,18 @@
     "alternate": []
    },
    "scripture": "Ac 27:13-38",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 27,
+     "verse": 13
+    },
+    "end": {
+     "chapter": 27,
+     "verse": 38
+    }
+   },
    "sequence": 42,
    "periods": [
     "period:paul-trip-to-rome"
@@ -1691,6 +2280,18 @@
     "alternate": []
    },
    "scripture": "Ac 27:39-44",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 27,
+     "verse": 39
+    },
+    "end": {
+     "chapter": 27,
+     "verse": 44
+    }
+   },
    "sequence": 43,
    "periods": [
     "period:paul-trip-to-rome"
@@ -1732,6 +2333,18 @@
     "alternate": []
    },
    "scripture": "Ac 28:1-6",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 28,
+     "verse": 1
+    },
+    "end": {
+     "chapter": 28,
+     "verse": 6
+    }
+   },
    "sequence": 44,
    "periods": [
     "period:paul-trip-to-rome"
@@ -1771,6 +2384,18 @@
     "alternate": []
    },
    "scripture": "Ac 28:7-10",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 28,
+     "verse": 7
+    },
+    "end": {
+     "chapter": 28,
+     "verse": 10
+    }
+   },
    "sequence": 45,
    "periods": [
     "period:paul-trip-to-rome"
@@ -1811,6 +2436,18 @@
     "alternate": []
    },
    "scripture": "Ac 28:11-16",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 28,
+     "verse": 11
+    },
+    "end": {
+     "chapter": 28,
+     "verse": 16
+    }
+   },
    "sequence": 46,
    "periods": [
     "period:paul-trip-to-rome"
@@ -1832,19 +2469,25 @@
      "publication": "nwtsty",
      "location": "Acts outline, “On to Rome via Syracuse, Rhegium, and Puteoli” (28:11-16)",
      "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/28#h=200:0-201:0"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "Study note on Ac 28:13 (“Puteoli”)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/28",
+     "quote": "Paul, on his way to stand before Caesar in Rome, arrived at Puteoli about the year 59 C.E."
     }
    ],
    "date": {
     "start": {
-     "year": 58,
+     "year": 59,
      "approx": true
     },
     "end": {
-     "year": 61,
+     "year": 59,
      "approx": true
     },
     "confidence": "likely",
-    "basis": "inherited from period"
+    "basis": "cited"
    }
   },
   {
@@ -1855,6 +2498,18 @@
     "alternate": []
    },
    "scripture": "Ac 28:17-29",
+   "scripture_ref": {
+    "book": 44,
+    "book_name": "Acts",
+    "start": {
+     "chapter": 28,
+     "verse": 17
+    },
+    "end": {
+     "chapter": 28,
+     "verse": 29
+    }
+   },
    "sequence": 47,
    "periods": [
     "period:paul-trip-to-rome"
