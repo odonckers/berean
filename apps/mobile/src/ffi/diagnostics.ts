@@ -4,7 +4,6 @@
 import {
   CancelToken,
   Core,
-  CoreError,
   coreVersion,
   type CoreLike,
   type ProgressSink,
@@ -12,6 +11,7 @@ import {
 } from 'berean-ffi-rn';
 import { Paths } from 'expo-file-system';
 
+import { coreErrorMessage } from './errors';
 import { fileUriToPath } from './paths';
 
 export const TAG = '[berean-ffi]';
@@ -48,14 +48,6 @@ function bench<T>(run: () => T, dispose: (value: T) => void = () => {}) {
   };
 }
 
-function describeError(e: unknown): string {
-  // Not `instanceof`: Babel breaks Error subclassing (ubrn errors idiom).
-  if (CoreError.instanceOf(e)) {
-    return `CoreError.${e.tag}: ${e.message}`;
-  }
-  return `not a CoreError: ${String(e)}`;
-}
-
 /** Awaits a call that should reject, and reports how it settled. */
 async function expectRejection(label: string, call: () => Promise<void>) {
   const promise = call();
@@ -64,7 +56,7 @@ async function expectRejection(label: string, call: () => Promise<void>) {
     await promise;
     return `${label}: returned ${kind}, resolved (expected a rejection)`;
   } catch (e) {
-    return `${label}: returned ${kind}, rejected with ${describeError(e)}`;
+    return `${label}: returned ${kind}, rejected with ${coreErrorMessage(e)}`;
   }
 }
 
@@ -136,12 +128,12 @@ export async function runFfiDiagnostics(): Promise<string[]> {
       core.reader().document('bogus_E', 1n);
       report('reader.document(bogus, 1n): returned (expected a CoreError)');
     } catch (e) {
-      report(`reader.document(bogus, 1n): threw ${describeError(e)}`);
+      report(`reader.document(bogus, 1n): threw ${coreErrorMessage(e)}`);
     }
 
     destroy(core);
   } catch (e) {
-    report(`FAILED: ${describeError(e)}`);
+    report(`FAILED: ${coreErrorMessage(e)}`);
   }
   return lines;
 }

@@ -44,8 +44,14 @@ jobs:
       - name: Install cargo-ndk
         run: cargo install --locked cargo-ndk@4.1.2
 
-      - name: Use the runner's NDK
-        run: echo "ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
+      - name: Install the pinned NDK
+        env:
+          # NDK r30, matching the box (/home/box/android/android-ndk-r30,
+          # Pkg.Revision in its source.properties).
+          NDK_VERSION: 30.0.16248370
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
 
       - name: Build berean-ffi for Android and generate bindings
         run: npm run ubrn:android
