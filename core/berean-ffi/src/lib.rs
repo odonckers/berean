@@ -613,6 +613,7 @@ pub struct BibleChapter {
     pub chapter: u32,
     pub html: String,
     pub verses: Vec<VerseAnchor>,
+    pub blocks: Vec<ChapterBlock>,
 }
 
 impl From<berean_core::reader::BibleChapter> for BibleChapter {
@@ -623,6 +624,83 @@ impl From<berean_core::reader::BibleChapter> for BibleChapter {
             chapter: c.chapter,
             html: c.html,
             verses: c.verses.into_iter().map(Into::into).collect(),
+            blocks: c.blocks.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::reader::ChapterBlock`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum ChapterBlock {
+    Heading {
+        text: String,
+    },
+    Paragraph {
+        paragraph: u32,
+        style: ParagraphStyle,
+        runs: Vec<VerseRun>,
+    },
+}
+
+impl From<berean_core::reader::ChapterBlock> for ChapterBlock {
+    fn from(b: berean_core::reader::ChapterBlock) -> Self {
+        use berean_core::reader::ChapterBlock as B;
+        match b {
+            B::Heading { text } => ChapterBlock::Heading { text },
+            B::Paragraph {
+                paragraph,
+                style,
+                runs,
+            } => ChapterBlock::Paragraph {
+                paragraph,
+                style: style.into(),
+                runs: mirror(runs),
+            },
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::reader::ParagraphStyle`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum ParagraphStyle {
+    Prose,
+    PoetryLine,
+    PoetryContinuation,
+    Superscription,
+    Note,
+}
+
+impl From<berean_core::reader::ParagraphStyle> for ParagraphStyle {
+    fn from(s: berean_core::reader::ParagraphStyle) -> Self {
+        use berean_core::reader::ParagraphStyle as S;
+        match s {
+            S::Prose => ParagraphStyle::Prose,
+            S::PoetryLine => ParagraphStyle::PoetryLine,
+            S::PoetryContinuation => ParagraphStyle::PoetryContinuation,
+            S::Superscription => ParagraphStyle::Superscription,
+            S::Note => ParagraphStyle::Note,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::reader::VerseRun`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct VerseRun {
+    pub verse: u32,
+    pub label: Option<String>,
+    pub text: String,
+    pub footnotes: Vec<String>,
+    pub cross_refs: Vec<String>,
+}
+
+impl From<berean_core::reader::VerseRun> for VerseRun {
+    fn from(r: berean_core::reader::VerseRun) -> Self {
+        VerseRun {
+            verse: r.verse,
+            label: r.label,
+            text: r.text,
+            footnotes: r.footnotes,
+            cross_refs: r.cross_refs,
         }
     }
 }
@@ -1976,6 +2054,25 @@ mod tests {
         assert_eq!((chapter.book, chapter.chapter), (43, 3));
         assert_eq!(chapter.verses.len(), 36);
         assert_eq!(chapter.verses[15].label, "16");
+        let runs: Vec<&VerseRun> = chapter
+            .blocks
+            .iter()
+            .flat_map(|b| match b {
+                ChapterBlock::Paragraph { runs, .. } => runs.iter().collect(),
+                ChapterBlock::Heading { .. } => Vec::new(),
+            })
+            .collect();
+        let v3 = runs.iter().find(|r| r.verse == 3).unwrap();
+        assert_eq!(v3.label.as_deref(), Some("3"));
+        assert_eq!(v3.footnotes, ["a"]);
+        assert_eq!(v3.cross_refs, ["f", "g"]);
+        assert!(matches!(
+            chapter.blocks[0],
+            ChapterBlock::Paragraph {
+                style: ParagraphStyle::Prose,
+                ..
+            }
+        ));
 
         let books = reader.bible_books("nwt:0:0".into()).unwrap();
         assert_eq!(books.len(), 66);

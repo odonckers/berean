@@ -166,6 +166,64 @@ pub struct BibleChapter {
     pub html: String,
     /// In order. Verse 0 is a psalm's superscription.
     pub verses: Vec<VerseAnchor>,
+    /// The chapter laid out as plain text, in reading order: what comes
+    /// before its verses (`PreContent`), the verses (`Content`, without its
+    /// footnotes) and what comes after them (`PostContent`).
+    pub blocks: Vec<ChapterBlock>,
+}
+
+/// One block of a [`BibleChapter`]'s layout.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChapterBlock {
+    /// A heading: a book's title on its first chapter, a book division of
+    /// the Psalms (`BOOK ONE`, `(Psalms 1-41)`), a letter of Psalm 119.
+    /// Footnote markers in it are dropped.
+    Heading { text: String },
+    /// A paragraph, or one line of poetry.
+    Paragraph {
+        /// The paragraph's `data-pid`. The lines of a stanza share it.
+        paragraph: u32,
+        style: ParagraphStyle,
+        /// In order. A verse split across paragraphs has a run in each.
+        runs: Vec<VerseRun>,
+    },
+}
+
+/// How a [`ChapterBlock::Paragraph`] is laid out.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ParagraphStyle {
+    /// A prose paragraph (`sb`).
+    Prose,
+    /// A line of poetry that starts a verse (`sl`).
+    PoetryLine,
+    /// A line of poetry that continues a verse (`sz`).
+    PoetryContinuation,
+    /// A psalm's superscription, verse 0 (`sw`).
+    Superscription,
+    /// A note after the verses (`PostContent`): Habakkuk 3's closing
+    /// instruction, the end of the Hebrew-Aramaic Scriptures after Malachi 4.
+    /// Its one run belongs to no verse (verse 0) and is not verse text.
+    Note,
+}
+
+/// One verse part's text in a [`ChapterBlock::Paragraph`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerseRun {
+    /// The verse the part belongs to; 0 for a superscription. In a
+    /// [`ParagraphStyle::Note`] it is 0 but the run belongs to no verse and
+    /// must not be treated as verse text.
+    pub verse: u32,
+    /// The label printed at the part: the chapter number on a chapter's
+    /// first verse, the verse number on another verse's first part; `None`
+    /// on a superscription or a verse's later parts.
+    pub label: Option<String>,
+    /// The part as plain text, without its label or markers, whitespace
+    /// runs collapsed and trimmed. Separate runs with a space when joining.
+    pub text: String,
+    /// The letters of the footnote markers in the part, in order (`a`).
+    pub footnotes: Vec<String>,
+    /// The letters of the cross-reference markers in the part, in order.
+    pub cross_refs: Vec<String>,
 }
 
 /// One book of a Bible, for navigating to its chapters.
@@ -1050,13 +1108,172 @@ pub(crate) fn read_chapter(
     if parts.iter().any(|p| !verses.iter().any(|v| v.verse == p.0)) {
         return Err(CoreError::Corrupt);
     }
+    let decrypt = |blob: Option<Vec<u8>>| match blob {
+        Some(blob) => publication.decrypt(&blob),
+        None => Ok(String::new()),
+    };
+    let verse_prefix = format!("<span id=\"v{book}-{chapter}-");
+    let mut blocks = Vec::new();
+    chapter_blocks(
+        &decrypt(row.pre_content)?,
+        &verse_prefix,
+        false,
+        &mut blocks,
+    )?;
+    chapter_blocks(&html, &verse_prefix, false, &mut blocks)?;
+    chapter_blocks(
+        &decrypt(row.post_content)?,
+        &verse_prefix,
+        true,
+        &mut blocks,
+    )?;
     Ok(BibleChapter {
         pub_key: pub_key.to_string(),
         book,
         chapter,
         html,
         verses,
+        blocks,
     })
+}
+
+/// Append the blocks of a chapter's `PreContent`, `Content` or (`post`)
+/// `PostContent` HTML to `out`. Outside `PostContent`: `<header>` and
+/// classless `<div>` wrappers are looked into, the footnotes'
+/// `<div class="groupFootnote">` is skipped, `<h1>` and `p.ss` are headings,
+/// and `p.sb`, `p.sl`, `p.sz` and `p.sw` hold verse parts (`verse_prefix`
+/// opens one) with only whitespace and empty `pageNum` spans between them.
+/// In `PostContent`, `p.ss` and `p.sd` are notes. Anything else, or text
+/// between elements => `Corrupt`.
+fn chapter_blocks(
+    html: &str,
+    verse_prefix: &str,
+    post: bool,
+    out: &mut Vec<ChapterBlock>,
+) -> Result<(), CoreError> {
+    let mut at = 0;
+    loop {
+        at = html.len() - html[at..].trim_start().len();
+        if at == html.len() {
+            return Ok(());
+        }
+        let rest = &html[at..];
+        let tag = &rest[..rest.find('>').ok_or(CoreError::Corrupt)? + 1];
+        let name = tag.strip_prefix('<').ok_or(CoreError::Corrupt)?;
+        let name = &name[..name
+            .find(|c: char| !c.is_ascii_alphanumeric())
+            .ok_or(CoreError::Corrupt)?];
+        let end = element_end(html, at, name).ok_or(CoreError::Corrupt)?;
+        let content = &html[at + tag.len()..end - name.len() - "</>".len()];
+        let paragraph = || {
+            attribute(tag, "data-pid")
+                .and_then(number)
+                .ok_or(CoreError::Corrupt)
+        };
+        let class = attribute(tag, "class");
+        match (post, name, class) {
+            (false, "header", None) | (false, "div", None) => {
+                chapter_blocks(content, verse_prefix, post, out)?
+            }
+            (false, "div", Some("groupFootnote")) => {}
+            (false, "h1", _) | (false, "p", Some("ss")) => out.push(ChapterBlock::Heading {
+                text: inline_run(content, 0)?.text,
+            }),
+            (true, "p", Some("ss" | "sd")) => out.push(ChapterBlock::Paragraph {
+                paragraph: paragraph()?,
+                style: ParagraphStyle::Note,
+                runs: vec![VerseRun {
+                    label: None,
+                    ..inline_run(content, 0)?
+                }],
+            }),
+            (false, "p", Some(class)) => {
+                let style = match class {
+                    "sb" => ParagraphStyle::Prose,
+                    "sl" => ParagraphStyle::PoetryLine,
+                    "sz" => ParagraphStyle::PoetryContinuation,
+                    "sw" => ParagraphStyle::Superscription,
+                    _ => return Err(CoreError::Corrupt),
+                };
+                out.push(ChapterBlock::Paragraph {
+                    paragraph: paragraph()?,
+                    style,
+                    runs: verse_runs(content, verse_prefix)?,
+                });
+            }
+            _ => return Err(CoreError::Corrupt),
+        }
+        at = end;
+    }
+}
+
+/// The runs of a verse paragraph's content: one per verse part
+/// (`<span id="v{book}-{chapter}-{verse}-{part}">`, opened by
+/// `verse_prefix`). Only whitespace and empty `pageNum` spans may come
+/// between them; anything else => `Corrupt`.
+fn verse_runs(html: &str, verse_prefix: &str) -> Result<Vec<VerseRun>, CoreError> {
+    let mut runs = Vec::new();
+    let mut at = 0;
+    loop {
+        at = html.len() - html[at..].trim_start().len();
+        if at == html.len() {
+            return Ok(runs);
+        }
+        let rest = &html[at..];
+        if !rest.starts_with("<span ") {
+            return Err(CoreError::Corrupt);
+        }
+        let tag = &rest[..rest.find('>').ok_or(CoreError::Corrupt)? + 1];
+        let end = element_end(html, at, "span").ok_or(CoreError::Corrupt)?;
+        let content = &html[at + tag.len()..end - "</span>".len()];
+        if let Some(id) = rest.strip_prefix(verse_prefix) {
+            let verse = id.split(['-', '"']).next().and_then(number);
+            runs.push(inline_run(content, verse.ok_or(CoreError::Corrupt)?)?);
+        } else if !(attribute(tag, "class") == Some("pageNum") && content.is_empty()) {
+            return Err(CoreError::Corrupt);
+        }
+        at = end;
+    }
+}
+
+/// Inline HTML as a run of `verse`: its label (`cl`, `vl`) and its footnote
+/// (`fn`) and cross-reference (`m`) markers taken out, the rest as plain
+/// text with whitespace runs collapsed to one space and trimmed. An
+/// unclosed `<span>` => `Corrupt`.
+fn inline_run(html: &str, verse: u32) -> Result<VerseRun, CoreError> {
+    let mut run = VerseRun {
+        verse,
+        label: None,
+        text: String::new(),
+        footnotes: Vec::new(),
+        cross_refs: Vec::new(),
+    };
+    let mut kept = String::new();
+    let mut at = 0;
+    while let Some(i) = html[at..].find("<span ") {
+        let begin = at + i;
+        let tag_len = html[begin..].find('>').ok_or(CoreError::Corrupt)? + 1;
+        let end = element_end(html, begin, "span").ok_or(CoreError::Corrupt)?;
+        let visible = plain_text(&html[begin..end]).trim().to_string();
+        match attribute(&html[begin..begin + tag_len], "class") {
+            Some("cl" | "cl noLink" | "vl") => run.label = Some(visible),
+            Some("fn" | "fn pr") => run.footnotes.push(visible),
+            Some("m" | "m pr") => run.cross_refs.push(visible),
+            _ => {
+                kept.push_str(&html[at..begin + tag_len]);
+                at = begin + tag_len;
+                continue;
+            }
+        }
+        kept.push_str(&html[at..begin]);
+        at = end;
+    }
+    kept.push_str(&html[at..]);
+    run.text = plain_text(&kept)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    Ok(run)
 }
 
 /// The verse parts in a chapter's HTML, `<span id="v{book}-{chapter}-{verse}-{part}">`,
@@ -1509,6 +1726,73 @@ mod tests {
         assert_eq!(entry_verse(&header("43:3:16-43:3:17")), None);
         assert_eq!(entry_verse(&header("43:3")), None);
         assert_eq!(entry_verse("<p>3:16</p>"), None);
+    }
+
+    const VERSE: &str = r#"<span id="v1-1-2-1" class="v"><span data-vlid="2" class="vl">2 <span class="tt vl" data-rel-vlid="2"></span></span>Now<span data-fnid="1" class="fn pr">a<span id="footnotesource1" class="tt fn" data-rel-fnid="1"></span></span> the earth<span data-mid="5" class="m">c<span class="tt m" data-rel-mid="5"></span></span> </span>"#;
+
+    fn blocks(html: &str, post: bool) -> Result<Vec<ChapterBlock>, CoreError> {
+        let mut out = Vec::new();
+        chapter_blocks(html, "<span id=\"v1-1-", post, &mut out).map(|()| out)
+    }
+
+    #[test]
+    fn chapter_blocks_split_verse_parts_into_runs() {
+        let page = r#"<span id="page2" class="pageNum" data-no="2"></span>"#;
+        let html = format!(
+            "<p id=\"p1\" data-pid=\"1\" class=\"ss\">A &amp; <em>B</em></p>\n\
+             <div id=\"p2\" data-pid=\"2\"><p data-pid=\"2\" class=\"sl\">{page} {VERSE}</p></div>\
+             <div class=\"groupFootnote\"><p>skipped</p></div>"
+        );
+        assert_eq!(
+            blocks(&html, false).unwrap(),
+            [
+                ChapterBlock::Heading {
+                    text: "A & B".into()
+                },
+                ChapterBlock::Paragraph {
+                    paragraph: 2,
+                    style: ParagraphStyle::PoetryLine,
+                    runs: vec![VerseRun {
+                        verse: 2,
+                        label: Some("2".into()),
+                        text: "Now the earth".into(),
+                        footnotes: vec!["a".into()],
+                        cross_refs: vec!["c".into()],
+                    }],
+                },
+            ]
+        );
+        let note = r#"<p id="p9" data-pid="9" class="sd">The  end.</p>"#;
+        assert!(matches!(
+            &blocks(note, true).unwrap()[..],
+            [ChapterBlock::Paragraph {
+                paragraph: 9,
+                style: ParagraphStyle::Note,
+                runs,
+            }] if runs[0].text == "The end." && runs[0].verse == 0
+        ));
+    }
+
+    #[test]
+    fn malformed_chapter_blocks_are_corrupt() {
+        let p = |class: &str, content: &str| {
+            format!("<p id=\"p1\" data-pid=\"1\" class=\"{class}\">{content}</p>")
+        };
+        for (html, post) in [
+            (p("xx", VERSE), false),                                // unknown class
+            (p("sb", &format!("text {VERSE}")), false),             // text outside a verse
+            (p("sb", &format!("<em>x</em>{VERSE}")), false),        // a tag outside a verse
+            (p("sb", &VERSE.replace("v1-1-", "v1-2-")), false),     // another chapter's verse
+            (p("sb", VERSE).replace(" data-pid=\"1\"", ""), false), // no data-pid
+            (p("sb", VERSE), true),                                 // a verse after the verses
+            (format!("text{}", p("sb", VERSE)), false),             // text between paragraphs
+            (p("sb", VERSE).replace("</p>", ""), false),            // unclosed paragraph
+        ] {
+            assert!(
+                matches!(blocks(&html, post), Err(CoreError::Corrupt)),
+                "{html}"
+            );
+        }
     }
 
     #[test]
