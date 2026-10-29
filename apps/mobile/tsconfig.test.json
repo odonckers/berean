@@ -1,0 +1,13 @@
+{
+  // The Node tests (npm test), type-checked on their own: they need Node's
+  // types and import modules by their .ts path, as `node --test` runs them.
+  // tsconfig.json leaves them out so Node's globals never reach app code.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["src/**/*.test.ts"],
+  "exclude": ["node_modules"]
+}

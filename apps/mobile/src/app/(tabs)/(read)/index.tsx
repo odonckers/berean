@@ -5,7 +5,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { Screen } from '@/components/screen';
 import { UIText } from '@/components/text';
 import { TextButton } from '@/components/text-button';
-import { useBerean } from '@/design/theme';
 import { useStackOptions } from '@/design/use-stack-options';
 import { library } from '@/ffi/core';
 import { displayTitle } from '@/library/labels';
@@ -29,7 +28,6 @@ function firstInstalledBible(): Loaded<BibleLocation | undefined> {
 // session, else the first installed one.
 export default function ReadScreen() {
   const params = useLocalSearchParams<ReadParams>();
-  const { look } = useBerean();
   const stackOptions = useStackOptions();
   const fromParams: BibleLocation | undefined =
     params.pubKey === undefined
@@ -87,24 +85,13 @@ export default function ReadScreen() {
     );
   }
 
-  // Per the reader frames: the material top app bar is titled with the
-  // chapter reference (the chapter heading's text); the iOS look has no
-  // navigation title, the chapter heading in the content is the title.
-  // Pending, as their features don't exist yet: Aa, bookmark, menu, overflow.
+  // The chapter view titles the screen with its chapter heading.
   return (
-    <>
-      <Stack.Screen
-        options={{
-          title: look === 'material' ? `Chapter ${bible.chapter}` : '',
-          headerLargeTitleEnabled: false,
-        }}
-      />
-      <BibleChapterView
-        pubKey={bible.pubKey}
-        title={bible.title}
-        book={bible.book}
-        chapter={bible.chapter}
-      />
-    </>
+    <BibleChapterView
+      pubKey={bible.pubKey}
+      title={bible.title}
+      book={bible.book}
+      chapter={bible.chapter}
+    />
   );
 }

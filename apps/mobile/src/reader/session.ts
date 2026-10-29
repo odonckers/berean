@@ -28,18 +28,27 @@ export function rememberTab(pubKey: string, tab: PaneTab) {
   lastTab.set(pubKey, tab);
 }
 
-// The open verse per `${pubKey}/${book}/${chapter}`, so an open pane
-// survives the reader remounting (switching the dev Look).
-const openVerse = new Map<string, number>();
+// The open verse per `${pubKey}/${book}/${chapter}`, with the height the
+// pane last settled at (a window fraction; none until it is resized), so an
+// open pane survives the reader remounting (switching the dev Look) at the
+// height it had.
+export type OpenPane = { verse: number; fraction?: number };
 
-export function restoredVerse(chapterKey: string): number | undefined {
-  return openVerse.get(chapterKey);
+const openPanes = new Map<string, OpenPane>();
+
+export function restoredPane(chapterKey: string): OpenPane | undefined {
+  return openPanes.get(chapterKey);
 }
 
 export function rememberVerse(chapterKey: string, verse: number) {
-  openVerse.set(chapterKey, verse);
+  openPanes.set(chapterKey, { verse });
+}
+
+export function rememberPaneFraction(chapterKey: string, fraction: number) {
+  const pane = openPanes.get(chapterKey);
+  if (pane !== undefined) openPanes.set(chapterKey, { ...pane, fraction });
 }
 
 export function forgetVerse(chapterKey: string) {
-  openVerse.delete(chapterKey);
+  openPanes.delete(chapterKey);
 }

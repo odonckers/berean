@@ -14,16 +14,14 @@ import { SymbolView } from 'expo-symbols';
 import { GestureDetector, type NativeGesture, usePanGesture } from 'react-native-gesture-handler';
 import Animated, {
   FadeIn,
-  FadeOut,
   ReduceMotion,
+  cancelAnimation,
   clamp,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
   withSpring,
   withTiming,
-  type ExitAnimationsValues,
-  type LayoutAnimation,
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
@@ -70,23 +68,13 @@ const TAB_EMPTY_COPY: Record<PaneTab, string> = {
 // (0.30 s, damping 1.0).
 const OPEN_SPRING = { duration: 380, dampingRatio: 0.9 } as const;
 const CLOSE_SPRING = { duration: 300, dampingRatio: 1 } as const;
+const FADE_COLLAPSE = { duration: 200 } as const;
 
-function collapseClosed(values: ExitAnimationsValues): LayoutAnimation {
-  'worklet';
-  return {
-    initialValues: { height: values.currentHeight, opacity: 1 },
-    animations: {
-      height: withSpring(0, CLOSE_SPRING),
-      opacity: withTiming(0, { duration: 200 }),
-    },
-  };
-}
-
-// The open fade. With Reduce Motion it is the whole open: a cross-fade at
-// the final height, no movement. Never lets the fade play even though the
-// system setting is on.
+// The open and close fades. With Reduce Motion they are the whole open and
+// close: a cross-fade at the pane's height, no movement. Never lets the
+// fade play even though the system setting is on.
 const FADE_OPEN = { duration: 200, reduceMotion: ReduceMotion.Never } as const;
-const fadeClosed = FadeOut.duration(150).reduceMotion(ReduceMotion.Never);
+const FADE_CLOSE = { duration: 150, reduceMotion: ReduceMotion.Never } as const;
 const tabFade = FadeIn.duration(150).reduceMotion(ReduceMotion.Never);
 
 /** Moves VoiceOver / TalkBack focus to a mounted element, if any. */
@@ -112,13 +100,26 @@ type StudyPaneProps = {
   guideInstalled: boolean;
   /** Re-opened after a remount: no opening animation or announcement (spec §8). */
   restored: boolean;
+  /** The height a restored pane had, as a window fraction; else it opens at the default. */
+  initialFraction?: number;
+  /**
+   * A close was asked for: the pane collapses (or fades, with Reduce
+   * Motion) and then calls onClosed, for the owner to unmount it. Turning
+   * this back off before then reopens the pane at its height.
+   */
+  closing: boolean;
   /**
    * The chapter's scroll gesture. The resize drag blocks it: a drag that
    * starts on the header makes the scroll wait until the resize fails, and
    * once the resize is active the scroll never takes over.
    */
   chapterScroll?: NativeGesture;
+  /** Asks to close: the close button and a dismissing drag. */
   onClose: () => void;
+  /** The close animation finished; the pane can unmount. */
+  onClosed: () => void;
+  /** The pane settled at a new height, as a window fraction. */
+  onResize?: (fraction: number) => void;
   /** The pane container's layout in the reading column. */
   onLayout?: (e: LayoutChangeEvent) => void;
 };
@@ -137,8 +138,12 @@ export function StudyPane({
   available,
   guideInstalled,
   restored,
+  initialFraction,
+  closing,
   chapterScroll,
   onClose,
+  onClosed,
+  onResize,
   onLayout,
 }: StudyPaneProps) {
   const { look, scheme, colors, m3, studyPane } = useBerean();
@@ -175,24 +180,34 @@ export function StudyPane({
   }, [reference, restored, openedOn]);
 
   const detents = paneDetents(fontScale);
-  // The height the pane opens at (40%, 60% at accessibility text sizes).
-  const [opened] = useState(() => openFraction(fontScale));
-  // Mirrors the settled height for the accessibility value only; it never
-  // feeds back into the shared value.
+  // The height the pane opens at (40%, 60% at accessibility text sizes), or
+  // the height a restored pane had.
+  const [opened] = useState(() => initialFraction ?? openFraction(fontScale));
+  // Mirrors the settled height for the accessibility value, the session and
+  // a reopen while closing; it never feeds back into a running drag.
   const [fraction, setFraction] = useState(opened);
+  const settled = (target: number) => {
+    setFraction(target);
+    onResize?.(target);
+  };
   // The pane's height, as a fraction of the window so rotation keeps it.
-  // This shared value is its only owner while the pane is mounted: the
-  // open, the drag, the settle and the accessibility moves all animate it,
-  // and no layout animation touches height until the pane unmounts. As a
-  // layout prop it re-lays out the column every frame, so the text below
-  // follows the pane. The open grows from 0, except a restored pane (no
-  // animation) and Reduce Motion (a fade at the final height).
+  // This shared value is its only owner from mount to unmount: the open,
+  // the drag, the settle, the accessibility moves and the close all animate
+  // it, and nothing else sets height (no layout animation, no height in the
+  // static styles). As a layout prop it re-lays out the column every frame,
+  // so the text below follows the pane, closing included. The open grows
+  // from 0, except a restored pane (no animation) and Reduce Motion (a fade
+  // at the final height).
+  // React re-renders (a tab switch and back, a prop change) don't reset it:
+  // Reanimated's PropsFilter hands React only the style's first-render
+  // snapshot, and on Fabric its commit hook lays the latest animated values
+  // over every React commit, so the snapshot never reaches the screen.
   const growsOpen = !restored && !reducedMotion;
   const height = useSharedValue(growsOpen ? 0 : opened);
   const opacity = useSharedValue(restored ? 1 : 0);
   const dragStart = useSharedValue(opened);
   const animatedPane = useAnimatedStyle(() => ({
-    height: height.get() * windowHeight,
+    height: Math.max(height.get(), 0) * windowHeight,
     opacity: opacity.get(),
   }));
 
@@ -215,12 +230,50 @@ export function StudyPane({
       : withSpring(target, OPEN_SPRING);
   };
   const moveTo = (target: number | undefined) => {
-    if (target === undefined) return;
-    setFraction(target);
+    if (target === undefined || closing) return;
+    settled(target);
     height.set(settle(target));
   };
 
+  // The close runs on the same shared value: the height springs to 0 (or,
+  // with Reduce Motion, the pane fades at its height), and only once that
+  // finishes does the owner unmount the pane. Turned off midway (the verse
+  // tapped again), the pane goes back to its settled height; the interrupted
+  // animation reports unfinished, so it never unmounts the pane.
+  const closeShown = useRef(closing);
+  useEffect(() => {
+    if (closeShown.current === closing) return;
+    closeShown.current = closing;
+    if (closing) {
+      const done = (finished?: boolean) => {
+        'worklet';
+        if (finished) scheduleOnRN(onClosed);
+      };
+      if (reducedMotion) {
+        opacity.set(withTiming(0, FADE_CLOSE, done));
+      } else {
+        opacity.set(withTiming(0, FADE_COLLAPSE));
+        height.set(withSpring(0, CLOSE_SPRING, done));
+      }
+    } else {
+      opacity.set(withTiming(1, FADE_OPEN));
+      if (!reducedMotion) height.set(withSpring(fraction, OPEN_SPRING));
+    }
+  }, [closing, reducedMotion, fraction, onClosed, height, opacity]);
+  // A pane unmounted mid-close (another verse tapped, another chapter)
+  // stops its animations, which report unfinished, so its close never
+  // reaches the owner.
+  useEffect(
+    () => () => {
+      cancelAnimation(height);
+      cancelAnimation(opacity);
+    },
+    [height, opacity],
+  );
+
   const resize = usePanGesture({
+    // No resizing while the pane closes.
+    enabled: !closing,
     activeOffsetY: [-10, 10],
     failOffsetX: [-20, 20],
     block: chapterScroll,
@@ -258,7 +311,7 @@ export function StudyPane({
         return;
       }
       height.set(settle(release.fraction));
-      scheduleOnRN(setFraction, release.fraction);
+      scheduleOnRN(settled, release.fraction);
     },
   });
 
@@ -271,10 +324,6 @@ export function StudyPane({
 
   return (
     <Animated.View
-      // The close stays a layout animation: it runs after unmount, when the
-      // shared value no longer drives the view, so height never has two
-      // owners at once.
-      exiting={reducedMotion ? fadeClosed : collapseClosed}
       onLayout={onLayout}
       accessibilityLabel={paneLabel}
       style={[

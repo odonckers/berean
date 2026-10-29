@@ -11,7 +11,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "lint": "expo lint",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "test": "node --test 'src/**/*.test.ts'",
     "ubrn:android": "cd modules/berean-ffi-rn && npm run ubrn:android",
     "ubrn:generate": "cd modules/berean-ffi-rn && npm run ubrn:generate",

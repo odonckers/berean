@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import { router, useFocusEffect, usePreventRemove } from 'expo-router';
+import { router, Stack, useFocusEffect, usePreventRemove } from 'expo-router';
 import { type ComponentRef, Fragment, useCallback, useMemo, useRef, useState } from 'react';
 import {
   BackHandler,
@@ -19,9 +19,22 @@ import { useBerean } from '@/design/theme';
 import { useTopAppBarFill } from '@/design/use-top-app-bar-fill';
 import { reader } from '@/ffi/core';
 import { load } from '@/library/load';
+import {
+  type ChapterLocation,
+  chapterHeading,
+  nextChapter,
+  previousChapter,
+  verseReference,
+} from '@/reader/bible-nav';
+import { BiblePicker } from '@/reader/bible-picker';
 import { type Run, paragraphsFromVerses } from '@/reader/chapter-blocks';
 import { ReadingColumn, useColumnPaddingTop } from '@/reader/reading-column';
-import { forgetVerse, rememberVerse, restoredVerse } from '@/reader/session';
+import {
+  forgetVerse,
+  rememberPaneFraction,
+  rememberVerse,
+  restoredPane,
+} from '@/reader/session';
 import { StudyPane, moveAccessibilityFocus, type PaneTab } from '@/reader/study-pane';
 
 // The core does not yet report study content per verse (pending Echo's
@@ -54,6 +67,16 @@ const NO_BREAK_SPACE = String.fromCharCode(0xa0);
 // Per-verse accessibility actions on a paragraph block, named by verse.
 const VERSE_ACTION = 'verse-';
 
+type Selection = {
+  chapterKey: string;
+  verse: number;
+  restored: boolean;
+  /** A restored pane's height, as a window fraction. */
+  fraction?: number;
+  /** The pane is collapsing; it unmounts when its animation finishes. */
+  closing: boolean;
+};
+
 export function BibleChapterView({
   pubKey,
   title,
@@ -65,7 +88,8 @@ export function BibleChapterView({
   book: number;
   chapter: number;
 }) {
-  const { look, colors, type } = useBerean();
+  const { look, colors, m3, type } = useBerean();
+  const material = look === 'material';
   const reducedMotion = useReducedMotion();
   // The Read tab's root: the material top app bar's tonal fill, and the
   // status bar padding where the look hides the native header.
@@ -76,19 +100,36 @@ export function BibleChapterView({
     () => load(() => reader().bibleChapter(pubKey, book, chapter)),
     [pubKey, book, chapter],
   );
+  // The Bible's books, in the core's order, for the headings, the picker
+  // and Previous/Next across books. Without them the heading falls back to
+  // "Chapter N", there is no picker, and Previous/Next stay in the book.
+  const books = useMemo(() => load(() => reader().bibleBooks(pubKey)), [pubKey]);
+  const bookList = books.ok && books.value.length > 0 ? books.value : undefined;
+  const heading = chapterHeading(
+    bookList?.find((b) => b.book === book),
+    chapter,
+  );
+  const [picking, setPicking] = useState(false);
+  const pickLabel = `${heading}, choose book and chapter`;
 
   // The selection belongs to one chapter, so changing publication, book or
   // chapter (Previous/Next included) closes the pane without an effect.
-  // A remount (switching the dev Look) restores the open verse from the
-  // session, and the pane re-opens without animation or announcement.
+  // A remount (switching the dev Look) restores the open verse and its
+  // height from the session, and the pane re-opens without animation or
+  // announcement.
   const chapterKey = `${pubKey}/${book}/${chapter}`;
-  const [selection, setSelection] = useState<
-    { chapterKey: string; verse: number; restored: boolean } | undefined
-  >(() => {
-    const verse = restoredVerse(chapterKey);
-    return verse === undefined ? undefined : { chapterKey, verse, restored: true };
+  const [selection, setSelection] = useState<Selection | undefined>(() => {
+    const pane = restoredPane(chapterKey);
+    return pane === undefined
+      ? undefined
+      : { chapterKey, verse: pane.verse, restored: true, fraction: pane.fraction, closing: false };
   });
-  const selected = selection?.chapterKey === chapterKey ? selection.verse : undefined;
+  const current = selection?.chapterKey === chapterKey ? selection : undefined;
+  // The verse the pane is under, while it is mounted (closing included).
+  const selected = current?.verse;
+  const closing = current?.closing ?? false;
+  // The verse whose study is open: not once its close is asked for.
+  const open = closing ? undefined : selected;
 
   const paragraphs = useMemo(
     () => (loaded.ok ? paragraphsFromVerses(loaded.value.verses) : []),
@@ -112,8 +153,17 @@ export function BibleChapterView({
   // The chapter scroll's gesture, which the pane's resize drag blocks.
   const [chapterScroll, setChapterScroll] = useState<NativeGesture>();
 
+  // Closing is two steps: asking (close button, Back, a dismissing drag,
+  // the verse tapped again) starts the pane's collapse, and the pane calls
+  // finishClose when it is done, which unmounts it. A second ask while it
+  // collapses does nothing; Back is no longer held, so it leaves as usual.
   const close = useCallback(() => {
-    if (selected === undefined) return;
+    if (current === undefined || current.closing) return;
+    setSelection({ ...current, closing: true });
+  }, [current]);
+
+  const finishClose = useCallback(() => {
+    if (selected === undefined || !closing) return;
     forgetVerse(chapterKey);
     setSelection(undefined);
     // Focus goes back where the pane was opened from: the verse number's
@@ -125,12 +175,12 @@ export function BibleChapterView({
         )
       : verseRefs.current.get(selected);
     requestAnimationFrame(() => moveAccessibilityFocus(target));
-  }, [chapterKey, selected, paragraphs]);
+  }, [chapterKey, selected, closing, paragraphs]);
 
-  const open = (verse: number, fromParagraph: boolean) => {
+  const openVerse = (verse: number, fromParagraph: boolean) => {
     openedFromParagraph.current = fromParagraph;
     rememberVerse(chapterKey, verse);
-    setSelection({ chapterKey, verse, restored: false });
+    setSelection({ chapterKey, verse, restored: false, closing: false });
     void Haptics.selectionAsync().catch(() => {});
     scrollOnPaneLayout.current = true;
   };
@@ -155,54 +205,113 @@ export function BibleChapterView({
     }
   };
 
+  // Tapping the verse again while its pane collapses reopens it where it
+  // was (the pane springs back to its height); another verse opens its own
+  // pane straight away, replacing the collapsing one.
   const toggle = (verse: number, fromParagraph: boolean) => {
-    if (selected === verse) close();
-    else open(verse, fromParagraph);
+    if (current?.verse !== verse) openVerse(verse, fromParagraph);
+    else if (current.closing) {
+      setSelection({ ...current, closing: false });
+      void Haptics.selectionAsync().catch(() => {});
+    } else close();
   };
 
   // Moving to another chapter closes the pane (spec §8) without returning focus.
   // The params change in place on the Read route; the whole location is set
   // since the route may have opened without params (the session's Bible).
-  const goToChapter = (next: number) => {
+  const goToChapter = (to: ChapterLocation) => {
     forgetVerse(chapterKey);
     setSelection(undefined);
-    router.setParams({ pubKey, title, book: String(book), chapter: String(next) });
+    router.setParams({ pubKey, title, book: String(to.book), chapter: String(to.chapter) });
+  };
+
+  const pick = (to: ChapterLocation) => {
+    setPicking(false);
+    if (to.book !== book || to.chapter !== chapter) goToChapter(to);
   };
 
   // While the pane is open, back closes it first: the Android back button
   // here (also on the Read tab's root, where nothing is removed), and the
   // header back button, the iOS swipe and predictive back through
   // usePreventRemove (beforeRemove under the hood).
+  // A pane that is already collapsing doesn't hold Back.
   useFocusEffect(
     useCallback(() => {
-      if (selected === undefined) return;
+      if (open === undefined) return;
       const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
         close();
         return true;
       });
       return () => subscription.remove();
-    }, [selected, close]),
+    }, [open, close]),
   );
-  usePreventRemove(selected !== undefined, close);
+  usePreventRemove(open !== undefined, close);
 
+  // Previous and Next cross into the neighbouring books, in the core's
+  // order; there is no Previous at the very first chapter, no Next at the
+  // very last.
+  const previousLocation = previousChapter(bookList, { book, chapter });
+  const nextLocation = nextChapter(bookList, { book, chapter });
   const previous =
-    chapter > 1 ? (
-      <TextButton
-        title="Previous chapter"
-        onPress={() => goToChapter(chapter - 1)}
-      />
-    ) : null;
+    previousLocation === undefined ? null : (
+      <TextButton title="Previous chapter" onPress={() => goToChapter(previousLocation)} />
+    );
+
+  // Per the reader frames: the material top app bar is titled with the
+  // chapter heading; the iOS look has no navigation title, the chapter
+  // heading in the content is the title. The title (material) and the
+  // in-content heading (iOS) open the book and chapter picker.
+  // Pending, as their features don't exist yet: Aa, bookmark, menu, overflow.
+  const screenOptions = (
+    <Stack.Screen
+      options={{
+        title: material ? heading : '',
+        headerLargeTitleEnabled: false,
+        headerTitle:
+          material && bookList !== undefined
+            ? () => (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={pickLabel}
+                  onPress={() => setPicking(true)}
+                  style={({ pressed }) => [styles.titleButton, { opacity: pressed ? 0.6 : 1 }]}
+                >
+                  <Text
+                    numberOfLines={1}
+                    style={[styles.appBarTitle, { fontSize: type.ui.title.fontSize, color: m3.onSurface }]}
+                  >
+                    {heading}
+                  </Text>
+                </Pressable>
+              )
+            : undefined,
+      }}
+    />
+  );
+  const picker = bookList !== undefined && (
+    <BiblePicker
+      visible={picking}
+      books={bookList}
+      at={{ book, chapter }}
+      onPick={pick}
+      onClose={() => setPicking(false)}
+    />
+  );
 
   if (!loaded.ok) {
     return (
-      <ReadingColumn tabRoot>
-        <UIText secondary>{loaded.message}</UIText>
-        <View style={styles.navRow}>{previous}</View>
-      </ReadingColumn>
+      <>
+        {screenOptions}
+        <ReadingColumn tabRoot>
+          <UIText secondary>{loaded.message}</UIText>
+          <View style={styles.navRow}>{previous}</View>
+        </ReadingColumn>
+        {picker}
+      </>
     );
   }
 
-  const reference = `${title} ${chapter}:${selected ?? ''}`.trim();
+  const reference = selected === undefined ? heading : verseReference(heading, selected);
 
   // One block of a paragraph: its runs as a single Text, so the verses flow
   // on. Each verse number is a pill: an inline View in the Text holding a
@@ -231,7 +340,7 @@ export function BibleChapterView({
       style={[type.reading.scripture, { color: colors.text }]}
       accessibilityActions={runs.map((run) => ({
         name: `${VERSE_ACTION}${run.verse}`,
-        label: run.verse === selected ? `Close study for verse ${run.verse}` : `Study verse ${run.verse}`,
+        label: run.verse === open ? `Close study for verse ${run.verse}` : `Study verse ${run.verse}`,
       }))}
       onAccessibilityAction={(e) => {
         const { actionName } = e.nativeEvent;
@@ -241,7 +350,7 @@ export function BibleChapterView({
       }}
     >
       {runs.map((run, index) => {
-        const isSelected = run.verse === selected;
+        const isSelected = run.verse === open;
         return (
           <Fragment key={run.verse}>
             {index > 0 && ' '}
@@ -305,9 +414,13 @@ export function BibleChapterView({
         pubKey={pubKey}
         available={NO_STUDY_CONTENT}
         guideInstalled={GUIDE_INSTALLED}
-        restored={selection?.restored ?? false}
+        restored={current?.restored ?? false}
+        initialFraction={current?.fraction}
+        closing={closing}
         chapterScroll={chapterScroll}
         onClose={close}
+        onClosed={finishClose}
+        onResize={(fraction) => rememberPaneFraction(chapterKey, fraction)}
         onLayout={onPaneLayout}
       />,
       after.length > 0 && renderBlock(`p${index}-continued`, after),
@@ -315,38 +428,59 @@ export function BibleChapterView({
   });
 
   return (
-    <ReadingColumn
-      tabRoot
-      ref={scrollRef}
-      scrollEventThrottle={16}
-      onScrollGesture={(gesture) =>
-        setChapterScroll((current) =>
-          current?.handlerTag === gesture.handlerTag ? current : gesture,
-        )
-      }
-      {...fill}
-      onScroll={(e) => {
-        fill.onScroll(e);
-        const { contentOffset, contentInset } = e.nativeEvent;
-        viewport.current.offset = contentOffset.y;
-        viewport.current.insetTop = contentInset.top;
-      }}
-      onLayout={(e) => {
-        viewport.current.height = e.nativeEvent.layout.height;
-      }}
-    >
-      <ScriptureText variant="chapterHeading">Chapter {chapter}</ScriptureText>
-      {blocks}
-      <View style={styles.navRow}>
-        {previous}
-        <View style={styles.navSpacer} />
-        <TextButton title="Next chapter" onPress={() => goToChapter(chapter + 1)} />
-      </View>
-    </ReadingColumn>
+    <>
+      {screenOptions}
+      <ReadingColumn
+        tabRoot
+        ref={scrollRef}
+        scrollEventThrottle={16}
+        onScrollGesture={(gesture) =>
+          setChapterScroll((known) => (known?.handlerTag === gesture.handlerTag ? known : gesture))
+        }
+        {...fill}
+        onScroll={(e) => {
+          fill.onScroll(e);
+          const { contentOffset, contentInset } = e.nativeEvent;
+          viewport.current.offset = contentOffset.y;
+          viewport.current.insetTop = contentInset.top;
+        }}
+        onLayout={(e) => {
+          viewport.current.height = e.nativeEvent.layout.height;
+        }}
+      >
+        {!material && bookList !== undefined ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={pickLabel}
+            onPress={() => setPicking(true)}
+            style={({ pressed }) => [styles.headingButton, { opacity: pressed ? 0.6 : 1 }]}
+          >
+            <ScriptureText variant="chapterHeading">{heading}</ScriptureText>
+          </Pressable>
+        ) : (
+          <ScriptureText variant="chapterHeading">{heading}</ScriptureText>
+        )}
+        {blocks}
+        <View style={styles.navRow}>
+          {previous}
+          <View style={styles.navSpacer} />
+          {nextLocation !== undefined && (
+            <TextButton title="Next chapter" onPress={() => goToChapter(nextLocation)} />
+          )}
+        </View>
+      </ReadingColumn>
+      {picker}
+    </>
   );
 }
 
 const styles = StyleSheet.create({
+  // The iOS look's in-content heading as a button: at least the 44pt target.
+  headingButton: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center' },
+  // The material top app bar's title as a button: the 48dp target; the
+  // text matches the look's header title style.
+  titleButton: { minHeight: 48, justifyContent: 'center' },
+  appBarTitle: { fontWeight: '400' },
   navRow: { flexDirection: 'row', alignItems: 'center' },
   navSpacer: { flex: 1 },
   versePill: { borderRadius: 6, paddingVertical: 1, paddingHorizontal: 4 },
