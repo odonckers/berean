@@ -83,6 +83,7 @@ pub fn user_db_schema() -> u32 {
 /// thrown error. It carries the same variants; the conversion below is the
 /// only place the two are tied together.
 #[derive(Debug, thiserror::Error, uniffi::Error)]
+#[uniffi::export(Display)]
 pub enum CoreError {
     #[error("not found")]
     NotFound,
@@ -1907,6 +1908,12 @@ mod tests {
         cancelled.cancel();
         let err = block_on(search.rebuild_index(sink, cancelled)).unwrap_err();
         assert!(matches!(err, CoreError::Cancelled), "{err:?}");
+    }
+
+    #[test]
+    fn core_error_displays_its_message() {
+        assert_eq!(CoreError::Io("x".into()).to_string(), "io error: x");
+        assert_eq!(CoreError::NotFound.to_string(), "not found");
     }
 
     #[test]
