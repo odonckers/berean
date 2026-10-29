@@ -1,0 +1,309 @@
+{
+ "version": "pilot-2026-10-28",
+ "people": [
+  {
+   "id": "person:paul",
+   "type": "person",
+   "names": {
+    "nwt": "Paul",
+    "alternate": [
+     "Saul"
+    ]
+   },
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 585, “PAUL” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003406",
+     "quote": "An Israelite of the tribe of Benjamin and an apostle of Jesus Christ."
+    }
+   ]
+  },
+  {
+   "id": "person:barnabas",
+   "type": "person",
+   "names": {
+    "nwt": "Barnabas",
+    "alternate": [
+     "Joseph"
+    ]
+   },
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 257, “BARNABAS” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200000566",
+     "quote": "this devout man was a Levite and a native of the island of Cyprus"
+    }
+   ]
+  },
+  {
+   "id": "person:john-mark",
+   "type": "person",
+   "names": {
+    "nwt": "Mark",
+    "alternate": [
+     "John Mark",
+     "John"
+    ]
+   },
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 320, “MARK” (WOL ¶2)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200002902",
+     "quote": "Mark is the John Mark mentioned in the book of Acts and the John of Acts 13:5, 13."
+    }
+   ]
+  },
+  {
+   "id": "person:silas",
+   "type": "person",
+   "names": {
+    "nwt": "Silas",
+    "alternate": [
+     "Silvanus"
+    ]
+   },
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 943, “SILAS” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200004118",
+     "quote": "a companion of Paul on his second missionary journey."
+    }
+   ]
+  },
+  {
+   "id": "person:timothy",
+   "type": "person",
+   "names": {
+    "nwt": "Timothy",
+    "alternate": []
+   },
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 1105, “TIMOTHY” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200004416",
+     "quote": "when the apostle Paul arrived at Lystra (apparently Timothy’s home) in the course of his second missionary journey"
+    }
+   ]
+  },
+  {
+   "id": "person:luke",
+   "type": "person",
+   "names": {
+    "nwt": "Luke",
+    "alternate": []
+   },
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 282, “LUKE” (WOL ¶2)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200002790",
+     "quote": "A physician and faithful companion of the apostle Paul."
+    }
+   ]
+  },
+  {
+   "id": "person:titus",
+   "type": "person",
+   "names": {
+    "nwt": "Titus",
+    "alternate": []
+   },
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 1111, “TITUS” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200004431",
+     "quote": "A Greek Christian who labored with the apostle Paul."
+    }
+   ]
+  },
+  {
+   "id": "person:aquila",
+   "type": "person",
+   "names": {
+    "nwt": "Aquila",
+    "alternate": []
+   },
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 138, “AQUILA” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200000320",
+     "quote": "A natural Jew and native of Pontus in northern Asia Minor."
+    }
+   ]
+  },
+  {
+   "id": "person:priscilla",
+   "type": "person",
+   "names": {
+    "nwt": "Priscilla",
+    "alternate": [
+     "Prisca"
+    ]
+   },
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 689, “PRISCA” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003556",
+     "quote": "The shorter form of the name is found in Paul’s writings, the longer form in Luke’s."
+    }
+   ]
+  },
+  {
+   "id": "person:sergius-paulus",
+   "type": "person",
+   "names": {
+    "nwt": "Sergius Paulus",
+    "alternate": []
+   },
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 pp. 590-591, “PAULUS” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003407",
+     "quote": "The proconsul of Cyprus when Paul visited there on his first missionary journey, about 47 C.E."
+    }
+   ]
+  },
+  {
+   "id": "person:lydia",
+   "type": "person",
+   "names": {
+    "nwt": "Lydia",
+    "alternate": []
+   },
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 285, “LYDIA” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200002798",
+     "quote": "among the first persons in Europe to accept Christianity as a result of the apostle Paul’s activity at Philippi in about 50 C.E."
+    }
+   ]
+  },
+  {
+   "id": "person:gallio",
+   "type": "person",
+   "names": {
+    "nwt": "Gallio",
+    "alternate": []
+   },
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 886, “GALLIO” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200001603",
+     "quote": "The proconsul of Achaia, before whose judgment seat the Jews accused Paul"
+    }
+   ]
+  },
+  {
+   "id": "person:eutychus",
+   "type": "person",
+   "names": {
+    "nwt": "Eutychus",
+    "alternate": []
+   },
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 770, “EUTYCHUS” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200001448",
+     "quote": "A young man in Troas who is the last person reported in the Scriptures to have been miraculously restored to life."
+    }
+   ]
+  },
+  {
+   "id": "person:felix",
+   "type": "person",
+   "names": {
+    "nwt": "Felix",
+    "alternate": []
+   },
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 819, “FELIX” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200001502",
+     "quote": "The procurator of the Roman province of Judea who held Paul prisoner for two years"
+    }
+   ]
+  },
+  {
+   "id": "person:festus",
+   "type": "person",
+   "names": {
+    "nwt": "Festus",
+    "alternate": [
+     "Porcius Festus"
+    ]
+   },
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 828, “FESTUS” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200001512",
+     "quote": "Governor of the Roman province of Judea after the recall of Felix to Rome."
+    }
+   ]
+  },
+  {
+   "id": "person:herod-agrippa-ii",
+   "type": "person",
+   "names": {
+    "nwt": "Agrippa",
+    "alternate": [
+     "Herod Agrippa II",
+     "King Agrippa"
+    ]
+   },
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 1098, “HEROD” (WOL ¶50)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200002000",
+     "quote": "Herod Agrippa II. Great-grandson of Herod the Great."
+    }
+   ]
+  },
+  {
+   "id": "person:julius",
+   "type": "person",
+   "names": {
+    "nwt": "Julius",
+    "alternate": []
+   },
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 139, “JULIUS” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200002553",
+     "quote": "A Roman army officer or centurion of the band of Augustus in whose custody Paul traveled to Rome."
+    }
+   ]
+  },
+  {
+   "id": "person:publius",
+   "type": "person",
+   "names": {
+    "nwt": "Publius",
+    "alternate": []
+   },
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 714, “PUBLIUS” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003577",
+     "quote": "A wealthy land-owning resident of Malta who kindly entertained Paul and those with him for three days"
+    }
+   ]
+  }
+ ]
+}

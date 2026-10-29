@@ -1,0 +1,3116 @@
+{
+ "version": "pilot-2026-10-28",
+ "places": [
+  {
+   "id": "place:antioch-syria",
+   "type": "city",
+   "names": {
+    "nwt": "Antioch",
+    "alternate": [
+     "Antioch of Syria",
+     "Syrian Antioch",
+     "Antakya"
+    ]
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 36.21589,
+    "lon": 36.17684,
+    "source": "Pleiades",
+    "source_id": "658381",
+    "source_url": "https://pleiades.stoa.org/places/658381",
+    "precision": "precise",
+    "label": "Antiochia/Theoupolis",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Antioch 1 / Antioch on the Orontes",
+     "lat": 36.22669,
+     "lon": 36.17174,
+     "distance_km": 1.3
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 pp. 116-117, “ANTIOCH” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200000292",
+     "quote": "At the location of what today is called Antakya in Turkey"
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Antioch (of Syria)” grid H3",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Antioch (of Syria)”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:seleucia",
+   "type": "port",
+   "names": {
+    "nwt": "Seleucia",
+    "alternate": [
+     "Seleucia Pieria",
+     "Samandağ (nearby)"
+    ]
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 36.12126,
+    "lon": 35.9286,
+    "source": "Pleiades",
+    "source_id": "658483",
+    "source_url": "https://pleiades.stoa.org/places/658483",
+    "precision": "precise",
+    "label": "Hydatos Potamoi/Seleukeia Pieria",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Seleucia / Seleucia Pieria",
+     "lat": 36.124,
+     "lon": 35.922,
+     "distance_km": 0.7
+    },
+    "consistency": {
+     "publication_says": "20 km SW of antioch-syria",
+     "gazetteer_gives_km": 24.6,
+     "gazetteer_bearing_deg": 245,
+     "consistent": true
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 892, “SELEUCIA” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003889",
+     "quote": "A fortified Mediterranean port town serving Syrian Antioch and located about 20 km (12 mi) SW of that city."
+    },
+    {
+     "publication": "nwtsty",
+     "location": "Study note on Ac 13:4 (“Seleucia”)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/13",
+     "quote": "Seleucia was just N of Süveydiye, or Samandag, in modern-day Türkiye."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Seleucia” grid H3",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Seleucia”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:cyprus",
+   "type": "island",
+   "names": {
+    "nwt": "Cyprus",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 34.99544,
+    "lon": 33.22247,
+    "source": "Pleiades",
+    "source_id": "707498",
+    "source_url": "https://pleiades.stoa.org/places/707498",
+    "precision": "related",
+    "label": "Cyprus (island)"
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 564, “CYPRUS” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200001100",
+     "quote": "An island in the NE corner of the Mediterranean Sea"
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “CYPRUS” grid G4",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Cyprus”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:salamis",
+   "type": "city",
+   "names": {
+    "nwt": "Salamis",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "likely"
+   },
+   "coordinates": {
+    "lat": 35.17958,
+    "lon": 33.90286,
+    "source": "Pleiades",
+    "source_id": "707617",
+    "source_url": "https://pleiades.stoa.org/places/707617",
+    "precision": "precise",
+    "label": "Salamis/Konstantia",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Salamis",
+     "lat": 35.18494,
+     "lon": 33.90194,
+     "distance_km": 0.6
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 840, “SALAMIS” (WOL ¶4)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003798",
+     "quote": "Salamis is usually identified with the ruins found some 5 km (3 mi) N of the modern city of Famagusta."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Salamis” grid G3",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Salamis”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:paphos",
+   "type": "city",
+   "names": {
+    "nwt": "Paphos",
+    "alternate": [
+     "New Paphos",
+     "Nea Paphos"
+    ]
+   },
+   "identification": {
+    "confidence": "likely"
+   },
+   "coordinates": {
+    "lat": 34.75721,
+    "lon": 32.40659,
+    "source": "Pleiades",
+    "source_id": "707586",
+    "source_url": "https://pleiades.stoa.org/places/707586",
+    "precision": "precise",
+    "label": "(Nea) Paphos",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Paphos / New Paphos",
+     "lat": 34.75567,
+     "lon": 32.40417,
+     "distance_km": 0.3
+    }
+   },
+   "alternate_sites": [
+    {
+     "name": "Old Paphos (Palaipaphos)",
+     "coordinates": {
+      "lat": 34.70533,
+      "lon": 32.57909,
+      "source": "Pleiades",
+      "source_id": "707596",
+      "source_url": "https://pleiades.stoa.org/places/707596"
+     },
+     "note": "Insight distinguishes New Paphos (Acts) from Old Paphos about 15 km SE; Old Paphos is not the Acts city."
+    }
+   ],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 573, “PAPHOS” (WOL ¶4)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003375",
+     "quote": "This city is thought to be represented by the ruins at the ancient seaport of Paphos"
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Paphos” grid G4",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Paphos”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:perga",
+   "type": "city",
+   "names": {
+    "nwt": "Perga",
+    "alternate": [
+     "Perge"
+    ]
+   },
+   "identification": {
+    "confidence": "likely"
+   },
+   "coordinates": {
+    "lat": 36.96447,
+    "lon": 30.85326,
+    "source": "Pleiades",
+    "source_id": "639048",
+    "source_url": "https://pleiades.stoa.org/places/639048",
+    "precision": "precise",
+    "label": "Perge",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Perga",
+     "lat": 36.96035,
+     "lon": 30.85369,
+     "distance_km": 0.5
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 607, “PERGA” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003442",
+     "quote": "The ruins of ancient Perga are believed to be near the modern village of Murtana"
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Perga” grid F3",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Perga”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:attalia",
+   "type": "port",
+   "names": {
+    "nwt": "Attalia",
+    "alternate": [
+     "Antalya"
+    ]
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 36.89031,
+    "lon": 30.69997,
+    "source": "Pleiades",
+    "source_id": "638778",
+    "source_url": "https://pleiades.stoa.org/places/638778",
+    "precision": "precise",
+    "label": "Attalea",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Attalia / Antalya",
+     "lat": 36.88127,
+     "lon": 30.70361,
+     "distance_km": 1.1
+    },
+    "consistency": {
+     "publication_says": "13 km of perga",
+     "gazetteer_gives_km": 15.9,
+     "gazetteer_bearing_deg": 239,
+     "consistent": true
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 215, “ATTALIA” (WOL ¶4)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200000466",
+     "quote": "Attalia, modern Antalya, was founded by Attalus II"
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Attalia” grid F3",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Attalia”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:antioch-pisidia",
+   "type": "city",
+   "names": {
+    "nwt": "Antioch",
+    "alternate": [
+     "Antioch of Pisidia",
+     "Pisidian Antioch",
+     "Yalvaç (nearby)"
+    ]
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 38.30537,
+    "lon": 31.18987,
+    "source": "Pleiades",
+    "source_id": "609307",
+    "source_url": "https://pleiades.stoa.org/places/609307",
+    "precision": "precise",
+    "label": "Antiochia/Col. Caesarea",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Antioch 2 / Antioch in Pisidia",
+     "lat": 38.30611,
+     "lon": 31.18917,
+     "distance_km": 0.1
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 117, “ANTIOCH” (WOL ¶6)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200000292",
+     "quote": "The ruins of the city are located near Yalvac in modern Turkey."
+    },
+    {
+     "publication": "nwtsty",
+     "location": "Study note on Ac 13:14 (“Antioch in Pisidia”)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/13",
+     "quote": "The ruins of the city are located near Yalvaç in modern-day Türkiye."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Antioch (of Pisidia)” grid F2",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Antioch (of Pisidia)”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:iconium",
+   "type": "city",
+   "names": {
+    "nwt": "Iconium",
+    "alternate": [
+     "Konya"
+    ]
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 37.87246,
+    "lon": 32.4923,
+    "source": "Pleiades",
+    "source_id": "648647",
+    "source_url": "https://pleiades.stoa.org/places/648647",
+    "precision": "precise",
+    "label": "Iconium/Claudiconium",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Iconium / Konya",
+     "lat": 37.8722,
+     "lon": 32.49233,
+     "distance_km": 0.0
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 pp. 1166-1167, “ICONIUM” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200002132",
+     "quote": "Iconium is presently known as Konya (Konia)"
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Iconium” grid G2",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Iconium”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:lystra",
+   "type": "city",
+   "names": {
+    "nwt": "Lystra",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 37.58828,
+    "lon": 32.34447,
+    "source": "Pleiades",
+    "source_id": "648699",
+    "source_url": "https://pleiades.stoa.org/places/648699",
+    "precision": "precise",
+    "label": "Lystra/Col. Iulia Felix Gemina",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Lystra / Tel Lystra",
+     "lat": 37.6017,
+     "lon": 32.3384,
+     "distance_km": 1.6
+    },
+    "consistency": {
+     "publication_says": "32 km SSW of iconium",
+     "gazetteer_gives_km": 34.2,
+     "gazetteer_bearing_deg": 202,
+     "consistent": true
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 286, “LYSTRA” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200002802",
+     "quote": "Lystra has been identified with a mound to the N of Hatunsaray"
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Lystra” grid G2",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Lystra”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:derbe",
+   "type": "city",
+   "names": {
+    "nwt": "Derbe",
+    "alternate": [
+     "Kerti Hüyük"
+    ]
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 37.34921,
+    "lon": 33.36178,
+    "source": "Pleiades",
+    "source_id": "648620",
+    "source_url": "https://pleiades.stoa.org/places/648620",
+    "precision": "precise",
+    "label": "Derbe/Claudioderbe",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Derbe / Kerti Hüyük",
+     "lat": 37.34857,
+     "lon": 33.36145,
+     "distance_km": 0.1
+    },
+    "consistency": {
+     "publication_says": "100 km SE of iconium",
+     "gazetteer_gives_km": 96.2,
+     "gazetteer_bearing_deg": 127,
+     "consistent": true
+    }
+   },
+   "alternate_sites": [
+    {
+     "name": "Devri Şehri",
+     "coordinates": {
+      "lat": 37.3188,
+      "lon": 33.3948,
+      "source": "OpenBible.info Bible Geocoding (acts.kml)",
+      "label": "Derbe / Devri Şehri"
+     },
+     "note": "Gazetteer alternative; not mentioned in the publications checked."
+    },
+    {
+     "name": "Güdelisin",
+     "coordinates": {
+      "lat": 37.28196,
+      "lon": 32.77766,
+      "source": "OpenBible.info Bible Geocoding (acts.kml)",
+      "label": "Derbe / Güdelisin"
+     },
+     "note": "Gazetteer alternative; not mentioned in the publications checked."
+    }
+   ],
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 616, “DERBE” (WOL ¶5)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200001158",
+     "quote": "Derbe is now identified with Kerti Hüyük 21 km (13 mi) NNE of Karaman (ancient Laranda)"
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Derbe” grid G3",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Derbe”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:tarsus",
+   "type": "city",
+   "names": {
+    "nwt": "Tarsus",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 36.91404,
+    "lon": 34.89647,
+    "source": "Pleiades",
+    "source_id": "648789",
+    "source_url": "https://pleiades.stoa.org/places/648789",
+    "precision": "precise",
+    "label": "Tarsus/Antiochia ad Cydnum",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Tarsus",
+     "lat": 36.91303,
+     "lon": 34.89206,
+     "distance_km": 0.4
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 1067, “TARSUS” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200004326",
+     "quote": "Ruins of the ancient town remain in the modern settlement of the same name"
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Tarsus” grid H3",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Tarsus”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:troas",
+   "type": "port",
+   "names": {
+    "nwt": "Troas",
+    "alternate": [
+     "Alexandria Troas"
+    ]
+   },
+   "identification": {
+    "confidence": "likely"
+   },
+   "coordinates": {
+    "lat": 39.7517,
+    "lon": 26.15756,
+    "source": "Pleiades",
+    "source_id": "550434",
+    "source_url": "https://pleiades.stoa.org/places/550434",
+    "precision": "precise",
+    "label": "Antigoneia/(Col. Augusta) Alexandria Troas",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Troas / Alexandria Troas",
+     "lat": 39.75194,
+     "lon": 26.15861,
+     "distance_km": 0.1
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 1129, “TROAS” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200004480",
+     "quote": "It was located about 30 km (19 mi) S of the Hellespont (Dardanelles)"
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Troas” grid E2",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Troas”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:samothrace",
+   "type": "island",
+   "names": {
+    "nwt": "Samothrace",
+    "alternate": [
+     "Samothraki"
+    ]
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 40.45231,
+    "lon": 25.57624,
+    "source": "Pleiades",
+    "source_id": "501597",
+    "source_url": "https://pleiades.stoa.org/places/501597",
+    "precision": "precise",
+    "label": "Samothrace (island)"
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 849, “SAMOTHRACE” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003822",
+     "quote": "The modern-day island (Samothraki) lacks a good harbor"
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “SAMOTHRACE” grid E1",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Samothrace”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:neapolis",
+   "type": "port",
+   "names": {
+    "nwt": "Neapolis",
+    "alternate": [
+     "Kavala"
+    ]
+   },
+   "identification": {
+    "confidence": "likely"
+   },
+   "coordinates": {
+    "lat": 40.93432,
+    "lon": 24.41404,
+    "source": "Pleiades",
+    "source_id": "501523",
+    "source_url": "https://pleiades.stoa.org/places/501523",
+    "precision": "precise",
+    "label": "Neapolis (Kavalla)",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Neapolis / Kavala",
+     "lat": 40.935,
+     "lon": 24.415,
+     "distance_km": 0.1
+    },
+    "consistency": {
+     "publication_says": "15 km SE of philippi",
+     "gazetteer_gives_km": 13.9,
+     "gazetteer_bearing_deg": 129,
+     "consistent": true
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 pp. 478-479, “NEAPOLIS” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003193",
+     "quote": "It is generally linked with modern Kavalla."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Neapolis” grid D1",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Neapolis”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:philippi",
+   "type": "city",
+   "names": {
+    "nwt": "Philippi",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 41.01265,
+    "lon": 24.28464,
+    "source": "Pleiades",
+    "source_id": "501482",
+    "source_url": "https://pleiades.stoa.org/places/501482",
+    "precision": "precise",
+    "label": "Krenides/Philippi/Col. Augusta Iulia Philippensis",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Philippi",
+     "lat": 41.01207,
+     "lon": 24.28458,
+     "distance_km": 0.1
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 629, “PHILIPPI” (WOL ¶4)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003467",
+     "quote": "Excavations of the ruins indicate that the Egnatian Way ran through the middle of the city"
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Philippi” grid D1",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Philippi”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:amphipolis",
+   "type": "city",
+   "names": {
+    "nwt": "Amphipolis",
+    "alternate": [
+     "Amfipoli"
+    ]
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 40.82581,
+    "lon": 23.84158,
+    "source": "Pleiades",
+    "source_id": "501347",
+    "source_url": "https://pleiades.stoa.org/places/501347",
+    "precision": "precise",
+    "label": "Amphipolis",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Amphipolis",
+     "lat": 40.82016,
+     "lon": 23.84721,
+     "distance_km": 0.8
+    },
+    "consistency": {
+     "publication_says": "50 km WSW of philippi",
+     "gazetteer_gives_km": 42.6,
+     "gazetteer_bearing_deg": 241,
+     "consistent": true
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 101, “AMPHIPOLIS” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200000249",
+     "quote": "The archaeological site is located just outside the modern village also named Amphipolis (Amfipoli)."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Amphipolis” grid D1",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Amphipolis”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:apollonia",
+   "type": "city",
+   "names": {
+    "nwt": "Apollonia",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "likely"
+   },
+   "coordinates": {
+    "lat": 40.6237,
+    "lon": 23.46968,
+    "source": "Pleiades",
+    "source_id": "491526",
+    "source_url": "https://pleiades.stoa.org/places/491526",
+    "precision": "precise",
+    "label": "Apollonia",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Apollonia",
+     "lat": 40.64319,
+     "lon": 23.48964,
+     "distance_km": 2.7
+    },
+    "consistency": {
+     "publication_says": "35 km of amphipolis",
+     "gazetteer_gives_km": 38.6,
+     "gazetteer_bearing_deg": 234,
+     "consistent": true
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 125, “APOLLONIA” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200000306",
+     "quote": "It was situated in the district of Mygdonia about 35 km (22 mi) from Amphipolis and 45 km (28 mi) from Thessalonica"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Apollonia”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:thessalonica",
+   "type": "city",
+   "names": {
+    "nwt": "Thessalonica",
+    "alternate": [
+     "Thessaloniki",
+     "Salonika"
+    ]
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 40.62834,
+    "lon": 22.95288,
+    "source": "Pleiades",
+    "source_id": "491741",
+    "source_url": "https://pleiades.stoa.org/places/491741",
+    "precision": "precise",
+    "label": "Thessalonica",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Thessalonica / Thessaloniki",
+     "lat": 40.63777,
+     "lon": 22.94577,
+     "distance_km": 1.2
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 1092, “THESSALONICA” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200004379",
+     "quote": "now the city is called Salonika (or, Thessaloniki)."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Thessalonica” grid D1",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Thessalonica”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:beroea",
+   "type": "city",
+   "names": {
+    "nwt": "Beroea",
+    "alternate": [
+     "Veroia",
+     "Berea"
+    ]
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 40.52213,
+    "lon": 22.20149,
+    "source": "Pleiades",
+    "source_id": "491546",
+    "source_url": "https://pleiades.stoa.org/places/491546",
+    "precision": "precise",
+    "label": "Ber(r)oia",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Berea / Veria",
+     "lat": 40.51833,
+     "lon": 22.2,
+     "distance_km": 0.4
+    },
+    "consistency": {
+     "publication_says": "65 km WSW of thessalonica",
+     "gazetteer_gives_km": 64.6,
+     "gazetteer_bearing_deg": 260,
+     "consistent": true
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 291, “BEROEA” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200000657",
+     "quote": "Modernly called Veroia"
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Beroea” grid D1",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Beroea”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:athens",
+   "type": "city",
+   "names": {
+    "nwt": "Athens",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 37.97165,
+    "lon": 23.72395,
+    "source": "Pleiades",
+    "source_id": "579885",
+    "source_url": "https://pleiades.stoa.org/places/579885",
+    "precision": "related",
+    "label": "Athenae",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Athens",
+     "lat": 37.97185,
+     "lon": 23.72674,
+     "distance_km": 0.2
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 209, “ATHENS” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200000459",
+     "quote": "The modern capital of Greece, and its most prominent city in ancient times."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Athens” grid D2",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Athens”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:corinth",
+   "type": "city",
+   "names": {
+    "nwt": "Corinth",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 37.90564,
+    "lon": 22.87861,
+    "source": "Pleiades",
+    "source_id": "570182",
+    "source_url": "https://pleiades.stoa.org/places/570182",
+    "precision": "precise",
+    "label": "Corinthus/Korinthos",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Corinth",
+     "lat": 37.90579,
+     "lon": 22.87874,
+     "distance_km": 0.0
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 508, “CORINTH” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200001038",
+     "quote": "One of the oldest and most prominent cities of ancient Greece, located about 5 km (3 mi) SW of the modern city."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Corinth” grid D2",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Corinth”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:cenchreae",
+   "type": "port",
+   "names": {
+    "nwt": "Cenchreae",
+    "alternate": [
+     "Kechries"
+    ]
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 37.88239,
+    "lon": 22.99253,
+    "source": "Pleiades",
+    "source_id": "570347",
+    "source_url": "https://pleiades.stoa.org/places/570347",
+    "precision": "precise",
+    "label": "Kenchreai",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Cenchreae / Kechries",
+     "lat": 37.88434,
+     "lon": 22.99682,
+     "distance_km": 0.4
+    },
+    "consistency": {
+     "publication_says": "11 km E of corinth",
+     "gazetteer_gives_km": 10.3,
+     "gazetteer_bearing_deg": 104,
+     "consistent": true
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 425, “CENCHREAE” (WOL ¶4)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200000909",
+     "quote": "Ruins in the area today include buildings and breakwaters near the present village of Kechriais."
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Cenchreae”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:ephesus",
+   "type": "city",
+   "names": {
+    "nwt": "Ephesus",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 37.94016,
+    "lon": 27.3424,
+    "source": "Pleiades",
+    "source_id": "599612",
+    "source_url": "https://pleiades.stoa.org/places/599612",
+    "precision": "precise",
+    "label": "Ephesus/Arsinoe(ia)",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Ephesus",
+     "lat": 37.93912,
+     "lon": 27.3407,
+     "distance_km": 0.2
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 734, “EPHESUS” (WOL ¶4)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200001387",
+     "quote": "for now the ruins of the city are several kilometers inland."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Ephesus” grid E2",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Ephesus”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:caesarea",
+   "type": "port",
+   "names": {
+    "nwt": "Caesarea",
+    "alternate": [
+     "Caesarea Maritima",
+     "Qaisariye",
+     "Horvat Qesari"
+    ]
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 32.50184,
+    "lon": 34.89245,
+    "source": "Pleiades",
+    "source_id": "678401",
+    "source_url": "https://pleiades.stoa.org/places/678401",
+    "precision": "precise",
+    "label": "Stratonos Pyrgos/Caesarea",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Caesarea / Caesarea Maritima",
+     "lat": 32.5,
+     "lon": 34.89167,
+     "distance_km": 0.2
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 384, “CAESAREA” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200000853",
+     "quote": "The ancient name has been preserved in the Arabic name Qaisariye (today called Horvat Qesari in Hebrew)."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Caesarea” grid G4",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Caesarea”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:jerusalem",
+   "type": "city",
+   "names": {
+    "nwt": "Jerusalem",
+    "alternate": [
+     "Salem"
+    ]
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 31.77719,
+    "lon": 35.23498,
+    "source": "Pleiades",
+    "source_id": "687928",
+    "source_url": "https://pleiades.stoa.org/places/687928",
+    "precision": "precise",
+    "label": "Ierusalem/Hierosolyma/Col. Aelia Capitolina",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Jerusalem",
+     "lat": 31.77667,
+     "lon": 35.23417,
+     "distance_km": 0.1
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 39, “JERUSALEM” (WOL ¶7)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200002436",
+     "quote": "Jerusalem rests among the hills of the central mountain range."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Jerusalem” grid H5",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Jerusalem”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:assos",
+   "type": "port",
+   "names": {
+    "nwt": "Assos",
+    "alternate": [
+     "Behramkale"
+    ]
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 39.49014,
+    "lon": 26.33635,
+    "source": "Pleiades",
+    "source_id": "550463",
+    "source_url": "https://pleiades.stoa.org/places/550463",
+    "precision": "precise",
+    "label": "Assos/Apollonia",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Assos",
+     "lat": 39.49056,
+     "lon": 26.33667,
+     "distance_km": 0.1
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 200, “ASSOS” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200000446",
+     "quote": "The site is today known as Behramkale (previously, Behramköy)."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Assos” grid E2",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Assos”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:mitylene",
+   "type": "city",
+   "names": {
+    "nwt": "Mitylene",
+    "alternate": [
+     "Mytilene"
+    ]
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 39.11048,
+    "lon": 26.54705,
+    "source": "Pleiades",
+    "source_id": "550763",
+    "source_url": "https://pleiades.stoa.org/places/550763",
+    "precision": "precise",
+    "label": "Mytilene",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Mitylene / ancient theater at Mitylene",
+     "lat": 39.11048,
+     "lon": 26.54705,
+     "distance_km": 0.0
+    },
+    "consistency": {
+     "publication_says": "45 km NNW to assos",
+     "gazetteer_gives_km": 45.9,
+     "gazetteer_bearing_deg": 337,
+     "consistent": true
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 417, “MITYLENE” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003091",
+     "quote": "The principal city of Lesbos, an island in the Aegean Sea off the W coast of Asia Minor."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Mitylene” grid E2",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Mitylene”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:chios",
+   "type": "island",
+   "names": {
+    "nwt": "Chios",
+    "alternate": [
+     "Khios"
+    ]
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 38.38364,
+    "lon": 26.01424,
+    "source": "Pleiades",
+    "source_id": "550497",
+    "source_url": "https://pleiades.stoa.org/places/550497",
+    "precision": "precise",
+    "label": "Chios (island)"
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 437, “CHIOS” (WOL ¶5)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200000959",
+     "quote": "Both the island and its chief city are today called Khios by the Greeks and Scio by the Italians."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “CHIOS” grid E2",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Chios”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:samos",
+   "type": "island",
+   "names": {
+    "nwt": "Samos",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 37.73246,
+    "lon": 26.83913,
+    "source": "Pleiades",
+    "source_id": "599926",
+    "source_url": "https://pleiades.stoa.org/places/599926",
+    "precision": "precise",
+    "label": "Samos (island)"
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 849, “SAMOS” (WOL ¶4)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003821",
+     "quote": "A strait about 1.5 km (1 mi) long separates this mountainous island from the Asian promontory named Samsun Dagi."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “SAMOS” grid E2",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Samos”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:miletus",
+   "type": "city",
+   "names": {
+    "nwt": "Miletus",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 37.53046,
+    "lon": 27.27881,
+    "source": "Pleiades",
+    "source_id": "599799",
+    "source_url": "https://pleiades.stoa.org/places/599799",
+    "precision": "precise",
+    "label": "Miletus",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Miletus",
+     "lat": 37.53111,
+     "lon": 27.27556,
+     "distance_km": 0.3
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 401, “MILETUS” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003057",
+     "quote": "A city on the W coast of Asia Minor that is now in ruins."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Miletus” grid E3",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Miletus”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:cos",
+   "type": "city",
+   "names": {
+    "nwt": "Cos",
+    "alternate": [
+     "Kos"
+    ]
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 36.8936,
+    "lon": 27.28991,
+    "source": "Pleiades",
+    "source_id": "599728",
+    "source_url": "https://pleiades.stoa.org/places/599728",
+    "precision": "precise",
+    "label": "Kos (settlement)"
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 514, “COS” (WOL ¶2)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200001044",
+     "quote": "The capital city at the NE end of an island bearing the same name."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Cos” grid E3",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Cos”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:rhodes",
+   "type": "island",
+   "names": {
+    "nwt": "Rhodes",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 36.17911,
+    "lon": 27.97208,
+    "source": "Pleiades",
+    "source_id": "590031",
+    "source_url": "https://pleiades.stoa.org/places/590031",
+    "precision": "precise",
+    "label": "Rhodos (island)"
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 803, “RHODES” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003726",
+     "quote": "An island off the SW corner of Turkey and one of the largest in the Aegean Sea"
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “RHODES” grid E3",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Rhodes”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:patara",
+   "type": "port",
+   "names": {
+    "nwt": "Patara",
+    "alternate": [
+     "Gelemiş"
+    ]
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 36.26179,
+    "lon": 29.3145,
+    "source": "Pleiades",
+    "source_id": "639042",
+    "source_url": "https://pleiades.stoa.org/places/639042",
+    "precision": "precise",
+    "label": "Patara/Arsinoe",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Patara",
+     "lat": 36.26028,
+     "lon": 29.31417,
+     "distance_km": 0.2
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 584, “PATARA” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003399",
+     "quote": "Patara is today identified with ancient ruins at the village of Gelemish"
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Patara” grid F3",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Patara”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:tyre",
+   "type": "port",
+   "names": {
+    "nwt": "Tyre",
+    "alternate": [
+     "Sur"
+    ]
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 33.26934,
+    "lon": 35.20183,
+    "source": "Pleiades",
+    "source_id": "678437",
+    "source_url": "https://pleiades.stoa.org/places/678437",
+    "precision": "precise",
+    "label": "Tyrus/Col. Septimia Severa",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Tyre",
+     "lat": 33.27083,
+     "lon": 35.19611,
+     "distance_km": 0.6
+    },
+    "consistency": {
+     "publication_says": "35 km SSW of sidon",
+     "gazetteer_gives_km": 36.2,
+     "gazetteer_bearing_deg": 206,
+     "consistent": true
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 1135, “TYRE” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200004498",
+     "quote": "The principal Phoenician seaport; identified with present-day Sur"
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Tyre” grid H4",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Tyre”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:ptolemais",
+   "type": "port",
+   "names": {
+    "nwt": "Ptolemais",
+    "alternate": [
+     "Acco",
+     "Accho",
+     "Acre",
+     "ʽAkko"
+    ]
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 32.92129,
+    "lon": 35.07984,
+    "source": "Pleiades",
+    "source_id": "678010",
+    "source_url": "https://pleiades.stoa.org/places/678010",
+    "precision": "precise",
+    "label": "Ake/Ptolemais",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Ptolemais / Acre",
+     "lat": 32.9214,
+     "lon": 35.0692,
+     "distance_km": 1.0
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 712, “PTOLEMAIS” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003573",
+     "quote": "Later name of Acco."
+    },
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 38, “ACCO” (WOL ¶4)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200000070",
+     "quote": "the location of Acco had come to include the peninsula and is included in the area of modern ʽAkko."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Ptolemais” grid H4",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Ptolemais”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:sidon",
+   "type": "port",
+   "names": {
+    "nwt": "Sidon",
+    "alternate": [
+     "Saida"
+    ]
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 33.56195,
+    "lon": 35.37279,
+    "source": "Pleiades",
+    "source_id": "678393",
+    "source_url": "https://pleiades.stoa.org/places/678393",
+    "precision": "precise",
+    "label": "Sidon/Col. Aurelia Pia",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Sidon / Sandikli archaeological site in Sidon",
+     "lat": 33.56099,
+     "lon": 35.37194,
+     "distance_km": 0.1
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 940, “SIDON” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200004113",
+     "quote": "Today the city is known as Saida."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Sidon” grid H4",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Sidon”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:myra",
+   "type": "city",
+   "names": {
+    "nwt": "Myra",
+    "alternate": [
+     "Demre"
+    ]
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 36.25856,
+    "lon": 29.98545,
+    "source": "Pleiades",
+    "source_id": "639005",
+    "source_url": "https://pleiades.stoa.org/places/639005",
+    "precision": "precise",
+    "label": "Myra",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Myra",
+     "lat": 36.25917,
+     "lon": 29.98528,
+     "distance_km": 0.1
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 455, “MYRA” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003142",
+     "quote": "The site is now known as Demre."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Myra” grid F3",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Myra”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:cnidus",
+   "type": "city",
+   "names": {
+    "nwt": "Cnidus",
+    "alternate": [
+     "Knidos"
+    ]
+   },
+   "identification": {
+    "confidence": "likely"
+   },
+   "coordinates": {
+    "lat": 36.68818,
+    "lon": 27.37284,
+    "source": "Pleiades",
+    "source_id": "599575",
+    "source_url": "https://pleiades.stoa.org/places/599575",
+    "precision": "precise",
+    "label": "Cnidus (Tekir)",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Cnidus",
+     "lat": 36.68583,
+     "lon": 27.375,
+     "distance_km": 0.3
+    }
+   },
+   "alternate_sites": [
+    {
+     "name": "Cnidus at Burgaz (earlier site)",
+     "coordinates": {
+      "lat": 36.7356,
+      "lon": 27.69938,
+      "source": "Pleiades",
+      "source_id": "599576",
+      "source_url": "https://pleiades.stoa.org/places/599576"
+     },
+     "note": "Pleiades: the political center moved from Burgaz to Tekir in the late 4th century BCE, so Tekir is the 1st-century city. The publications don't say which site."
+    }
+   ],
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 484, “CNIDUS” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200000997",
+     "quote": "A city situated on the Resadiye Peninsula"
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Cnidus” grid E3",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Cnidus”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:crete",
+   "type": "island",
+   "names": {
+    "nwt": "Crete",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 35.21485,
+    "lon": 25.07408,
+    "source": "Pleiades",
+    "source_id": "589748",
+    "source_url": "https://pleiades.stoa.org/places/589748",
+    "precision": "related",
+    "label": "Creta (island)"
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 547, “CRETE” (WOL ¶2)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200001071",
+     "quote": "The fifth-largest island of the Mediterranean"
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “CRETE” grid D3",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Crete”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:salmone",
+   "type": "cape",
+   "names": {
+    "nwt": "Salmone",
+    "alternate": [
+     "Cape Sidero"
+    ]
+   },
+   "identification": {
+    "confidence": "likely"
+   },
+   "coordinates": {
+    "lat": 35.31606,
+    "lon": 26.31135,
+    "source": "Pleiades",
+    "source_id": "590037",
+    "source_url": "https://pleiades.stoa.org/places/590037",
+    "precision": "precise",
+    "label": "Sam(m)onion (promontory)"
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 841, “SALMONE” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003807",
+     "quote": "A promontory of Crete, generally identified with Cape Sidero at the E end of the island."
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Cape Salmone”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:fair-havens",
+   "type": "harbor",
+   "names": {
+    "nwt": "Fair Havens",
+    "alternate": [
+     "Kaloi Limenes",
+     "Kaloi Limniones"
+    ]
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 34.93182,
+    "lon": 24.81228,
+    "source": "Pleiades",
+    "source_id": "589834",
+    "source_url": "https://pleiades.stoa.org/places/589834",
+    "precision": "precise",
+    "label": "Kaloi Limenes",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Fair Havens / Kaloi Limenes",
+     "lat": 34.92969,
+     "lon": 24.80031,
+     "distance_km": 1.1
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 802, “FAIR HAVENS” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200001483",
+     "quote": "identified with the bay on the S coast of Crete that still bears the same name in modern Greek, Kaloi Limniones."
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Fair Havens”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:lasea",
+   "type": "city",
+   "names": {
+    "nwt": "Lasea",
+    "alternate": [
+     "Lasaia"
+    ]
+   },
+   "identification": {
+    "confidence": "likely"
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 205, “LASEA” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200002683",
+     "quote": "Lasea is usually identified with ruins situated about 8 km (5 mi) E of modern Kaloi Limniones (Fair Havens)."
+    }
+   ],
+   "notes": [
+    {
+     "kind": "conflict",
+     "text": "Pleiades 589897 sits 1.1 km from Fair Havens, but Insight puts Lasea about 8 km E of it. Coordinates withheld until resolved."
+    }
+   ],
+   "rejected_coordinates": {
+    "lat": 34.94083,
+    "lon": 24.81827,
+    "source": "Pleiades",
+    "source_id": "589897",
+    "source_url": "https://pleiades.stoa.org/places/589897",
+    "precision": "precise",
+    "label": "Lasaia",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Lasea / Lasaea",
+     "lat": 34.94056,
+     "lon": 24.81111,
+     "distance_km": 0.7
+    },
+    "consistency": {
+     "publication_says": "8 km E of fair-havens",
+     "gazetteer_gives_km": 1.1,
+     "gazetteer_bearing_deg": 29,
+     "consistent": false
+    }
+   },
+   "coordinates": null
+  },
+  {
+   "id": "place:phoenix",
+   "type": "harbor",
+   "names": {
+    "nwt": "Phoenix",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "uncertain"
+   },
+   "coordinates": null,
+   "alternate_sites": [
+    {
+     "name": "Loutro",
+     "citations": [
+      {
+       "publication": "it-2",
+       "location": "it-2 p. 636, “PHOENIX” (WOL ¶4)",
+       "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003476",
+       "quote": "One is Loutro, on the E side of a cape, about 65 km (40 mi) W of Fair Havens"
+      }
+     ]
+    },
+    {
+     "name": "Phineka",
+     "citations": [
+      {
+       "publication": "it-2",
+       "location": "it-2 p. 636, “PHOENIX” (WOL ¶4)",
+       "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003476",
+       "quote": "the other Phineka, on the opposite side of this cape."
+      }
+     ]
+    }
+   ],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 636, “PHOENIX” (WOL ¶4)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003476",
+     "quote": "Two sites have therefore been proposed."
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Phoenix”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:cauda",
+   "type": "island",
+   "names": {
+    "nwt": "Cauda",
+    "alternate": [
+     "Gavdos"
+    ]
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 34.84166,
+    "lon": 24.0901,
+    "source": "Pleiades",
+    "source_id": "589858",
+    "source_url": "https://pleiades.stoa.org/places/589858",
+    "precision": "precise",
+    "label": "Kaudos (island)",
+    "consistency": {
+     "publication_says": "65 km WSW of fair-havens",
+     "gazetteer_gives_km": 66.6,
+     "gazetteer_bearing_deg": 262,
+     "consistent": true
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 423, “CAUDA” (WOL ¶4)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200000906",
+     "quote": "The Cauda of Luke’s narrative is today called Gavdos"
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “CAUDA” grid D4",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Cauda”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:malta",
+   "type": "island",
+   "names": {
+    "nwt": "Malta",
+    "alternate": [
+     "Melita"
+    ]
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 35.88781,
+    "lon": 14.43845,
+    "source": "Pleiades",
+    "source_id": "462311",
+    "source_url": "https://pleiades.stoa.org/places/462311",
+    "precision": "related",
+    "label": "Melita/Malta (island)"
+   },
+   "alternate_sites": [
+    {
+     "name": "Mljet (Meleda)",
+     "status": "rejected",
+     "citations": [
+      {
+       "publication": "it-2",
+       "location": "it-2 p. 302, “MALTA” (WOL ¶4)",
+       "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200002875",
+       "quote": "In the past some associated the Greek word rendered “Malta” (Me·liʹte) with Mljet (or, Italian Meleda)"
+      }
+     ]
+    }
+   ],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 302, “MALTA” (WOL ¶4)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200002875",
+     "quote": "tradition and the evidence of Scripture point to Malta as the place where Paul experienced shipwreck."
+    },
+    {
+     "publication": "nwtsty",
+     "location": "Study note on Ac 28:1 (“Malta”)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/28",
+     "quote": "which for centuries has been identified with the modern-day island of Malta."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “MALTA” grid A3",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Malta”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:st-pauls-bay",
+   "type": "bay",
+   "names": {
+    "nwt": "St. Paul’s Bay",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "likely"
+   },
+   "coordinates": null,
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 302, “MALTA” (WOL ¶6)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200002875",
+     "quote": "What is today called St. Paul’s Bay, situated on the NE side of Malta, could have been reached on a WNW course"
+    }
+   ],
+   "notes": [],
+   "parent": "place:malta"
+  },
+  {
+   "id": "place:syracuse",
+   "type": "city",
+   "names": {
+    "nwt": "Syracuse",
+    "alternate": [
+     "Siracusa"
+    ]
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 37.07008,
+    "lon": 15.28334,
+    "source": "Pleiades",
+    "source_id": "462503",
+    "source_url": "https://pleiades.stoa.org/places/462503",
+    "precision": "related",
+    "label": "Syracusae/Syrakousai",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Syracuse",
+     "lat": 37.06389,
+     "lon": 15.29306,
+     "distance_km": 1.1
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 1052, “SYRACUSE” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200004284",
+     "quote": "A city with a fine harbor, on the SE coast of the island of Sicily, today called Siracusa (Italian)."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Syracuse” grid A3",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Syracuse”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:rhegium",
+   "type": "city",
+   "names": {
+    "nwt": "Rhegium",
+    "alternate": [
+     "Reggio di Calabria"
+    ]
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 38.10928,
+    "lon": 15.64393,
+    "source": "Pleiades",
+    "source_id": "452416",
+    "source_url": "https://pleiades.stoa.org/places/452416",
+    "precision": "precise",
+    "label": "Rhegion/Regium",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Rhegium / Reggio Calabria",
+     "lat": 38.1088,
+     "lon": 15.64412,
+     "distance_km": 0.1
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 803, “RHEGIUM” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003723",
+     "quote": "A city in southern Italy today called Reggio or Reggio di Calabria."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Rhegium” grid B2",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Rhegium”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:puteoli",
+   "type": "port",
+   "names": {
+    "nwt": "Puteoli",
+    "alternate": [
+     "Pozzuoli",
+     "Dicaearchia"
+    ]
+   },
+   "identification": {
+    "confidence": "likely"
+   },
+   "coordinates": {
+    "lat": 40.82584,
+    "lon": 14.12174,
+    "source": "Pleiades",
+    "source_id": "432815",
+    "source_url": "https://pleiades.stoa.org/places/432815",
+    "precision": "precise",
+    "label": "Dikaiarcheia/Puteoli",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Puteoli / Pozzuoli",
+     "lat": 40.82611,
+     "lon": 14.12056,
+     "distance_km": 0.1
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 717, “PUTEOLI” (WOL ¶5)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003592",
+     "quote": "Puteoli is generally identified with modern Pozzuoli"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "Study note on Ac 28:13 (“Puteoli”)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/28",
+     "quote": "Now called Pozzuoli, this chief port SE of Rome was located about 10 km (6 mi) WSW of Naples."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Puteoli” grid A1",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Puteoli”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": [
+    {
+     "kind": "conflict",
+     "text": "Insight hedges (“generally identified”); the Acts 28:13 study note does not (“Now called Pozzuoli”). Confidence follows the more hedged source."
+    }
+   ]
+  },
+  {
+   "id": "place:marketplace-of-appius",
+   "type": "station",
+   "names": {
+    "nwt": "Marketplace of Appius",
+    "alternate": [
+     "Forum of Appius",
+     "Appii Forum",
+     "Foro Appio"
+    ]
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 41.46639,
+    "lon": 12.9975,
+    "source": "Pleiades",
+    "source_id": "422927",
+    "source_url": "https://pleiades.stoa.org/places/422927",
+    "precision": "precise",
+    "label": "Forum Appii ",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Forum of Appius / Forum Appii",
+     "lat": 41.46639,
+     "lon": 12.9975,
+     "distance_km": 0.0
+    },
+    "consistency": {
+     "publication_says": "64 km SE of rome",
+     "gazetteer_gives_km": 63.1,
+     "gazetteer_bearing_deg": 138,
+     "consistent": true
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 131, “APPIUS” (WOL ¶6)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200000314",
+     "quote": "Today there is a place still known as the Foro Appio, or Appian Forum, on the Appian Way."
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Marketplace of Appius”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:three-taverns",
+   "type": "station",
+   "names": {
+    "nwt": "Three Taverns",
+    "alternate": [
+     "Tres Tabernae"
+    ]
+   },
+   "identification": {
+    "confidence": "likely"
+   },
+   "coordinates": {
+    "lat": 41.56168,
+    "lon": 12.87428,
+    "source": "Pleiades",
+    "source_id": "423106",
+    "source_url": "https://pleiades.stoa.org/places/423106",
+    "precision": "precise",
+    "label": "Tres Tabernae",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Three Taverns",
+     "lat": 41.56194,
+     "lon": 12.87389,
+     "distance_km": 0.0
+    },
+    "consistency": {
+     "publication_says": "49 km SE of rome",
+     "gazetteer_gives_km": 48.4,
+     "gazetteer_bearing_deg": 139,
+     "consistent": true
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 1096, “THREE TAVERNS” (WOL ¶2)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200004388",
+     "quote": "The site of Three Taverns is 49 km (30 mi) SE of Rome."
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Three Taverns”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:rome",
+   "type": "city",
+   "names": {
+    "nwt": "Rome",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": {
+    "lat": 41.88998,
+    "lon": 12.49126,
+    "source": "Pleiades",
+    "source_id": "423025",
+    "source_url": "https://pleiades.stoa.org/places/423025",
+    "precision": "related",
+    "label": "Roma",
+    "cross_check": {
+     "source": "OpenBible.info Bible Geocoding (acts.kml)",
+     "label": "Rome",
+     "lat": 41.8922,
+     "lon": 12.4852,
+     "distance_km": 0.6
+    }
+   },
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 822, “ROME” (WOL ¶2)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003763",
+     "quote": "Rome is located inland about 25 km (16 mi) up the Tiber River, on both banks"
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”, label “Rome” grid A1",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Rome”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:syria",
+   "type": "region",
+   "names": {
+    "nwt": "Syria",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": null,
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 1052, “SYRIA” (WOL ¶2)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200004285",
+     "quote": "That region bounded on the E by Mesopotamia, on the W by the Lebanon Mountains"
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “SYRIA”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:cilicia",
+   "type": "region",
+   "names": {
+    "nwt": "Cilicia",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": null,
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 468, “CILICIA”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200000975"
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “CILICIA”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:pamphylia",
+   "type": "region",
+   "names": {
+    "nwt": "Pamphylia",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": null,
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 573, “PAMPHYLIA” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003373",
+     "quote": "A small Roman province on the S coast of Asia Minor visited by Paul on his first missionary tour."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “PAMPHYLIA”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:pisidia",
+   "type": "region",
+   "names": {
+    "nwt": "Pisidia",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": null,
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 645, “PISIDIA”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003499"
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “PISIDIA”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:lycaonia",
+   "type": "region",
+   "names": {
+    "nwt": "Lycaonia",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": null,
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 285, “LYCAONIA”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200002795"
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “LYCAONIA”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:galatia",
+   "type": "region",
+   "names": {
+    "nwt": "Galatia",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": null,
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 879, “GALATIA”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200001594"
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “GALATIA”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:phrygia",
+   "type": "region",
+   "names": {
+    "nwt": "Phrygia",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": null,
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 637, “PHRYGIA”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003477"
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “PHRYGIA”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:mysia",
+   "type": "region",
+   "names": {
+    "nwt": "Mysia",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": null,
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 455, “MYSIA” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003145",
+     "quote": "A region in the NW part of Asia Minor."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “MYSIA”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:macedonia",
+   "type": "region",
+   "names": {
+    "nwt": "Macedonia",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": null,
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 289, “MACEDONIA” (WOL ¶7)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200002815",
+     "quote": "Macedonia was the first area in Europe to be visited by the apostle Paul on his second missionary journey."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “MACEDONIA”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:greece",
+   "type": "region",
+   "names": {
+    "nwt": "Greece",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": null,
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 998, “GREECE”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200001765"
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “GREECE”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:achaia",
+   "type": "region",
+   "names": {
+    "nwt": "Achaia",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": null,
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 40, “ACHAIA”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200000072"
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “ACHAIA”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:asia",
+   "type": "region",
+   "names": {
+    "nwt": "Asia",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": null,
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 193, “ASIA” (WOL ¶2)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200000433",
+     "quote": "the term “Asia” is used as referring to the Roman province occupying the western part of Asia Minor, not to the continent of Asia."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “ASIA”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:lycia",
+   "type": "region",
+   "names": {
+    "nwt": "Lycia",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": null,
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 285, “LYCIA” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200002796",
+     "quote": "A mountainous region on the SW coast of Asia Minor."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “LYCIA”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:italy",
+   "type": "region",
+   "names": {
+    "nwt": "Italy",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": null,
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 1236, “ITALY”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200002234"
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “ITALY”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "place:sicily",
+   "type": "island",
+   "names": {
+    "nwt": "Sicily",
+    "alternate": []
+   },
+   "identification": {
+    "confidence": "established"
+   },
+   "coordinates": null,
+   "alternate_sites": [],
+   "citations": [
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels” (label SICILY, grid A3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114"
+    },
+    {
+     "publication": "nwtsty",
+     "location": "App. B13 “The Spread of Christianity”, map label “Sicily”",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234"
+    }
+   ],
+   "notes": [
+    {
+     "kind": "gap",
+     "text": "No Insight entry titled Sicily; see Syracuse."
+    }
+   ]
+  }
+ ]
+}

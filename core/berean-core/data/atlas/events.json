@@ -1,0 +1,1889 @@
+{
+ "version": "pilot-2026-10-28",
+ "events": [
+  {
+   "id": "event:acts-13-1-3",
+   "type": "stop",
+   "names": {
+    "nwt": "Barnabas and Saul sent out as missionaries",
+    "alternate": []
+   },
+   "scripture": "Ac 13:1-3",
+   "sequence": 1,
+   "periods": [
+    "period:paul-first-missionary-journey"
+   ],
+   "places": [
+    "place:antioch-syria"
+   ],
+   "people": [
+    "person:barnabas",
+    "person:paul"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Barnabas and Saul sent out as missionaries” (13:1-3)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/13#h=87:0-88:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 47,
+     "approx": true
+    },
+    "end": {
+     "year": 48,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-13-4-12",
+   "type": "leg",
+   "names": {
+    "nwt": "Ministry on Cyprus; proconsul Sergius Paulus and sorcerer Elymas",
+    "alternate": []
+   },
+   "scripture": "Ac 13:4-12",
+   "sequence": 2,
+   "periods": [
+    "period:paul-first-missionary-journey"
+   ],
+   "places": [
+    "place:seleucia",
+    "place:cyprus",
+    "place:salamis",
+    "place:paphos"
+   ],
+   "people": [
+    "person:paul",
+    "person:barnabas",
+    "person:john-mark",
+    "person:sergius-paulus"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Ministry on Cyprus; proconsul Sergius Paulus and sorcerer Elymas” (13:4-12)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/13#h=88:0-90:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 47,
+     "approx": true
+    },
+    "end": {
+     "year": 48,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-13-13-41",
+   "type": "leg",
+   "names": {
+    "nwt": "Paul’s speech in Antioch in Pisidia",
+    "alternate": []
+   },
+   "scripture": "Ac 13:13-41",
+   "sequence": 3,
+   "periods": [
+    "period:paul-first-missionary-journey"
+   ],
+   "places": [
+    "place:paphos",
+    "place:perga",
+    "place:antioch-pisidia"
+   ],
+   "people": [
+    "person:paul",
+    "person:barnabas",
+    "person:john-mark"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Paul’s speech in Antioch in Pisidia” (13:13-41)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/13#h=90:0-96:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 47,
+     "approx": true
+    },
+    "end": {
+     "year": 48,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-13-42-52",
+   "type": "stop",
+   "names": {
+    "nwt": "Prophetic command to turn to the nations",
+    "alternate": []
+   },
+   "scripture": "Ac 13:42-52",
+   "sequence": 4,
+   "periods": [
+    "period:paul-first-missionary-journey"
+   ],
+   "places": [
+    "place:antioch-pisidia"
+   ],
+   "people": [
+    "person:paul",
+    "person:barnabas"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Prophetic command to turn to the nations” (13:42-52)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/13#h=96:0-99:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 47,
+     "approx": true
+    },
+    "end": {
+     "year": 48,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-14-1-7",
+   "type": "stop",
+   "names": {
+    "nwt": "Increase and opposition in Iconium",
+    "alternate": []
+   },
+   "scripture": "Ac 14:1-7",
+   "sequence": 5,
+   "periods": [
+    "period:paul-first-missionary-journey"
+   ],
+   "places": [
+    "place:iconium"
+   ],
+   "people": [
+    "person:paul",
+    "person:barnabas"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Increase and opposition in Iconium” (14:1-7)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/14#h=99:0-100:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 47,
+     "approx": true
+    },
+    "end": {
+     "year": 48,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-14-8-18",
+   "type": "stop",
+   "names": {
+    "nwt": "People of Lystra think that Paul and Barnabas are gods",
+    "alternate": []
+   },
+   "scripture": "Ac 14:8-18",
+   "sequence": 6,
+   "periods": [
+    "period:paul-first-missionary-journey"
+   ],
+   "places": [
+    "place:lystra"
+   ],
+   "people": [
+    "person:paul",
+    "person:barnabas"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “People of Lystra think that Paul and Barnabas are gods” (14:8-18)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/14#h=100:0-102:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 47,
+     "approx": true
+    },
+    "end": {
+     "year": 48,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-14-21-23",
+   "type": "leg",
+   "names": {
+    "nwt": "Paul and Barnabas strengthen the congregations",
+    "alternate": []
+   },
+   "scripture": "Ac 14:21-23",
+   "sequence": 7,
+   "periods": [
+    "period:paul-first-missionary-journey"
+   ],
+   "places": [
+    "place:derbe",
+    "place:lystra",
+    "place:iconium",
+    "place:antioch-pisidia"
+   ],
+   "people": [
+    "person:paul",
+    "person:barnabas"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Paul and Barnabas strengthen the congregations” (14:21-23)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/14#h=102:291-103:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 47,
+     "approx": true
+    },
+    "end": {
+     "year": 48,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-14-24-28",
+   "type": "leg",
+   "names": {
+    "nwt": "Paul and Barnabas travel back to Antioch of Syria",
+    "alternate": []
+   },
+   "scripture": "Ac 14:24-28",
+   "sequence": 8,
+   "periods": [
+    "period:paul-first-missionary-journey"
+   ],
+   "places": [
+    "place:pisidia",
+    "place:pamphylia",
+    "place:perga",
+    "place:attalia",
+    "place:antioch-syria"
+   ],
+   "people": [
+    "person:paul",
+    "person:barnabas"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Paul and Barnabas travel back to Antioch of Syria” (14:24-28)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/14#h=103:0-105:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 47,
+     "approx": true
+    },
+    "end": {
+     "year": 48,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-15-1-5",
+   "type": "stop",
+   "names": {
+    "nwt": "The dispute in Antioch regarding circumcision brought to Jerusalem",
+    "alternate": []
+   },
+   "scripture": "Ac 15:1-5",
+   "sequence": 9,
+   "periods": [],
+   "places": [
+    "place:antioch-syria",
+    "place:jerusalem"
+   ],
+   "people": [
+    "person:paul",
+    "person:barnabas",
+    "person:titus"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “The dispute in Antioch regarding circumcision brought to Jerusalem” (15:1-5)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/15#h=105:0-107:0"
+    },
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 587, “PAUL” (WOL ¶15)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003406",
+     "quote": "Certain men from Judea came to Antioch (in about 49 C.E.)"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 49,
+     "approx": true
+    },
+    "end": {
+     "year": 49,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "cited"
+   }
+  },
+  {
+   "id": "event:acts-15-6-12",
+   "type": "stop",
+   "names": {
+    "nwt": "The apostles and elders in Jerusalem meet; testimonies from Peter, Paul, and Barnabas",
+    "alternate": []
+   },
+   "scripture": "Ac 15:6-12",
+   "sequence": 10,
+   "periods": [],
+   "places": [
+    "place:jerusalem"
+   ],
+   "people": [
+    "person:paul",
+    "person:barnabas"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “The apostles and elders in Jerusalem meet; testimonies from Peter, Paul, and Barnabas” (15:6-12)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/15#h=107:0-108:175"
+    },
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 1111, “TITUS” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200004431",
+     "quote": "At the time the circumcision issue arose at Antioch (c. 49 C.E.), it appears that Titus accompanied Paul and Barnabas to Jerusalem."
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 49,
+     "approx": true
+    },
+    "end": {
+     "year": 49,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "cited"
+   }
+  },
+  {
+   "id": "event:acts-15-22-29",
+   "type": "stop",
+   "names": {
+    "nwt": "Letter from the governing body in Jerusalem",
+    "alternate": []
+   },
+   "scripture": "Ac 15:22-29",
+   "sequence": 11,
+   "periods": [],
+   "places": [
+    "place:jerusalem",
+    "place:antioch-syria"
+   ],
+   "people": [
+    "person:silas",
+    "person:paul",
+    "person:barnabas"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Letter from the governing body in Jerusalem” (15:22-29)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/15#h=109:0-111:0"
+    },
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 1111, “TITUS” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200004431",
+     "quote": "At the time the circumcision issue arose at Antioch (c. 49 C.E.), it appears that Titus accompanied Paul and Barnabas to Jerusalem."
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 49,
+     "approx": true
+    },
+    "end": {
+     "year": 49,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "cited"
+   }
+  },
+  {
+   "id": "event:acts-15-36-41",
+   "type": "leg",
+   "names": {
+    "nwt": "Paul and Barnabas go separate ways",
+    "alternate": []
+   },
+   "scripture": "Ac 15:36-41",
+   "sequence": 12,
+   "periods": [
+    "period:paul-second-missionary-journey"
+   ],
+   "places": [
+    "place:antioch-syria",
+    "place:syria",
+    "place:cilicia",
+    "place:cyprus"
+   ],
+   "people": [
+    "person:paul",
+    "person:barnabas",
+    "person:john-mark",
+    "person:silas"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Paul and Barnabas go separate ways” (15:36-41)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/15#h=112:0-113:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 49,
+     "approx": true
+    },
+    "end": {
+     "year": 52,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-16-1-5",
+   "type": "stop",
+   "names": {
+    "nwt": "Paul selects Timothy as a traveling companion",
+    "alternate": []
+   },
+   "scripture": "Ac 16:1-5",
+   "sequence": 13,
+   "periods": [
+    "period:paul-second-missionary-journey"
+   ],
+   "places": [
+    "place:derbe",
+    "place:lystra"
+   ],
+   "people": [
+    "person:paul",
+    "person:silas",
+    "person:timothy"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Paul selects Timothy as a traveling companion” (16:1-5)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/16#h=113:0-114:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 49,
+     "approx": true
+    },
+    "end": {
+     "year": 52,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-16-6-10",
+   "type": "leg",
+   "names": {
+    "nwt": "Vision of the Macedonian man; the witnessing spreads to Europe",
+    "alternate": []
+   },
+   "scripture": "Ac 16:6-10",
+   "sequence": 14,
+   "periods": [
+    "period:paul-second-missionary-journey"
+   ],
+   "places": [
+    "place:phrygia",
+    "place:galatia",
+    "place:asia",
+    "place:mysia",
+    "place:troas"
+   ],
+   "people": [
+    "person:paul",
+    "person:silas",
+    "person:timothy",
+    "person:luke"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Vision of the Macedonian man; the witnessing spreads to Europe” (16:6-10)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/16#h=114:0-115:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 49,
+     "approx": true
+    },
+    "end": {
+     "year": 52,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-16-11-15",
+   "type": "leg",
+   "names": {
+    "nwt": "Lydia’s conversion in Philippi",
+    "alternate": []
+   },
+   "scripture": "Ac 16:11-15",
+   "sequence": 15,
+   "periods": [
+    "period:paul-second-missionary-journey"
+   ],
+   "places": [
+    "place:troas",
+    "place:samothrace",
+    "place:neapolis",
+    "place:philippi"
+   ],
+   "people": [
+    "person:paul",
+    "person:silas",
+    "person:timothy",
+    "person:luke",
+    "person:lydia"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Lydia’s conversion in Philippi” (16:11-15)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/16#h=115:0-116:0"
+    },
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 285, “LYDIA” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200002798",
+     "quote": "among the first persons in Europe to accept Christianity as a result of the apostle Paul’s activity at Philippi in about 50 C.E."
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 50,
+     "approx": true
+    },
+    "end": {
+     "year": 50,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "cited"
+   }
+  },
+  {
+   "id": "event:acts-16-16-24",
+   "type": "stop",
+   "names": {
+    "nwt": "Paul and Silas imprisoned in Philippi",
+    "alternate": []
+   },
+   "scripture": "Ac 16:16-24",
+   "sequence": 16,
+   "periods": [
+    "period:paul-second-missionary-journey"
+   ],
+   "places": [
+    "place:philippi"
+   ],
+   "people": [
+    "person:paul",
+    "person:silas"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Paul and Silas imprisoned in Philippi” (16:16-24)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/16#h=116:0-118:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 49,
+     "approx": true
+    },
+    "end": {
+     "year": 52,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-16-25-34",
+   "type": "stop",
+   "names": {
+    "nwt": "The jailer and his household baptized",
+    "alternate": []
+   },
+   "scripture": "Ac 16:25-34",
+   "sequence": 17,
+   "periods": [
+    "period:paul-second-missionary-journey"
+   ],
+   "places": [
+    "place:philippi"
+   ],
+   "people": [
+    "person:paul",
+    "person:silas"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “The jailer and his household baptized” (16:25-34)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/16#h=118:0-119:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 49,
+     "approx": true
+    },
+    "end": {
+     "year": 52,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-16-35-40",
+   "type": "stop",
+   "names": {
+    "nwt": "Paul requests an official apology",
+    "alternate": []
+   },
+   "scripture": "Ac 16:35-40",
+   "sequence": 18,
+   "periods": [
+    "period:paul-second-missionary-journey"
+   ],
+   "places": [
+    "place:philippi"
+   ],
+   "people": [
+    "person:paul",
+    "person:silas"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Paul requests an official apology” (16:35-40)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/16#h=119:0-120:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 49,
+     "approx": true
+    },
+    "end": {
+     "year": 52,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-17-1-9",
+   "type": "leg",
+   "names": {
+    "nwt": "Paul and Silas in Thessalonica",
+    "alternate": []
+   },
+   "scripture": "Ac 17:1-9",
+   "sequence": 19,
+   "periods": [
+    "period:paul-second-missionary-journey"
+   ],
+   "places": [
+    "place:amphipolis",
+    "place:apollonia",
+    "place:thessalonica"
+   ],
+   "people": [
+    "person:paul",
+    "person:silas"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Paul and Silas in Thessalonica” (17:1-9)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/17#h=120:0-122:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 49,
+     "approx": true
+    },
+    "end": {
+     "year": 52,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-17-10-15",
+   "type": "stop",
+   "names": {
+    "nwt": "Paul and Silas in Beroea",
+    "alternate": []
+   },
+   "scripture": "Ac 17:10-15",
+   "sequence": 20,
+   "periods": [
+    "period:paul-second-missionary-journey"
+   ],
+   "places": [
+    "place:beroea",
+    "place:athens"
+   ],
+   "people": [
+    "person:paul",
+    "person:silas",
+    "person:timothy"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Paul and Silas in Beroea” (17:10-15)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/17#h=122:0-123:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 49,
+     "approx": true
+    },
+    "end": {
+     "year": 52,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-17-16-22a",
+   "type": "stop",
+   "names": {
+    "nwt": "Paul in Athens",
+    "alternate": []
+   },
+   "scripture": "Ac 17:16-22a",
+   "sequence": 21,
+   "periods": [
+    "period:paul-second-missionary-journey"
+   ],
+   "places": [
+    "place:athens"
+   ],
+   "people": [
+    "person:paul"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Paul in Athens” (17:16-22a)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/17#h=123:0-124:113"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 49,
+     "approx": true
+    },
+    "end": {
+     "year": 52,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-17-22b-31",
+   "type": "stop",
+   "names": {
+    "nwt": "Paul’s speech at the Areopagus",
+    "alternate": []
+   },
+   "scripture": "Ac 17:22b-31",
+   "sequence": 22,
+   "periods": [
+    "period:paul-second-missionary-journey"
+   ],
+   "places": [
+    "place:athens"
+   ],
+   "people": [
+    "person:paul"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Paul’s speech at the Areopagus” (17:22b-31)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/17#h=123:1011-126:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 49,
+     "approx": true
+    },
+    "end": {
+     "year": 52,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-17-32-34",
+   "type": "stop",
+   "names": {
+    "nwt": "Different reactions to Paul’s speech; some become believers",
+    "alternate": []
+   },
+   "scripture": "Ac 17:32-34",
+   "sequence": 23,
+   "periods": [
+    "period:paul-second-missionary-journey"
+   ],
+   "places": [
+    "place:athens"
+   ],
+   "people": [
+    "person:paul"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Different reactions to Paul’s speech; some become believers” (17:32-34)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/17#h=126:0-127:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 49,
+     "approx": true
+    },
+    "end": {
+     "year": 52,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-18-1-17",
+   "type": "stop",
+   "names": {
+    "nwt": "Paul’s ministry in Corinth",
+    "alternate": []
+   },
+   "scripture": "Ac 18:1-17",
+   "sequence": 24,
+   "periods": [
+    "period:paul-second-missionary-journey"
+   ],
+   "places": [
+    "place:corinth"
+   ],
+   "people": [
+    "person:paul",
+    "person:aquila",
+    "person:priscilla",
+    "person:silas",
+    "person:timothy",
+    "person:gallio"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Paul’s ministry in Corinth” (18:1-17)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/18#h=127:0-130:0"
+    },
+    {
+     "publication": "it-1",
+     "location": "it-1 p. 138, “AQUILA” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200000320",
+     "quote": "When Paul arrived there in the autumn of 50 C.E., Aquila and Priscilla kindly received him into their home."
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 50,
+     "approx": true
+    },
+    "end": {
+     "year": 50,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "cited"
+   }
+  },
+  {
+   "id": "event:acts-18-18-22",
+   "type": "leg",
+   "names": {
+    "nwt": "Paul returns to Antioch of Syria via Ephesus",
+    "alternate": []
+   },
+   "scripture": "Ac 18:18-22",
+   "sequence": 25,
+   "periods": [
+    "period:paul-second-missionary-journey"
+   ],
+   "places": [
+    "place:cenchreae",
+    "place:ephesus",
+    "place:caesarea",
+    "place:antioch-syria"
+   ],
+   "people": [
+    "person:paul",
+    "person:aquila",
+    "person:priscilla"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Paul returns to Antioch of Syria via Ephesus” (18:18-22)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/18#h=130:0-131:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 49,
+     "approx": true
+    },
+    "end": {
+     "year": 52,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-18-23",
+   "type": "leg",
+   "names": {
+    "nwt": "Paul departs for Galatia and Phrygia",
+    "alternate": []
+   },
+   "scripture": "Ac 18:23",
+   "sequence": 26,
+   "periods": [
+    "period:paul-third-missionary-journey"
+   ],
+   "places": [
+    "place:galatia",
+    "place:phrygia"
+   ],
+   "people": [
+    "person:paul"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Paul departs for Galatia and Phrygia” (18:23)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/18#h=131:0-132:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 52,
+     "approx": true
+    },
+    "end": {
+     "year": 56,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-19-1-7",
+   "type": "stop",
+   "names": {
+    "nwt": "Paul arrives in Ephesus; some disciples rebaptized, now in Jesus’ name",
+    "alternate": []
+   },
+   "scripture": "Ac 19:1-7",
+   "sequence": 27,
+   "periods": [
+    "period:paul-third-missionary-journey"
+   ],
+   "places": [
+    "place:ephesus"
+   ],
+   "people": [
+    "person:paul"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Paul arrives in Ephesus; some disciples rebaptized, now in Jesus’ name” (19:1-7)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/19#h=133:0-134:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 52,
+     "approx": true
+    },
+    "end": {
+     "year": 56,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-19-8-10",
+   "type": "stop",
+   "names": {
+    "nwt": "Paul’s teaching activities in Ephesus",
+    "alternate": []
+   },
+   "scripture": "Ac 19:8-10",
+   "sequence": 28,
+   "periods": [
+    "period:paul-third-missionary-journey"
+   ],
+   "places": [
+    "place:ephesus"
+   ],
+   "people": [
+    "person:paul"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Paul’s teaching activities in Ephesus” (19:8-10)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/19#h=134:0-135:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 52,
+     "approx": true
+    },
+    "end": {
+     "year": 56,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-19-21-34",
+   "type": "stop",
+   "names": {
+    "nwt": "Riot in Ephesus; crowd rushes into the theater",
+    "alternate": []
+   },
+   "scripture": "Ac 19:21-34",
+   "sequence": 29,
+   "periods": [
+    "period:paul-third-missionary-journey"
+   ],
+   "places": [
+    "place:ephesus"
+   ],
+   "people": [
+    "person:paul"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Riot in Ephesus; crowd rushes into the theater” (19:21-34)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/19#h=136:0-139:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 52,
+     "approx": true
+    },
+    "end": {
+     "year": 56,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-20-1-6",
+   "type": "leg",
+   "names": {
+    "nwt": "Paul in Macedonia and Greece",
+    "alternate": []
+   },
+   "scripture": "Ac 20:1-6",
+   "sequence": 30,
+   "periods": [
+    "period:paul-third-missionary-journey"
+   ],
+   "places": [
+    "place:macedonia",
+    "place:greece",
+    "place:philippi",
+    "place:troas"
+   ],
+   "people": [
+    "person:paul",
+    "person:timothy",
+    "person:luke"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Paul in Macedonia and Greece” (20:1-6)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/20#h=140:0-141:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 52,
+     "approx": true
+    },
+    "end": {
+     "year": 56,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-20-7-12",
+   "type": "stop",
+   "names": {
+    "nwt": "Eutychus resurrected in Troas",
+    "alternate": []
+   },
+   "scripture": "Ac 20:7-12",
+   "sequence": 31,
+   "periods": [
+    "period:paul-third-missionary-journey"
+   ],
+   "places": [
+    "place:troas"
+   ],
+   "people": [
+    "person:paul",
+    "person:eutychus",
+    "person:luke"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Eutychus resurrected in Troas” (20:7-12)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/20#h=141:0-142:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 52,
+     "approx": true
+    },
+    "end": {
+     "year": 56,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-20-13-16",
+   "type": "leg",
+   "names": {
+    "nwt": "Paul leaves Troas for Miletus",
+    "alternate": []
+   },
+   "scripture": "Ac 20:13-16",
+   "sequence": 32,
+   "periods": [
+    "period:paul-third-missionary-journey"
+   ],
+   "places": [
+    "place:troas",
+    "place:assos",
+    "place:mitylene",
+    "place:chios",
+    "place:samos",
+    "place:miletus"
+   ],
+   "people": [
+    "person:paul",
+    "person:luke"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Paul leaves Troas for Miletus” (20:13-16)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/20#h=142:0-143:0"
+    },
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 417, “MITYLENE” (WOL ¶3)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003091",
+     "quote": "While en route to Jerusalem in about 56 C.E., the apostle Paul sailed to Mitylene from Assos"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 56,
+     "approx": true
+    },
+    "end": {
+     "year": 56,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "cited"
+   }
+  },
+  {
+   "id": "event:acts-20-17-38",
+   "type": "stop",
+   "names": {
+    "nwt": "Paul encourages Ephesian elders to pay attention to themselves and to God’s flock",
+    "alternate": []
+   },
+   "scripture": "Ac 20:17-38",
+   "sequence": 33,
+   "periods": [
+    "period:paul-third-missionary-journey"
+   ],
+   "places": [
+    "place:miletus"
+   ],
+   "people": [
+    "person:paul",
+    "person:luke"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Paul encourages Ephesian elders to pay attention to themselves and to God’s flock” (20:17-38)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/20#h=143:0-147:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 52,
+     "approx": true
+    },
+    "end": {
+     "year": 56,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-21-1-14",
+   "type": "leg",
+   "names": {
+    "nwt": "En route to Jerusalem",
+    "alternate": []
+   },
+   "scripture": "Ac 21:1-14",
+   "sequence": 34,
+   "periods": [
+    "period:paul-third-missionary-journey"
+   ],
+   "places": [
+    "place:cos",
+    "place:rhodes",
+    "place:patara",
+    "place:tyre",
+    "place:ptolemais",
+    "place:caesarea"
+   ],
+   "people": [
+    "person:paul",
+    "person:luke"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “En route to Jerusalem” (21:1-14)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/21#h=147:0-149:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 52,
+     "approx": true
+    },
+    "end": {
+     "year": 56,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-21-15-17",
+   "type": "stop",
+   "names": {
+    "nwt": "Arrival in Jerusalem",
+    "alternate": []
+   },
+   "scripture": "Ac 21:15-17",
+   "sequence": 35,
+   "periods": [
+    "period:paul-third-missionary-journey"
+   ],
+   "places": [
+    "place:jerusalem"
+   ],
+   "people": [
+    "person:paul",
+    "person:luke"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Arrival in Jerusalem” (21:15-17)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/21#h=149:0-149:299"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 52,
+     "approx": true
+    },
+    "end": {
+     "year": 56,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-21-27-36",
+   "type": "stop",
+   "names": {
+    "nwt": "Riot in the temple; Romans arrest Paul",
+    "alternate": []
+   },
+   "scripture": "Ac 21:27-36",
+   "sequence": 36,
+   "periods": [],
+   "places": [
+    "place:jerusalem"
+   ],
+   "people": [
+    "person:paul"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Riot in the temple; Romans arrest Paul” (21:27-36)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/21#h=152:0-154:0"
+    }
+   ],
+   "date": null
+  },
+  {
+   "id": "event:acts-23-23-35",
+   "type": "leg",
+   "names": {
+    "nwt": "Roman soldiers transfer Paul to Caesarea",
+    "alternate": []
+   },
+   "scripture": "Ac 23:23-35",
+   "sequence": 37,
+   "periods": [],
+   "places": [
+    "place:jerusalem",
+    "place:caesarea"
+   ],
+   "people": [
+    "person:paul",
+    "person:felix"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Roman soldiers transfer Paul to Caesarea” (23:23-35)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/23#h=167:0-170:0"
+    }
+   ],
+   "date": null
+  },
+  {
+   "id": "event:acts-24-22-27",
+   "type": "stop",
+   "names": {
+    "nwt": "Paul’s case put on hold for two years",
+    "alternate": []
+   },
+   "scripture": "Ac 24:22-27",
+   "sequence": 38,
+   "periods": [],
+   "places": [
+    "place:caesarea"
+   ],
+   "people": [
+    "person:paul",
+    "person:felix",
+    "person:festus"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Paul’s case put on hold for two years” (24:22-27)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/24#h=174:0-176:0"
+    }
+   ],
+   "date": null
+  },
+  {
+   "id": "event:acts-25-1-12",
+   "type": "stop",
+   "names": {
+    "nwt": "Paul’s trial before Festus; “I appeal to Caesar!”",
+    "alternate": []
+   },
+   "scripture": "Ac 25:1-12",
+   "sequence": 39,
+   "periods": [],
+   "places": [
+    "place:caesarea"
+   ],
+   "people": [
+    "person:paul",
+    "person:festus"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Paul’s trial before Festus; “I appeal to Caesar!”” (25:1-12)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/25#h=176:0-179:0"
+    }
+   ],
+   "date": null
+  },
+  {
+   "id": "event:acts-25-23-26-11",
+   "type": "stop",
+   "names": {
+    "nwt": "Paul’s defense before Agrippa",
+    "alternate": []
+   },
+   "scripture": "Ac 25:23–26:11",
+   "sequence": 40,
+   "periods": [],
+   "places": [
+    "place:caesarea"
+   ],
+   "people": [
+    "person:paul",
+    "person:herod-agrippa-ii",
+    "person:festus"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Paul’s defense before Agrippa” (25:23–26:11)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/25#h=181:116-186:0"
+    }
+   ],
+   "date": null
+  },
+  {
+   "id": "event:acts-27-1-12",
+   "type": "leg",
+   "names": {
+    "nwt": "Paul leaves Caesarea for Rome on a ship from Adramyttium",
+    "alternate": []
+   },
+   "scripture": "Ac 27:1-12",
+   "sequence": 41,
+   "periods": [
+    "period:paul-trip-to-rome"
+   ],
+   "places": [
+    "place:caesarea",
+    "place:sidon",
+    "place:cyprus",
+    "place:myra",
+    "place:cnidus",
+    "place:crete",
+    "place:salmone",
+    "place:fair-havens",
+    "place:lasea",
+    "place:phoenix"
+   ],
+   "people": [
+    "person:paul",
+    "person:julius",
+    "person:luke"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Paul leaves Caesarea for Rome on a ship from Adramyttium” (27:1-12)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/27#h=190:0-193:0"
+    },
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 588, “PAUL” (WOL ¶23)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003406",
+     "quote": "Paul and some other prisoners were sent to Rome in about 58 C.E."
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 58,
+     "approx": true
+    },
+    "end": {
+     "year": 58,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "cited"
+   }
+  },
+  {
+   "id": "event:acts-27-13-38",
+   "type": "leg",
+   "names": {
+    "nwt": "Storm strikes the ship",
+    "alternate": []
+   },
+   "scripture": "Ac 27:13-38",
+   "sequence": 42,
+   "periods": [
+    "period:paul-trip-to-rome"
+   ],
+   "places": [
+    "place:crete",
+    "place:cauda"
+   ],
+   "people": [
+    "person:paul",
+    "person:julius",
+    "person:luke"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Storm strikes the ship” (27:13-38)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/27#h=193:0-197:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 58,
+     "approx": true
+    },
+    "end": {
+     "year": 61,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-27-39-44",
+   "type": "stop",
+   "names": {
+    "nwt": "Shipwreck",
+    "alternate": []
+   },
+   "scripture": "Ac 27:39-44",
+   "sequence": 43,
+   "periods": [
+    "period:paul-trip-to-rome"
+   ],
+   "places": [
+    "place:malta",
+    "place:st-pauls-bay"
+   ],
+   "people": [
+    "person:paul",
+    "person:julius",
+    "person:luke"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Shipwreck” (27:39-44)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/27#h=197:0-198:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 58,
+     "approx": true
+    },
+    "end": {
+     "year": 61,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-28-1-6",
+   "type": "stop",
+   "names": {
+    "nwt": "Ashore on Malta; Paul survives a snakebite",
+    "alternate": []
+   },
+   "scripture": "Ac 28:1-6",
+   "sequence": 44,
+   "periods": [
+    "period:paul-trip-to-rome"
+   ],
+   "places": [
+    "place:malta"
+   ],
+   "people": [
+    "person:paul",
+    "person:luke"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Ashore on Malta; Paul survives a snakebite” (28:1-6)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/28#h=198:0-199:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 58,
+     "approx": true
+    },
+    "end": {
+     "year": 61,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-28-7-10",
+   "type": "stop",
+   "names": {
+    "nwt": "Paul cures Publius’ father and others",
+    "alternate": []
+   },
+   "scripture": "Ac 28:7-10",
+   "sequence": 45,
+   "periods": [
+    "period:paul-trip-to-rome"
+   ],
+   "places": [
+    "place:malta"
+   ],
+   "people": [
+    "person:paul",
+    "person:publius",
+    "person:luke"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Paul cures Publius’ father and others” (28:7-10)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/28#h=199:0-200:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 58,
+     "approx": true
+    },
+    "end": {
+     "year": 61,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-28-11-16",
+   "type": "leg",
+   "names": {
+    "nwt": "On to Rome via Syracuse, Rhegium, and Puteoli",
+    "alternate": []
+   },
+   "scripture": "Ac 28:11-16",
+   "sequence": 46,
+   "periods": [
+    "period:paul-trip-to-rome"
+   ],
+   "places": [
+    "place:syracuse",
+    "place:rhegium",
+    "place:puteoli",
+    "place:marketplace-of-appius",
+    "place:three-taverns",
+    "place:rome"
+   ],
+   "people": [
+    "person:paul",
+    "person:luke"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “On to Rome via Syracuse, Rhegium, and Puteoli” (28:11-16)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/28#h=200:0-201:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 58,
+     "approx": true
+    },
+    "end": {
+     "year": 61,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  },
+  {
+   "id": "event:acts-28-17-29",
+   "type": "stop",
+   "names": {
+    "nwt": "Paul speaks to Jewish leaders in Rome",
+    "alternate": []
+   },
+   "scripture": "Ac 28:17-29",
+   "sequence": 47,
+   "periods": [
+    "period:paul-trip-to-rome"
+   ],
+   "places": [
+    "place:rome"
+   ],
+   "people": [
+    "person:paul"
+   ],
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "Acts outline, “Paul speaks to Jewish leaders in Rome” (28:17-29)",
+     "url": "https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/44/28#h=201:0-204:0"
+    }
+   ],
+   "date": {
+    "start": {
+     "year": 58,
+     "approx": true
+    },
+    "end": {
+     "year": 61,
+     "approx": true
+    },
+    "confidence": "likely",
+    "basis": "inherited from period"
+   }
+  }
+ ]
+}

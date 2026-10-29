@@ -1,0 +1,702 @@
+{
+ "version": "pilot-2026-10-28",
+ "periods": [
+  {
+   "id": "period:paul-first-missionary-journey",
+   "names": {
+    "nwt": "Paul’s first missionary tour",
+    "alternate": [
+     "First Missionary Journey",
+     "First Missionary Trip"
+    ]
+   },
+   "type": "journey",
+   "date": {
+    "start": {
+     "year": 47,
+     "approx": true
+    },
+    "end": {
+     "year": 48,
+     "approx": true
+    },
+    "confidence": "likely"
+   },
+   "scripture": "Ac 13:1–14:28",
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "App. B13, timeline/legend (WOL ¶110)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234",
+     "quote": "c. 47-48 C.E. 1st missionary tour"
+    },
+    {
+     "publication": "it-2",
+     "location": "it-2 pp. 586-587, “PAUL” (WOL ¶13)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003406",
+     "quote": "began his first missionary journey (c. 47-48 C.E.)."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels” (WOL ¶54)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114",
+     "quote": "First Missionary Trip (Ac 13:1–14:28)"
+    }
+   ],
+   "route_gl": [
+    {
+     "label": "Antioch (of Syria)",
+     "grid": "H3",
+     "place": "place:antioch-syria"
+    },
+    {
+     "label": "Seleucia",
+     "grid": "H3",
+     "place": "place:seleucia"
+    },
+    {
+     "label": "CYPRUS",
+     "grid": "G4",
+     "place": "place:cyprus"
+    },
+    {
+     "label": "Salamis",
+     "grid": "G3",
+     "place": "place:salamis"
+    },
+    {
+     "label": "Paphos",
+     "grid": "G4",
+     "place": "place:paphos"
+    },
+    {
+     "label": "PAMPHYLIA",
+     "grid": "G3",
+     "place": "place:pamphylia"
+    },
+    {
+     "label": "Perga",
+     "grid": "F3",
+     "place": "place:perga"
+    },
+    {
+     "label": "PISIDIA",
+     "grid": "F3",
+     "place": "place:pisidia"
+    },
+    {
+     "label": "Antioch (of Pisidia)",
+     "grid": "F2",
+     "place": "place:antioch-pisidia"
+    },
+    {
+     "label": "Iconium",
+     "grid": "G2",
+     "place": "place:iconium"
+    },
+    {
+     "label": "LYCAONIA",
+     "grid": "G2",
+     "place": "place:lycaonia"
+    },
+    {
+     "label": "Lystra",
+     "grid": "G2",
+     "place": "place:lystra"
+    },
+    {
+     "label": "Derbe",
+     "grid": "G3",
+     "place": "place:derbe"
+    },
+    {
+     "label": "Lystra",
+     "grid": "G2",
+     "place": "place:lystra"
+    },
+    {
+     "label": "Iconium",
+     "grid": "G2",
+     "place": "place:iconium"
+    },
+    {
+     "label": "Antioch (of Pisidia)",
+     "grid": "F2",
+     "place": "place:antioch-pisidia"
+    },
+    {
+     "label": "PISIDIA",
+     "grid": "F3",
+     "place": "place:pisidia"
+    },
+    {
+     "label": "PAMPHYLIA",
+     "grid": "G3",
+     "place": "place:pamphylia"
+    },
+    {
+     "label": "Perga",
+     "grid": "F3",
+     "place": "place:perga"
+    },
+    {
+     "label": "Attalia",
+     "grid": "F3",
+     "place": "place:attalia"
+    },
+    {
+     "label": "Antioch (of Syria)",
+     "grid": "H3",
+     "place": "place:antioch-syria"
+    }
+   ]
+  },
+  {
+   "id": "period:paul-second-missionary-journey",
+   "names": {
+    "nwt": "Paul’s second missionary tour",
+    "alternate": [
+     "Second Missionary Journey",
+     "Second Missionary Trip"
+    ]
+   },
+   "type": "journey",
+   "date": {
+    "start": {
+     "year": 49,
+     "approx": true
+    },
+    "end": {
+     "year": 52,
+     "approx": true
+    },
+    "confidence": "likely"
+   },
+   "scripture": "Ac 15:36–18:22",
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "App. B13, timeline/legend (WOL ¶111)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234",
+     "quote": "c. 49-52 C.E. 2nd missionary tour"
+    },
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 587, “PAUL” (WOL ¶17)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003406",
+     "quote": "traveled through Syria and into Asia Minor (c. 49-52 C.E.)."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels” (WOL ¶76)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114",
+     "quote": "Second Missionary Trip (Ac 15:36–18:22)"
+    }
+   ],
+   "route_gl": [
+    {
+     "label": "Antioch (of Syria)",
+     "grid": "H3",
+     "place": "place:antioch-syria"
+    },
+    {
+     "label": "SYRIA",
+     "grid": "H3",
+     "place": "place:syria"
+    },
+    {
+     "label": "CILICIA",
+     "grid": "H3",
+     "place": "place:cilicia"
+    },
+    {
+     "label": "Tarsus",
+     "grid": "H3",
+     "place": "place:tarsus"
+    },
+    {
+     "label": "Derbe",
+     "grid": "G3",
+     "place": "place:derbe"
+    },
+    {
+     "label": "Lystra",
+     "grid": "G2",
+     "place": "place:lystra"
+    },
+    {
+     "label": "Iconium",
+     "grid": "G2",
+     "place": "place:iconium"
+    },
+    {
+     "label": "Antioch (of Pisidia)",
+     "grid": "F2",
+     "place": "place:antioch-pisidia"
+    },
+    {
+     "label": "PHRYGIA",
+     "grid": "F2",
+     "place": "place:phrygia"
+    },
+    {
+     "label": "GALATIA",
+     "grid": "G2",
+     "place": "place:galatia"
+    },
+    {
+     "label": "MYSIA",
+     "grid": "E2",
+     "place": "place:mysia"
+    },
+    {
+     "label": "Troas",
+     "grid": "E2",
+     "place": "place:troas"
+    },
+    {
+     "label": "SAMOTHRACE",
+     "grid": "E1",
+     "place": "place:samothrace"
+    },
+    {
+     "label": "Neapolis",
+     "grid": "D1",
+     "place": "place:neapolis"
+    },
+    {
+     "label": "Philippi",
+     "grid": "D1",
+     "place": "place:philippi"
+    },
+    {
+     "label": "MACEDONIA",
+     "grid": "C1",
+     "place": "place:macedonia"
+    },
+    {
+     "label": "Amphipolis",
+     "grid": "D1",
+     "place": "place:amphipolis"
+    },
+    {
+     "label": "Thessalonica",
+     "grid": "D1",
+     "place": "place:thessalonica"
+    },
+    {
+     "label": "Beroea",
+     "grid": "D1",
+     "place": "place:beroea"
+    },
+    {
+     "label": "GREECE",
+     "grid": "C2",
+     "place": "place:greece"
+    },
+    {
+     "label": "Athens",
+     "grid": "D2",
+     "place": "place:athens"
+    },
+    {
+     "label": "Corinth",
+     "grid": "D2",
+     "place": "place:corinth"
+    },
+    {
+     "label": "ACHAIA",
+     "grid": "D3",
+     "place": "place:achaia"
+    },
+    {
+     "label": "Ephesus",
+     "grid": "E2",
+     "place": "place:ephesus"
+    },
+    {
+     "label": "Caesarea",
+     "grid": "G4",
+     "place": "place:caesarea"
+    },
+    {
+     "label": "Jerusalem",
+     "grid": "H5",
+     "place": "place:jerusalem"
+    },
+    {
+     "label": "Antioch (of Syria)",
+     "grid": "H3",
+     "place": "place:antioch-syria"
+    }
+   ]
+  },
+  {
+   "id": "period:paul-third-missionary-journey",
+   "names": {
+    "nwt": "Paul’s third missionary tour",
+    "alternate": [
+     "Third Missionary Journey",
+     "Third Missionary Trip"
+    ]
+   },
+   "type": "journey",
+   "date": {
+    "start": {
+     "year": 52,
+     "approx": true
+    },
+    "end": {
+     "year": 56,
+     "approx": true
+    },
+    "confidence": "likely"
+   },
+   "scripture": "Ac 18:22–21:19",
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "App. B13, timeline/legend (WOL ¶112)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234",
+     "quote": "c. 52-56 C.E. 3rd missionary tour"
+    },
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 588, “PAUL” (WOL ¶20)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003406",
+     "quote": "On his third missionary journey (c. 52-56 C.E.), Paul revisited Ephesus and labored there for some three years."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels” (WOL ¶104)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114",
+     "quote": "Third Missionary Trip (Ac 18:22–21:19)"
+    }
+   ],
+   "notes": [
+    {
+     "kind": "conflict",
+     "text": "gl labels the third trip Ac 18:22–21:19; nwtsty outline starts it at Ac 18:23 (“Paul departs for Galatia and Phrygia”). Ac 18:22 closes trip 2 and opens trip 3."
+    }
+   ],
+   "route_gl": [
+    {
+     "label": "SYRIA",
+     "grid": "H3",
+     "place": "place:syria"
+    },
+    {
+     "label": "Antioch (of Syria)",
+     "grid": "H3",
+     "place": "place:antioch-syria"
+    },
+    {
+     "label": "GALATIA",
+     "grid": "G2",
+     "place": "place:galatia"
+    },
+    {
+     "label": "PHRYGIA",
+     "grid": "F2",
+     "place": "place:phrygia"
+    },
+    {
+     "label": "CILICIA",
+     "grid": "H3",
+     "place": "place:cilicia"
+    },
+    {
+     "label": "Tarsus",
+     "grid": "H3",
+     "place": "place:tarsus"
+    },
+    {
+     "label": "Derbe",
+     "grid": "G3",
+     "place": "place:derbe"
+    },
+    {
+     "label": "Lystra",
+     "grid": "G2",
+     "place": "place:lystra"
+    },
+    {
+     "label": "Iconium",
+     "grid": "G2",
+     "place": "place:iconium"
+    },
+    {
+     "label": "Antioch (of Pisidia)",
+     "grid": "F2",
+     "place": "place:antioch-pisidia"
+    },
+    {
+     "label": "Ephesus",
+     "grid": "E2",
+     "place": "place:ephesus"
+    },
+    {
+     "label": "ASIA",
+     "grid": "E2",
+     "place": "place:asia"
+    },
+    {
+     "label": "Troas",
+     "grid": "E2",
+     "place": "place:troas"
+    },
+    {
+     "label": "Philippi",
+     "grid": "D1",
+     "place": "place:philippi"
+    },
+    {
+     "label": "MACEDONIA",
+     "grid": "C1",
+     "place": "place:macedonia"
+    },
+    {
+     "label": "Amphipolis",
+     "grid": "D1",
+     "place": "place:amphipolis"
+    },
+    {
+     "label": "Thessalonica",
+     "grid": "D1",
+     "place": "place:thessalonica"
+    },
+    {
+     "label": "Beroea",
+     "grid": "D1",
+     "place": "place:beroea"
+    },
+    {
+     "label": "GREECE",
+     "grid": "C2",
+     "place": "place:greece"
+    },
+    {
+     "label": "Athens",
+     "grid": "D2",
+     "place": "place:athens"
+    },
+    {
+     "label": "Corinth",
+     "grid": "D2",
+     "place": "place:corinth"
+    },
+    {
+     "label": "Beroea",
+     "grid": "D1",
+     "place": "place:beroea"
+    },
+    {
+     "label": "Thessalonica",
+     "grid": "D1",
+     "place": "place:thessalonica"
+    },
+    {
+     "label": "Amphipolis",
+     "grid": "D1",
+     "place": "place:amphipolis"
+    },
+    {
+     "label": "Philippi",
+     "grid": "D1",
+     "place": "place:philippi"
+    },
+    {
+     "label": "Troas",
+     "grid": "E2",
+     "place": "place:troas"
+    },
+    {
+     "label": "Assos",
+     "grid": "E2",
+     "place": "place:assos"
+    },
+    {
+     "label": "Mitylene",
+     "grid": "E2",
+     "place": "place:mitylene"
+    },
+    {
+     "label": "CHIOS",
+     "grid": "E2",
+     "place": "place:chios"
+    },
+    {
+     "label": "SAMOS",
+     "grid": "E2",
+     "place": "place:samos"
+    },
+    {
+     "label": "Miletus",
+     "grid": "E3",
+     "place": "place:miletus"
+    },
+    {
+     "label": "Cos",
+     "grid": "E3",
+     "place": "place:cos"
+    },
+    {
+     "label": "RHODES",
+     "grid": "E3",
+     "place": "place:rhodes"
+    },
+    {
+     "label": "Patara",
+     "grid": "F3",
+     "place": "place:patara"
+    },
+    {
+     "label": "Tyre",
+     "grid": "H4",
+     "place": "place:tyre"
+    },
+    {
+     "label": "Ptolemais",
+     "grid": "H4",
+     "place": "place:ptolemais"
+    },
+    {
+     "label": "Caesarea",
+     "grid": "G4",
+     "place": "place:caesarea"
+    },
+    {
+     "label": "Jerusalem",
+     "grid": "H5",
+     "place": "place:jerusalem"
+    }
+   ]
+  },
+  {
+   "id": "period:paul-trip-to-rome",
+   "names": {
+    "nwt": "Trip to Rome and imprisonment",
+    "alternate": [
+     "Voyage to Rome",
+     "Trip to Rome"
+    ]
+   },
+   "type": "journey",
+   "date": {
+    "start": {
+     "year": 58,
+     "approx": true
+    },
+    "end": {
+     "year": 61,
+     "approx": true
+    },
+    "confidence": "likely"
+   },
+   "scripture": "Ac 23:11–28:31",
+   "citations": [
+    {
+     "publication": "nwtsty",
+     "location": "App. B13, timeline/legend (WOL ¶113)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1001070234",
+     "quote": "c. 58-61 C.E. Trip to Rome and imprisonment"
+    },
+    {
+     "publication": "it-2",
+     "location": "it-2 p. 588, “PAUL” (WOL ¶23)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003406",
+     "quote": "Paul and some other prisoners were sent to Rome in about 58 C.E."
+    },
+    {
+     "publication": "it-2",
+     "location": "it-2 pp. 588-589, “PAUL” (WOL ¶24)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1200003406",
+     "quote": "The apostle continued to preach to all those who came to him for two years, from about 59 to 61 C.E."
+    },
+    {
+     "publication": "gl",
+     "location": "gl pp. 32-33, map “Paul’s Travels” (WOL ¶143)",
+     "url": "https://wol.jw.org/en/wol/d/r1/lp-e/1102003114",
+     "quote": "Trip to Rome (Ac 23:11–28:31)"
+    }
+   ],
+   "route_gl": [
+    {
+     "label": "Jerusalem",
+     "grid": "H5",
+     "place": "place:jerusalem"
+    },
+    {
+     "label": "Caesarea",
+     "grid": "G4",
+     "place": "place:caesarea"
+    },
+    {
+     "label": "Sidon",
+     "grid": "H4",
+     "place": "place:sidon"
+    },
+    {
+     "label": "Myra",
+     "grid": "F3",
+     "place": "place:myra"
+    },
+    {
+     "label": "LYCIA",
+     "grid": "F3",
+     "place": "place:lycia"
+    },
+    {
+     "label": "Cnidus",
+     "grid": "E3",
+     "place": "place:cnidus"
+    },
+    {
+     "label": "CRETE",
+     "grid": "D3",
+     "place": "place:crete"
+    },
+    {
+     "label": "CAUDA",
+     "grid": "D4",
+     "place": "place:cauda"
+    },
+    {
+     "label": "MALTA",
+     "grid": "A3",
+     "place": "place:malta"
+    },
+    {
+     "label": "SICILY",
+     "grid": "A3",
+     "place": "place:sicily"
+    },
+    {
+     "label": "Syracuse",
+     "grid": "A3",
+     "place": "place:syracuse"
+    },
+    {
+     "label": "ITALY",
+     "grid": "A1",
+     "place": "place:italy"
+    },
+    {
+     "label": "Rhegium",
+     "grid": "B2",
+     "place": "place:rhegium"
+    },
+    {
+     "label": "Puteoli",
+     "grid": "A1",
+     "place": "place:puteoli"
+    },
+    {
+     "label": "Rome",
+     "grid": "A1",
+     "place": "place:rome"
+    }
+   ]
+  }
+ ]
+}
