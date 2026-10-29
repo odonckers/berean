@@ -1,10 +1,15 @@
 import type { PublicationSummary } from 'berean-ffi-rn';
-import { router, Stack, useFocusEffect, useTheme } from 'expo-router';
+import { router, Stack, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, Pressable, StyleSheet, View } from 'react-native';
 
-import { DockedSearchBar } from '@/components/docked-search-bar';
+import { AppBarSearchBar, DockedSearchBar } from '@/components/search-bar';
+import { UIText } from '@/components/text';
 import { TextButton } from '@/components/text-button';
+import { useContentInsets, useHeaderHidden } from '@/design/tab-chrome';
+import { useBerean } from '@/design/theme';
+import { hairline, spacing } from '@/design/tokens';
+import { useWindowClass } from '@/design/use-window-class';
 import { library } from '@/ffi/core';
 import { coreErrorMessage } from '@/ffi/errors';
 import { libraryChanged, onLibraryChanged, useInstalls } from '@/library/installs';
@@ -40,7 +45,10 @@ function confirmRemove(pub: PublicationSummary) {
 }
 
 export default function LibraryScreen() {
-  const { colors } = useTheme();
+  const { look, colors } = useBerean();
+  const windowClass = useWindowClass();
+  const headerHidden = useHeaderHidden();
+  const insets = useContentInsets();
   const { jobs } = useInstalls();
   const [data, setData] = useState<Loaded<LibraryData>>(loadLibrary);
 
@@ -49,12 +57,25 @@ export default function LibraryScreen() {
 
   const jobList = [...jobs.values()];
 
+  // Search as Screen shows it (a FlatList can't sit in Screen's ScrollView):
+  // material look only, docked on phones, in the top app bar on tablets.
+  const material = look === 'material';
+  const docked = material && windowClass === 'compact';
+  const appBarSearch = material && windowClass !== 'compact';
+
+  const catalogButton = (
+    <TextButton title="Catalog" accessibilityLabel="Open catalog" onPress={openCatalog} />
+  );
+
   return (
     <>
       <Stack.Screen
         options={{
           headerRight: () => (
-            <TextButton title="Catalog" accessibilityLabel="Open catalog" onPress={openCatalog} />
+            <View style={styles.headerRight}>
+              {appBarSearch && <AppBarSearchBar />}
+              {catalogButton}
+            </View>
           ),
         }}
       />
@@ -62,16 +83,29 @@ export default function LibraryScreen() {
         <FlatList
           style={styles.list}
           contentInsetAdjustmentBehavior="automatic"
+          contentContainerStyle={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
           data={data.value.installed}
           keyExtractor={(pub) => pub.pubKey}
           ListHeaderComponent={
-            jobList.length > 0 ? (
+            headerHidden || jobList.length > 0 ? (
               <View>
+                {/* With the native header hidden, its title and button are drawn here. */}
+                {headerHidden && (
+                  <View style={styles.inlineHeader}>
+                    <UIText variant="largeTitle" style={styles.inlineTitle}>
+                      Library
+                    </UIText>
+                    {catalogButton}
+                  </View>
+                )}
                 {jobList.map((job) => (
-                  <View key={job.pub.pubKey} style={[styles.row, { borderColor: colors.border }]}>
-                    <Text numberOfLines={2} style={[styles.title, { color: colors.text }]}>
+                  <View
+                    key={job.pub.pubKey}
+                    style={[styles.row, { borderColor: colors.separator }]}
+                  >
+                    <UIText numberOfLines={2} style={styles.title}>
                       {job.pub.title}
-                    </Text>
+                    </UIText>
                     <JobStatus job={job} />
                   </View>
                 ))}
@@ -81,7 +115,7 @@ export default function LibraryScreen() {
           ListEmptyComponent={
             jobList.length === 0 ? (
               <View style={styles.empty}>
-                <Text style={[styles.body, { color: colors.text }]}>No publications yet.</Text>
+                <UIText>No publications yet.</UIText>
                 <TextButton title="Browse catalog" onPress={openCatalog} />
               </View>
             ) : undefined
@@ -94,38 +128,46 @@ export default function LibraryScreen() {
               accessibilityActions={[{ name: 'remove', label: 'Remove' }]}
               onAccessibilityAction={() => confirmRemove(item)}
               onLongPress={() => confirmRemove(item)}
-              style={[styles.row, { borderColor: colors.border }]}
+              style={[styles.row, { borderColor: colors.separator }]}
             >
-              <Text numberOfLines={2} style={[styles.title, { color: colors.text }]}>
+              <UIText numberOfLines={2} style={styles.title}>
                 {item.title}
-              </Text>
-              <Text style={[styles.detail, { color: colors.text }]}>
+              </UIText>
+              <UIText secondary style={styles.detail}>
                 {publicationDetail(item, data.value.names)}
-              </Text>
+              </UIText>
             </Pressable>
           )}
         />
       ) : (
-        <View style={styles.empty}>
-          <Text style={[styles.body, { color: colors.notification }]}>{data.message}</Text>
+        <View style={[styles.empty, { paddingTop: insets.top + spacing.lg }]}>
+          <UIText style={{ color: colors.accent }}>{data.message}</UIText>
         </View>
       )}
-      <DockedSearchBar />
+      {docked && <DockedSearchBar />}
     </>
   );
 }
 
 const styles = StyleSheet.create({
   list: { flex: 1 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  inlineHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+  },
+  inlineTitle: { flex: 1 },
   row: {
     minHeight: 44,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 4,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    gap: spacing.xs,
+    borderBottomWidth: hairline,
   },
-  title: { fontSize: 17, fontWeight: '500' },
-  detail: { fontSize: 15, opacity: 0.7 },
-  empty: { flex: 1, padding: 16, gap: 12, alignItems: 'flex-start' },
-  body: { fontSize: 17 },
+  title: { fontWeight: '500' },
+  detail: { fontSize: 15 },
+  empty: { flex: 1, padding: spacing.lg, gap: spacing.md, alignItems: 'flex-start' },
 });

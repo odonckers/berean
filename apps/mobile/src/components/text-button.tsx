@@ -1,5 +1,8 @@
-import { useTheme } from 'expo-router';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
+
+import { UIText } from '@/components/text';
+import { useBerean } from '@/design/theme';
+import { radii, spacing } from '@/design/tokens';
 
 type TextButtonProps = {
   title: string;
@@ -9,7 +12,7 @@ type TextButtonProps = {
   disabled?: boolean;
 };
 
-/** A plain text button in the theme's primary color, at least 44pt tall. */
+/** A plain text button in the accent color, at least 44pt tall. */
 export function TextButton({
   title,
   onPress,
@@ -17,7 +20,7 @@ export function TextButton({
   selected,
   disabled = false,
 }: TextButtonProps) {
-  const { colors } = useTheme();
+  const { colors } = useBerean();
   return (
     <Pressable
       accessibilityRole="button"
@@ -27,13 +30,11 @@ export function TextButton({
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,
-        selected && { backgroundColor: colors.card, borderColor: colors.primary },
+        selected && { backgroundColor: colors.surfaceRaised, borderColor: colors.accent },
         { opacity: disabled ? 0.4 : pressed ? 0.6 : 1 },
       ]}
     >
-      <Text style={[styles.label, { color: colors.primary }, selected && styles.selected]}>
-        {title}
-      </Text>
+      <UIText style={[{ color: colors.accent }, selected && styles.selected]}>{title}</UIText>
     </Pressable>
   );
 }
@@ -42,13 +43,12 @@ const styles = StyleSheet.create({
   button: {
     minHeight: 44,
     minWidth: 44,
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.md,
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 22,
+    borderRadius: radii.capsule,
     borderWidth: 1,
     borderColor: 'transparent',
   },
-  label: { fontSize: 17 },
   selected: { fontWeight: '600' },
 });

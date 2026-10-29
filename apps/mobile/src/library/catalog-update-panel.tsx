@@ -1,8 +1,10 @@
-import { useTheme } from 'expo-router';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { ProgressBar } from '@/components/progress-bar';
+import { UIText } from '@/components/text';
 import { TextButton } from '@/components/text-button';
+import { useBerean } from '@/design/theme';
+import { spacing } from '@/design/tokens';
 import {
   cancelUpdate,
   type CatalogUpdateState,
@@ -41,8 +43,8 @@ function CancelButton({ step }: { step: 'download' | 'install' }) {
 }
 
 function PanelBody({ status }: { status: CatalogUpdateState }) {
-  const { colors } = useTheme();
-  const text = [styles.text, { color: colors.text }];
+  const { colors } = useBerean();
+  const text = styles.text;
   const checkButton = <TextButton title="Check for catalog update" onPress={checkForUpdate} />;
 
   switch (status.state) {
@@ -51,14 +53,14 @@ function PanelBody({ status }: { status: CatalogUpdateState }) {
     case 'checking':
       return (
         <View style={styles.row}>
-          <ActivityIndicator color={colors.primary} accessibilityLabel="Checking" />
-          <Text style={text}>Checking for a catalog update…</Text>
+          <ActivityIndicator color={colors.accent} accessibilityLabel="Checking" />
+          <UIText style={text}>Checking for a catalog update…</UIText>
         </View>
       );
     case 'upToDate':
       return (
         <>
-          <Text style={text}>The catalog is up to date.</Text>
+          <UIText style={text}>The catalog is up to date.</UIText>
           {checkButton}
         </>
       );
@@ -77,7 +79,7 @@ function PanelBody({ status }: { status: CatalogUpdateState }) {
         const label = `${megabytes(bytesWritten)} of ${megabytes(totalBytes)} MB · ${percent}%`;
         return (
           <>
-            <Text style={text}>{label}</Text>
+            <UIText style={text}>{label}</UIText>
             <View style={styles.bar}>
               <ProgressBar percent={percent} label={`Downloading catalog: ${label}`} />
             </View>
@@ -88,8 +90,8 @@ function PanelBody({ status }: { status: CatalogUpdateState }) {
       return (
         <>
           <View style={styles.row}>
-            <ActivityIndicator color={colors.primary} accessibilityLabel="Downloading catalog" />
-            <Text style={text}>{megabytes(bytesWritten)} MB downloaded</Text>
+            <ActivityIndicator color={colors.accent} accessibilityLabel="Downloading catalog" />
+            <UIText style={text}>{megabytes(bytesWritten)} MB downloaded</UIText>
           </View>
           <CancelButton step="download" />
         </>
@@ -100,7 +102,7 @@ function PanelBody({ status }: { status: CatalogUpdateState }) {
       const label = `Installing catalog · ${percent}%`;
       return (
         <>
-          <Text style={text}>{label}</Text>
+          <UIText style={text}>{label}</UIText>
           <View style={styles.bar}>
             <ProgressBar percent={percent} label={label} />
           </View>
@@ -111,12 +113,12 @@ function PanelBody({ status }: { status: CatalogUpdateState }) {
     case 'failed':
       return (
         <>
-          <Text
+          <UIText
             accessibilityLiveRegion="assertive"
-            style={[styles.text, { color: colors.notification }]}
+            style={[styles.text, { color: colors.accent }]}
           >
             {status.message}
-          </Text>
+          </UIText>
           <View style={styles.row}>
             {status.retryable && (
               <TextButton
@@ -139,9 +141,9 @@ function PanelBody({ status }: { status: CatalogUpdateState }) {
 }
 
 const styles = StyleSheet.create({
-  panel: { gap: 12, alignSelf: 'stretch', alignItems: 'flex-start' },
-  compact: { gap: 4 },
+  panel: { gap: spacing.md, alignSelf: 'stretch', alignItems: 'flex-start' },
+  compact: { gap: spacing.xs },
   bar: { alignSelf: 'stretch' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44 },
-  text: { fontSize: 17, flexShrink: 1 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 44 },
+  text: { flexShrink: 1 },
 });

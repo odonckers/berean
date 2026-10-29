@@ -2,12 +2,14 @@
 // this stays for offline testing with a file pushed by
 // `adb push catalog.db.gz <cache dir>/dev-catalog/catalog.db.gz`.
 import { CancelToken, type ProgressSink } from 'berean-ffi-rn';
-import { useTheme } from 'expo-router';
 import { useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { ProgressBar } from '@/components/progress-bar';
+import { UIText } from '@/components/text';
 import { TextButton } from '@/components/text-button';
+import { useBerean } from '@/design/theme';
+import { spacing } from '@/design/tokens';
 import { cacheDir, catalog } from '@/ffi/core';
 import { coreErrorMessage } from '@/ffi/errors';
 
@@ -19,7 +21,7 @@ type IngestState =
 const THROTTLE_MS = 100;
 
 export function DevCatalogIngest({ onIngested }: { onIngested: () => void }) {
-  const { colors } = useTheme();
+  const { colors } = useBerean();
   const [ingest, setIngest] = useState<IngestState>({ state: 'idle' });
   const token = useRef<CancelToken | undefined>(undefined);
 
@@ -69,12 +71,12 @@ export function DevCatalogIngest({ onIngested }: { onIngested: () => void }) {
         <>
           <TextButton title="Dev: ingest catalog file" onPress={start} />
           {ingest.error !== undefined && (
-            <Text
+            <UIText
               accessibilityLiveRegion="assertive"
-              style={[styles.error, { color: colors.notification }]}
+              style={[styles.error, { color: colors.accent }]}
             >
               {ingest.error}
-            </Text>
+            </UIText>
           )}
         </>
       )}
@@ -83,6 +85,6 @@ export function DevCatalogIngest({ onIngested }: { onIngested: () => void }) {
 }
 
 const styles = StyleSheet.create({
-  panel: { gap: 12, alignSelf: 'stretch', alignItems: 'flex-start' },
+  panel: { gap: spacing.md, alignSelf: 'stretch', alignItems: 'flex-start' },
   error: { fontSize: 15 },
 });

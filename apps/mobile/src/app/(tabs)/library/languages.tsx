@@ -1,13 +1,16 @@
-import { router, Stack, useTheme } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import { useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 
+import { UIText } from '@/components/text';
+import { useBerean } from '@/design/theme';
+import { hairline, spacing } from '@/design/tokens';
 import { catalog } from '@/ffi/core';
 import { load } from '@/library/load';
 import { useSelectedLanguage } from '@/library/selected-language';
 
 export default function LanguagesScreen() {
-  const { colors } = useTheme();
+  const { colors } = useBerean();
   const { mepsLanguage, setMepsLanguage } = useSelectedLanguage();
   const [languages] = useState(() => load(() => catalog().languages()));
   const [query, setQuery] = useState('');
@@ -27,7 +30,7 @@ export default function LanguagesScreen() {
     return (
       <View style={styles.message}>
         {screen}
-        <Text style={[styles.name, { color: colors.notification }]}>{languages.message}</Text>
+        <UIText style={[styles.name, { color: colors.accent }]}>{languages.message}</UIText>
       </View>
     );
   }
@@ -46,9 +49,7 @@ export default function LanguagesScreen() {
         data={shown}
         keyExtractor={(l) => String(l.mepsId)}
         ListEmptyComponent={
-          <Text style={[styles.name, styles.message, { color: colors.text }]}>
-            No languages match.
-          </Text>
+          <UIText style={[styles.name, styles.message]}>No languages match.</UIText>
         }
         renderItem={({ item }) => {
           const selected = item.mepsId === mepsLanguage;
@@ -61,14 +62,12 @@ export default function LanguagesScreen() {
                 setMepsLanguage(item.mepsId);
                 router.back();
               }}
-              style={[styles.row, { borderColor: colors.border }]}
+              style={[styles.row, { borderColor: colors.separator }]}
             >
-              <Text style={[styles.name, { color: colors.text }, selected && styles.selected]}>
-                {item.name}
-              </Text>
-              <Text style={[styles.code, { color: colors.text }]}>
+              <UIText style={[styles.name, selected && styles.selected]}>{item.name}</UIText>
+              <UIText secondary style={styles.code}>
                 {selected ? `${item.code} · Selected` : item.code}
-              </Text>
+              </UIText>
             </Pressable>
           );
         }}
@@ -81,15 +80,15 @@ const styles = StyleSheet.create({
   list: { flex: 1 },
   row: {
     minHeight: 44,
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.lg,
     paddingVertical: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: spacing.md,
+    borderBottomWidth: hairline,
   },
-  name: { flex: 1, fontSize: 17 },
+  name: { flex: 1 },
   selected: { fontWeight: '600' },
-  code: { fontSize: 15, opacity: 0.7 },
-  message: { padding: 16 },
+  code: { fontSize: 15 },
+  message: { padding: spacing.lg },
 });

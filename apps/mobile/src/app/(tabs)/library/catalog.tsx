@@ -1,9 +1,12 @@
 import type { Language, PubKind } from 'berean-ffi-rn';
-import { router, Stack, useTheme } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, ScrollView, StyleSheet, View } from 'react-native';
 
+import { UIText } from '@/components/text';
 import { TextButton } from '@/components/text-button';
+import { useBerean } from '@/design/theme';
+import { spacing } from '@/design/tokens';
 import { catalog, library } from '@/ffi/core';
 import { CatalogRow } from '@/library/catalog-row';
 import { checkForUpdate, getCatalogUpdate, useCatalogUpdate } from '@/library/catalog-update';
@@ -32,7 +35,7 @@ function loadInstalledKeys(): Loaded<ReadonlySet<string>> {
 }
 
 export default function CatalogScreen() {
-  const { colors } = useTheme();
+  const { colors } = useBerean();
   const { jobs } = useInstalls();
   const { mepsLanguage } = useSelectedLanguage();
   const { catalogVersion } = useCatalogUpdate();
@@ -98,7 +101,7 @@ export default function CatalogScreen() {
     return (
       <View style={styles.message}>
         {screen}
-        <Text style={[styles.body, { color: colors.notification }]}>{error}</Text>
+        <UIText style={{ color: colors.accent }}>{error}</UIText>
       </View>
     );
   }
@@ -106,9 +109,7 @@ export default function CatalogScreen() {
   if (empty) {
     return (
       <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.message}>
-        <Text style={[styles.body, { color: colors.text }]}>
-          The publication catalog hasn&apos;t been downloaded yet.
-        </Text>
+        <UIText>The publication catalog hasn&apos;t been downloaded yet.</UIText>
         <CatalogUpdatePanel />
         {__DEV__ && <DevCatalogIngest onIngested={() => setMeta(loadMeta())} />}
       </ScrollView>
@@ -145,15 +146,11 @@ export default function CatalogScreen() {
               ))}
             </ScrollView>
             {!installed.ok && (
-              <Text style={[styles.body, { color: colors.notification }]}>{installed.message}</Text>
+              <UIText style={{ color: colors.accent }}>{installed.message}</UIText>
             )}
           </View>
         }
-        ListEmptyComponent={
-          <Text style={[styles.body, styles.empty, { color: colors.text }]}>
-            No publications match.
-          </Text>
-        }
+        ListEmptyComponent={<UIText style={styles.empty}>No publications match.</UIText>}
         renderItem={({ item }) => (
           <CatalogRow
             pub={item}
@@ -168,8 +165,7 @@ export default function CatalogScreen() {
 
 const styles = StyleSheet.create({
   list: { flex: 1 },
-  filters: { paddingVertical: 8, gap: 8, alignItems: 'flex-start' },
-  message: { padding: 16, gap: 12, alignItems: 'flex-start' },
-  body: { fontSize: 17 },
-  empty: { padding: 16 },
+  filters: { paddingVertical: spacing.sm, gap: spacing.sm, alignItems: 'flex-start' },
+  message: { padding: spacing.lg, gap: spacing.md, alignItems: 'flex-start' },
+  empty: { padding: spacing.lg },
 });

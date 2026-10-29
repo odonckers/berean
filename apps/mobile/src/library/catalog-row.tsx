@@ -1,8 +1,10 @@
 import type { PublicationSummary } from 'berean-ffi-rn';
-import { useTheme } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
+import { UIText } from '@/components/text';
 import { TextButton } from '@/components/text-button';
+import { useBerean } from '@/design/theme';
+import { hairline, spacing } from '@/design/tokens';
 import { type InstallJob, startInstall } from '@/library/installs';
 import { JobStatus } from '@/library/job-status';
 
@@ -13,19 +15,23 @@ type CatalogRowProps = {
 };
 
 export function CatalogRow({ pub, installed, job }: CatalogRowProps) {
-  const { colors } = useTheme();
+  const { colors } = useBerean();
   const detail = pub.year > 0 ? `${pub.symbol} · ${pub.year}` : pub.symbol;
   return (
-    <View style={[styles.row, { borderColor: colors.border }]}>
+    <View style={[styles.row, { borderColor: colors.separator }]}>
       <View style={styles.main}>
         <View style={styles.text}>
-          <Text numberOfLines={2} style={[styles.title, { color: colors.text }]}>
+          <UIText numberOfLines={2} style={styles.title}>
             {pub.title}
-          </Text>
-          <Text style={[styles.detail, { color: colors.text }]}>{detail}</Text>
+          </UIText>
+          <UIText secondary style={styles.detail}>
+            {detail}
+          </UIText>
         </View>
         {installed ? (
-          <Text style={[styles.detail, { color: colors.text }]}>Installed</Text>
+          <UIText secondary style={styles.detail}>
+            Installed
+          </UIText>
         ) : (
           job === undefined && (
             <TextButton
@@ -44,13 +50,13 @@ export function CatalogRow({ pub, installed, job }: CatalogRowProps) {
 const styles = StyleSheet.create({
   row: {
     minHeight: 44,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    gap: spacing.sm,
+    borderBottomWidth: hairline,
   },
-  main: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  text: { flex: 1, gap: 4 },
-  title: { fontSize: 17, fontWeight: '500' },
-  detail: { fontSize: 15, opacity: 0.7 },
+  main: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  text: { flex: 1, gap: spacing.xs },
+  title: { fontWeight: '500' },
+  detail: { fontSize: 15 },
 });

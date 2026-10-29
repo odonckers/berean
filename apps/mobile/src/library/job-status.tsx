@@ -1,8 +1,10 @@
-import { useTheme } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { ProgressBar } from '@/components/progress-bar';
+import { UIText } from '@/components/text';
 import { TextButton } from '@/components/text-button';
+import { useBerean } from '@/design/theme';
+import { spacing } from '@/design/tokens';
 import {
   cancelInstall,
   dismissInstall,
@@ -32,17 +34,17 @@ export function jobProgressText(job: InstallJob): string {
 
 /** A job's progress with Cancel, or its failure with Retry and Dismiss. */
 export function JobStatus({ job }: { job: InstallJob }) {
-  const { colors } = useTheme();
+  const { colors } = useBerean();
   const { title, pubKey } = job.pub;
   const percent = jobPercent(job);
   return (
     <View style={styles.status}>
-      <Text
+      <UIText
         accessibilityLiveRegion={job.state === 'failed' ? 'assertive' : 'none'}
-        style={[styles.text, { color: job.state === 'failed' ? colors.notification : colors.text }]}
+        style={[styles.text, job.state === 'failed' && { color: colors.accent }]}
       >
         {jobProgressText(job)}
-      </Text>
+      </UIText>
       {percent !== undefined && (
         <ProgressBar percent={percent} label={`${title}: ${jobProgressText(job)}`} />
       )}
@@ -75,7 +77,7 @@ export function JobStatus({ job }: { job: InstallJob }) {
 }
 
 const styles = StyleSheet.create({
-  status: { gap: 4 },
+  status: { gap: spacing.xs },
   text: { fontSize: 15 },
-  actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8 },
+  actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
 });

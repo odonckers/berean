@@ -1,5 +1,6 @@
-import { useTheme } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
+
+import { useBerean } from '@/design/theme';
 
 type ProgressBarProps = {
   /** 0 to 100. */
@@ -8,7 +9,7 @@ type ProgressBarProps = {
 };
 
 export function ProgressBar({ percent, label }: ProgressBarProps) {
-  const { colors } = useTheme();
+  const { colors } = useBerean();
   const now = Math.max(0, Math.min(100, Math.round(percent)));
   return (
     <View
@@ -16,9 +17,9 @@ export function ProgressBar({ percent, label }: ProgressBarProps) {
       accessibilityRole="progressbar"
       accessibilityLabel={label}
       accessibilityValue={{ min: 0, max: 100, now }}
-      style={[styles.track, { backgroundColor: colors.border }]}
+      style={[styles.track, { backgroundColor: colors.separator }]}
     >
-      <View style={[styles.fill, { width: `${now}%`, backgroundColor: colors.primary }]} />
+      <View style={[styles.fill, { width: `${now}%`, backgroundColor: colors.accent }]} />
     </View>
   );
 }
