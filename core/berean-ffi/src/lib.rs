@@ -153,6 +153,13 @@ impl Core {
             inner: self.inner.reader(),
         })
     }
+
+    /// The user's notes, highlights, tags, favorites and bookmarks.
+    pub fn userdata(&self) -> Arc<UserData> {
+        Arc::new(UserData {
+            inner: self.inner.userdata(),
+        })
+    }
 }
 
 /// Lets a caller stop a long-running call; the core checks it between steps.
@@ -551,6 +558,19 @@ pub struct Location {
     pub paragraph: Option<u32>,
 }
 
+impl From<Location> for berean_core::reader::Location {
+    fn from(l: Location) -> Self {
+        berean_core::reader::Location {
+            pub_key: l.pub_key,
+            doc_id: l.doc_id,
+            book: l.book,
+            chapter: l.chapter,
+            verse: l.verse,
+            paragraph: l.paragraph,
+        }
+    }
+}
+
 impl From<berean_core::reader::Location> for Location {
     fn from(l: berean_core::reader::Location) -> Self {
         Location {
@@ -569,6 +589,15 @@ impl From<berean_core::reader::Location> for Location {
 pub struct LocationSpan {
     pub start: Location,
     pub end: Location,
+}
+
+impl From<LocationSpan> for berean_core::reader::LocationSpan {
+    fn from(s: LocationSpan) -> Self {
+        berean_core::reader::LocationSpan {
+            start: s.start.into(),
+            end: s.end.into(),
+        }
+    }
 }
 
 impl From<berean_core::reader::LocationSpan> for LocationSpan {
@@ -617,6 +646,390 @@ impl Reader {
     /// Resolve a citation or `jwpub://` link to the span it names.
     pub fn resolve(&self, reference: String) -> Result<LocationSpan, CoreError> {
         Ok(self.inner.resolve(&reference)?.into())
+    }
+}
+
+/// The FFI mirror of [`berean_core::userdata::HighlightColor`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum HighlightColor {
+    Yellow,
+    Green,
+    Blue,
+    Pink,
+    Orange,
+    Purple,
+}
+
+impl From<berean_core::userdata::HighlightColor> for HighlightColor {
+    fn from(c: berean_core::userdata::HighlightColor) -> Self {
+        use berean_core::userdata::HighlightColor as C;
+        match c {
+            C::Yellow => HighlightColor::Yellow,
+            C::Green => HighlightColor::Green,
+            C::Blue => HighlightColor::Blue,
+            C::Pink => HighlightColor::Pink,
+            C::Orange => HighlightColor::Orange,
+            C::Purple => HighlightColor::Purple,
+        }
+    }
+}
+
+impl From<HighlightColor> for berean_core::userdata::HighlightColor {
+    fn from(c: HighlightColor) -> Self {
+        use berean_core::userdata::HighlightColor as C;
+        match c {
+            HighlightColor::Yellow => C::Yellow,
+            HighlightColor::Green => C::Green,
+            HighlightColor::Blue => C::Blue,
+            HighlightColor::Pink => C::Pink,
+            HighlightColor::Orange => C::Orange,
+            HighlightColor::Purple => C::Purple,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::userdata::TextRange`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct TextRange {
+    pub span: LocationSpan,
+    pub start_token: Option<u32>,
+    pub end_token: Option<u32>,
+}
+
+impl From<TextRange> for berean_core::userdata::TextRange {
+    fn from(r: TextRange) -> Self {
+        berean_core::userdata::TextRange {
+            span: r.span.into(),
+            start_token: r.start_token,
+            end_token: r.end_token,
+        }
+    }
+}
+
+impl From<berean_core::userdata::TextRange> for TextRange {
+    fn from(r: berean_core::userdata::TextRange) -> Self {
+        TextRange {
+            span: r.span.into(),
+            start_token: r.start_token,
+            end_token: r.end_token,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::userdata::Highlight`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct Highlight {
+    pub id: String,
+    pub range: TextRange,
+    pub color: HighlightColor,
+}
+
+impl From<berean_core::userdata::Highlight> for Highlight {
+    fn from(h: berean_core::userdata::Highlight) -> Self {
+        Highlight {
+            id: h.id,
+            range: h.range.into(),
+            color: h.color.into(),
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::userdata::Note`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct Note {
+    pub id: String,
+    pub title: String,
+    pub content: String,
+    pub location: Option<Location>,
+    pub highlight_id: Option<String>,
+    pub tag_ids: Vec<i64>,
+    pub created: String,
+    pub modified: String,
+}
+
+impl From<berean_core::userdata::Note> for Note {
+    fn from(n: berean_core::userdata::Note) -> Self {
+        Note {
+            id: n.id,
+            title: n.title,
+            content: n.content,
+            location: n.location.map(Into::into),
+            highlight_id: n.highlight_id,
+            tag_ids: n.tag_ids,
+            created: n.created,
+            modified: n.modified,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::userdata::NoteFilter`].
+#[derive(Debug, Clone, Default, PartialEq, Eq, uniffi::Record)]
+pub struct NoteFilter {
+    pub location: Option<Location>,
+    pub tag_id: Option<i64>,
+}
+
+impl From<NoteFilter> for berean_core::userdata::NoteFilter {
+    fn from(f: NoteFilter) -> Self {
+        berean_core::userdata::NoteFilter {
+            location: f.location.map(Into::into),
+            tag_id: f.tag_id,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::userdata::Tag`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct Tag {
+    pub id: i64,
+    pub name: String,
+}
+
+impl From<berean_core::userdata::Tag> for Tag {
+    fn from(t: berean_core::userdata::Tag) -> Self {
+        Tag {
+            id: t.id,
+            name: t.name,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::userdata::Bookmark`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct Bookmark {
+    pub pub_key: String,
+    pub slot: u8,
+    pub location: Location,
+    pub title: String,
+    pub snippet: Option<String>,
+}
+
+impl From<berean_core::userdata::Bookmark> for Bookmark {
+    fn from(b: berean_core::userdata::Bookmark) -> Self {
+        Bookmark {
+            pub_key: b.pub_key,
+            slot: b.slot,
+            location: b.location.into(),
+            title: b.title,
+            snippet: b.snippet,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::userdata::ImportSummary`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct ImportSummary {
+    pub highlights: u64,
+    pub notes: u64,
+    pub tags: u64,
+    pub bookmarks: u64,
+    pub favorites: u64,
+}
+
+impl From<berean_core::userdata::ImportSummary> for ImportSummary {
+    fn from(s: berean_core::userdata::ImportSummary) -> Self {
+        ImportSummary {
+            highlights: s.highlights,
+            notes: s.notes,
+            tags: s.tags,
+            bookmarks: s.bookmarks,
+            favorites: s.favorites,
+        }
+    }
+}
+
+/// The user's notes, highlights, tags, favorites and bookmarks, exposed to
+/// callers as an object.
+#[derive(uniffi::Object)]
+pub struct UserData {
+    inner: berean_core::userdata::UserData,
+}
+
+#[uniffi::export]
+impl UserData {
+    /// The highlights in a document or Bible chapter of `pub_key`.
+    pub fn highlights(
+        &self,
+        pub_key: String,
+        doc_or_chapter: Location,
+    ) -> Result<Vec<Highlight>, CoreError> {
+        Ok(self
+            .inner
+            .highlights(&pub_key, &doc_or_chapter.into())?
+            .into_iter()
+            .map(Into::into)
+            .collect())
+    }
+
+    /// Highlight `range` in `color`.
+    pub fn add_highlight(
+        &self,
+        range: TextRange,
+        color: HighlightColor,
+    ) -> Result<Highlight, CoreError> {
+        Ok(self
+            .inner
+            .add_highlight(&range.into(), color.into())?
+            .into())
+    }
+
+    /// Recolor the highlight `id`.
+    pub fn set_highlight_color(&self, id: String, color: HighlightColor) -> Result<(), CoreError> {
+        Ok(self.inner.set_highlight_color(&id, color.into())?)
+    }
+
+    /// Remove the highlight `id`; notes on it are kept, detached.
+    pub fn remove_highlight(&self, id: String) -> Result<(), CoreError> {
+        Ok(self.inner.remove_highlight(&id)?)
+    }
+
+    /// The notes `filter` selects, in the order they were made.
+    pub fn notes(&self, filter: NoteFilter) -> Result<Vec<Note>, CoreError> {
+        Ok(self
+            .inner
+            .notes(&filter.into())?
+            .into_iter()
+            .map(Into::into)
+            .collect())
+    }
+
+    /// Add a note at `location` (none for a free-standing one), on the
+    /// highlight `highlight_id` if given.
+    pub fn add_note(
+        &self,
+        title: String,
+        content: String,
+        location: Option<Location>,
+        highlight_id: Option<String>,
+    ) -> Result<Note, CoreError> {
+        let location = location.map(berean_core::reader::Location::from);
+        Ok(self
+            .inner
+            .add_note(&title, &content, location.as_ref(), highlight_id.as_deref())?
+            .into())
+    }
+
+    /// Replace the note `id`'s title and content.
+    pub fn update_note(&self, id: String, title: String, content: String) -> Result<(), CoreError> {
+        Ok(self.inner.update_note(&id, &title, &content)?)
+    }
+
+    /// Remove the note `id`.
+    pub fn remove_note(&self, id: String) -> Result<(), CoreError> {
+        Ok(self.inner.remove_note(&id)?)
+    }
+
+    /// The user tags, in the order they were made.
+    pub fn tags(&self) -> Result<Vec<Tag>, CoreError> {
+        Ok(self.inner.tags()?.into_iter().map(Into::into).collect())
+    }
+
+    /// Add a user tag called `name`.
+    pub fn add_tag(&self, name: String) -> Result<Tag, CoreError> {
+        Ok(self.inner.add_tag(&name)?.into())
+    }
+
+    /// Rename the user tag `id`.
+    pub fn rename_tag(&self, id: i64, name: String) -> Result<(), CoreError> {
+        Ok(self.inner.rename_tag(id, &name)?)
+    }
+
+    /// Remove the user tag `id`, untagging whatever had it.
+    pub fn remove_tag(&self, id: i64) -> Result<(), CoreError> {
+        Ok(self.inner.remove_tag(id)?)
+    }
+
+    /// Tag the note `note_id` with `tag_id`.
+    pub fn tag_note(&self, note_id: String, tag_id: i64) -> Result<(), CoreError> {
+        Ok(self.inner.tag_note(&note_id, tag_id)?)
+    }
+
+    /// Take the tag `tag_id` off the note `note_id`.
+    pub fn untag_note(&self, note_id: String, tag_id: i64) -> Result<(), CoreError> {
+        Ok(self.inner.untag_note(&note_id, tag_id)?)
+    }
+
+    /// The favorites, in their order.
+    pub fn favorites(&self) -> Result<Vec<Location>, CoreError> {
+        Ok(self
+            .inner
+            .favorites()?
+            .into_iter()
+            .map(Into::into)
+            .collect())
+    }
+
+    /// Add `location` last among the favorites.
+    pub fn add_favorite(&self, location: Location) -> Result<(), CoreError> {
+        Ok(self.inner.add_favorite(&location.into())?)
+    }
+
+    /// Remove `location` from the favorites.
+    pub fn remove_favorite(&self, location: Location) -> Result<(), CoreError> {
+        Ok(self.inner.remove_favorite(&location.into())?)
+    }
+
+    /// Move the favorite `location` to index `to_position`.
+    pub fn move_favorite(&self, location: Location, to_position: u32) -> Result<(), CoreError> {
+        Ok(self.inner.move_favorite(&location.into(), to_position)?)
+    }
+
+    /// The bookmarks of `pub_key`, by slot.
+    pub fn bookmarks(&self, pub_key: String) -> Result<Vec<Bookmark>, CoreError> {
+        Ok(self
+            .inner
+            .bookmarks(&pub_key)?
+            .into_iter()
+            .map(Into::into)
+            .collect())
+    }
+
+    /// Bookmark `location` in `slot` (0-9) of `pub_key`, replacing whatever
+    /// was there.
+    pub fn set_bookmark(
+        &self,
+        pub_key: String,
+        slot: u8,
+        location: Location,
+        title: String,
+        snippet: Option<String>,
+    ) -> Result<(), CoreError> {
+        Ok(self
+            .inner
+            .set_bookmark(&pub_key, slot, &location.into(), &title, snippet.as_deref())?)
+    }
+
+    /// Clear `slot` of `pub_key`'s bookmarks.
+    pub fn remove_bookmark(&self, pub_key: String, slot: u8) -> Result<(), CoreError> {
+        Ok(self.inner.remove_bookmark(&pub_key, slot)?)
+    }
+
+    /// Write a `.jwlibrary` backup of all the user data to `path`.
+    pub async fn export_backup(
+        &self,
+        path: String,
+        progress: Arc<dyn ProgressSink>,
+        cancel: Arc<CancelToken>,
+    ) -> Result<(), CoreError> {
+        let inner = self.inner.clone();
+        run_on_thread(move || Ok(inner.export_backup(path, &Progress(progress), &cancel.inner)?))
+            .await
+    }
+
+    /// Replace all the user data with the `.jwlibrary` backup at `path`.
+    pub async fn import_backup(
+        &self,
+        path: String,
+        progress: Arc<dyn ProgressSink>,
+        cancel: Arc<CancelToken>,
+    ) -> Result<ImportSummary, CoreError> {
+        let inner = self.inner.clone();
+        run_on_thread(move || {
+            Ok(inner
+                .import_backup(path, &Progress(progress), &cancel.inner)?
+                .into())
+        })
+        .await
     }
 }
 
@@ -916,5 +1329,113 @@ mod tests {
     #[should_panic(expected = "core call panicked")]
     fn run_on_thread_resumes_a_panic() {
         block_on(run_on_thread(|| -> () { panic!("core call panicked") }));
+    }
+
+    #[test]
+    fn userdata_backup_through_ffi() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = open_core(&dir);
+        let ud = core.userdata();
+        let para = |p| Location {
+            pub_key: "w26:0:20260800".into(),
+            doc_id: Some(2026601),
+            book: None,
+            chapter: None,
+            verse: None,
+            paragraph: Some(p),
+        };
+        let range = TextRange {
+            span: LocationSpan {
+                start: para(2),
+                end: para(4),
+            },
+            start_token: Some(1),
+            end_token: None,
+        };
+        let h = ud
+            .add_highlight(range.clone(), HighlightColor::Pink)
+            .unwrap();
+        assert_eq!(h.range, range);
+        let tag = ud.add_tag("Study".into()).unwrap();
+        let note = ud
+            .add_note("T".into(), "C".into(), Some(para(2)), Some(h.id.clone()))
+            .unwrap();
+        ud.tag_note(note.id.clone(), tag.id).unwrap();
+        ud.set_bookmark("w26:0:20260800".into(), 9, para(3), "B".into(), None)
+            .unwrap();
+        assert!(matches!(
+            ud.set_bookmark("w26:0:20260800".into(), 10, para(3), "B".into(), None),
+            Err(CoreError::Invalid(_))
+        ));
+        let mut doc = para(0);
+        doc.paragraph = None;
+        ud.add_favorite(doc.clone()).unwrap();
+
+        let recorder = Arc::new(Recorder {
+            calls: Mutex::new(Vec::new()),
+        });
+        let backup = dir.path().join("b.jwlibrary").display().to_string();
+        block_on(ud.export_backup(backup.clone(), recorder.clone(), CancelToken::new())).unwrap();
+        let (done, total) = *recorder.calls.lock().unwrap().last().unwrap();
+        assert_eq!(done, total);
+
+        let other_dir = tempfile::tempdir().unwrap();
+        let other = open_core(&other_dir).userdata();
+        // Cancelled: nothing imported.
+        let cancelled = CancelToken::new();
+        cancelled.cancel();
+        let err =
+            block_on(other.import_backup(backup.clone(), recorder.clone(), cancelled)).unwrap_err();
+        assert!(matches!(err, CoreError::Cancelled), "{err:?}");
+        assert!(other.tags().unwrap().is_empty());
+        // Not a backup.
+        let junk = other_dir.path().join("junk.jwlibrary");
+        std::fs::write(&junk, b"not a zip").unwrap();
+        let err = block_on(other.import_backup(
+            junk.display().to_string(),
+            recorder.clone(),
+            CancelToken::new(),
+        ))
+        .unwrap_err();
+        assert!(matches!(err, CoreError::Corrupt), "{err:?}");
+
+        let summary =
+            block_on(other.import_backup(backup, recorder.clone(), CancelToken::new())).unwrap();
+        assert_eq!(
+            summary,
+            ImportSummary {
+                highlights: 1,
+                notes: 1,
+                tags: 1,
+                bookmarks: 1,
+                favorites: 1,
+            }
+        );
+        let mut doc_only = para(0);
+        doc_only.paragraph = None;
+        assert_eq!(
+            other.highlights("w26:0:20260800".into(), doc_only).unwrap(),
+            [h]
+        );
+        let notes = other.notes(NoteFilter::default()).unwrap();
+        assert_eq!(
+            notes,
+            [Note {
+                tag_ids: vec![tag.id],
+                ..note
+            }]
+        );
+        assert_eq!(other.tags().unwrap(), [tag]);
+        assert_eq!(other.favorites().unwrap(), [doc]);
+        assert_eq!(
+            other.bookmarks("w26:0:20260800".into()).unwrap(),
+            [Bookmark {
+                pub_key: "w26:0:20260800".into(),
+                slot: 9,
+                location: para(3),
+                title: "B".into(),
+                snippet: None,
+            }]
+        );
     }
 }
