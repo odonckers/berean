@@ -4,7 +4,7 @@ export default function SearchScreen() {
   return (
     <Placeholder
       title="Search"
-      body="Search across Scripture and your studies once the Berean core is wired in."
+      body="Search across Scripture and your studies will appear here once the Berean core is wired in."
     />
   );
 }

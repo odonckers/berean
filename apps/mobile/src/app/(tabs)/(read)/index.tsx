@@ -5,6 +5,7 @@ export default function ReadScreen() {
     <Placeholder
       title="Scripture"
       body="Chapters will appear here once the Berean core is wired in."
+      showSearchBar
     />
   );
 }

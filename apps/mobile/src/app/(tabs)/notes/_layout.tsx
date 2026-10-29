@@ -1,9 +1,9 @@
 import { Stack } from 'expo-router';
 
-export default function SearchLayout() {
+export default function NotesLayout() {
   return (
     <Stack screenOptions={{ headerLargeTitleEnabled: true }}>
-      <Stack.Screen name="index" options={{ title: 'Search' }} />
+      <Stack.Screen name="index" options={{ title: 'Notes' }} />
     </Stack>
   );
 }

@@ -1,6 +1,6 @@
 # Berean mobile
 
-Expo (SDK 58) app for Berean using a development build (`expo-dev-client`, not Expo Go). It uses Expo Router with native tabs (Read, Studyspace, Search, Library), each tab has its own native stack, and the new architecture is on. The screens show plain placeholder text for now. Light and dark mode follow the system through the expo-router `ThemeProvider`. Real content arrives once the Rust core is wired in.
+Expo (SDK 58) app for Berean using a development build (`expo-dev-client`, not Expo Go). It uses Expo Router with native tabs (Read, Studyspace, Notes, Library), each tab has its own native stack, and the new architecture is on. On Android a docked search bar above the navigation bar opens a placeholder search screen. The screens show plain placeholder text for now. Light and dark mode follow the system through the expo-router `ThemeProvider`. Real content arrives once the Rust core is wired in.
 
 ## Prerequisites
 

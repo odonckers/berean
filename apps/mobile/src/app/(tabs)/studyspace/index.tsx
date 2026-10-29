@@ -5,6 +5,7 @@ export default function StudyspaceScreen() {
     <Placeholder
       title="Your studies"
       body="Notes, outlines, and research will live here once the Berean core is wired in."
+      showSearchBar
     />
   );
 }

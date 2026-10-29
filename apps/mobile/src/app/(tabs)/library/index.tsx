@@ -5,6 +5,7 @@ export default function LibraryScreen() {
     <Placeholder
       title="Library"
       body="Translations and reference works will appear here once the Berean core is wired in."
+      showSearchBar
     />
   );
 }
