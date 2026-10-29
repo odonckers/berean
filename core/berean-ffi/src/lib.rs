@@ -83,6 +83,7 @@ pub fn user_db_schema() -> u32 {
 /// thrown error. It carries the same variants; the conversion below is the
 /// only place the two are tied together.
 #[derive(Debug, thiserror::Error, uniffi::Error)]
+#[uniffi::export(Display)]
 pub enum CoreError {
     #[error("not found")]
     NotFound,
@@ -916,5 +917,11 @@ mod tests {
     #[should_panic(expected = "core call panicked")]
     fn run_on_thread_resumes_a_panic() {
         block_on(run_on_thread(|| -> () { panic!("core call panicked") }));
+    }
+
+    #[test]
+    fn core_error_displays_its_message() {
+        assert_eq!(CoreError::Io("x".into()).to_string(), "io error: x");
+        assert_eq!(CoreError::NotFound.to_string(), "not found");
     }
 }
