@@ -838,6 +838,205 @@ impl From<berean_core::userdata::ImportSummary> for ImportSummary {
     }
 }
 
+/// The `berean://bible/...` URL of `span`; `Invalid` if it isn't a Bible
+/// passage within one book.
+#[uniffi::export]
+pub fn passage_url(span: LocationSpan) -> Result<String, CoreError> {
+    Ok(berean_core::notes::passage_url(&span.into())?)
+}
+
+/// The `berean://pub/...` URL of `location`; `Invalid` if it isn't a
+/// publication location.
+#[uniffi::export]
+pub fn publication_url(location: Location) -> Result<String, CoreError> {
+    Ok(berean_core::notes::publication_url(&location.into())?)
+}
+
+/// The FFI mirror of [`berean_core::notes::Block`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum Block {
+    Heading {
+        level: u8,
+        inlines: Vec<Inline>,
+    },
+    Paragraph {
+        inlines: Vec<Inline>,
+    },
+    PassageCard {
+        text: String,
+        span: LocationSpan,
+        missing: bool,
+    },
+    List {
+        start: Option<u32>,
+        items: Vec<ListItem>,
+    },
+    Quote {
+        blocks: Vec<Block>,
+    },
+    CodeBlock {
+        text: String,
+    },
+    Rule,
+}
+
+/// Convert each of `items`, for the tree's nested lists.
+fn mirror<T, U: From<T>>(items: Vec<T>) -> Vec<U> {
+    items.into_iter().map(Into::into).collect()
+}
+
+impl From<berean_core::notes::Block> for Block {
+    fn from(b: berean_core::notes::Block) -> Self {
+        use berean_core::notes::Block as B;
+        match b {
+            B::Heading { level, inlines } => Block::Heading {
+                level,
+                inlines: mirror(inlines),
+            },
+            B::Paragraph { inlines } => Block::Paragraph {
+                inlines: mirror(inlines),
+            },
+            B::PassageCard {
+                text,
+                span,
+                missing,
+            } => Block::PassageCard {
+                text,
+                span: span.into(),
+                missing,
+            },
+            B::List { start, items } => Block::List {
+                start,
+                items: mirror(items),
+            },
+            B::Quote { blocks } => Block::Quote {
+                blocks: mirror(blocks),
+            },
+            B::CodeBlock { text } => Block::CodeBlock { text },
+            B::Rule => Block::Rule,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::notes::ListItem`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ListItem {
+    pub task: Option<NoteTask>,
+    pub blocks: Vec<Block>,
+}
+
+impl From<berean_core::notes::ListItem> for ListItem {
+    fn from(i: berean_core::notes::ListItem) -> Self {
+        ListItem {
+            task: i.task.map(Into::into),
+            blocks: mirror(i.blocks),
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::notes::NoteTask`]. Not `Task`, which
+/// would shadow Swift Concurrency's `Task` in the apps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct NoteTask {
+    pub index: u32,
+    pub checked: bool,
+}
+
+impl From<berean_core::notes::NoteTask> for NoteTask {
+    fn from(t: berean_core::notes::NoteTask) -> Self {
+        NoteTask {
+            index: t.index,
+            checked: t.checked,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::notes::Inline`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum Inline {
+    Text {
+        text: String,
+    },
+    Emphasis {
+        children: Vec<Inline>,
+    },
+    Strong {
+        children: Vec<Inline>,
+    },
+    Strikethrough {
+        children: Vec<Inline>,
+    },
+    Code {
+        text: String,
+    },
+    Link {
+        children: Vec<Inline>,
+        url: String,
+        target: LinkTarget,
+    },
+    Tag {
+        name: String,
+    },
+    LineBreak,
+}
+
+impl From<berean_core::notes::Inline> for Inline {
+    fn from(i: berean_core::notes::Inline) -> Self {
+        use berean_core::notes::Inline as I;
+        match i {
+            I::Text { text } => Inline::Text { text },
+            I::Emphasis { children } => Inline::Emphasis {
+                children: mirror(children),
+            },
+            I::Strong { children } => Inline::Strong {
+                children: mirror(children),
+            },
+            I::Strikethrough { children } => Inline::Strikethrough {
+                children: mirror(children),
+            },
+            I::Code { text } => Inline::Code { text },
+            I::Link {
+                children,
+                url,
+                target,
+            } => Inline::Link {
+                children: mirror(children),
+                url,
+                target: target.into(),
+            },
+            I::Tag { name } => Inline::Tag { name },
+            I::LineBreak => Inline::LineBreak,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::notes::LinkTarget`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum LinkTarget {
+    Passage { span: LocationSpan, missing: bool },
+    Publication { location: Location, missing: bool },
+    External { url: String },
+    Invalid,
+}
+
+impl From<berean_core::notes::LinkTarget> for LinkTarget {
+    fn from(t: berean_core::notes::LinkTarget) -> Self {
+        use berean_core::notes::LinkTarget as T;
+        match t {
+            T::Passage { span, missing } => LinkTarget::Passage {
+                span: span.into(),
+                missing,
+            },
+            T::Publication { location, missing } => LinkTarget::Publication {
+                location: location.into(),
+                missing,
+            },
+            T::External { url } => LinkTarget::External { url },
+            T::Invalid => LinkTarget::Invalid,
+        }
+    }
+}
+
 /// The user's notes, highlights, tags, favorites and bookmarks, exposed to
 /// callers as an object.
 #[derive(uniffi::Object)]
@@ -917,6 +1116,12 @@ impl UserData {
     /// Remove the note `id`.
     pub fn remove_note(&self, id: String) -> Result<(), CoreError> {
         Ok(self.inner.remove_note(&id)?)
+    }
+
+    /// A note body parsed into the tree the apps draw, with app links
+    /// flagged `missing` when their publication isn't installed.
+    pub fn render_markdown(&self, markdown: String) -> Result<Vec<Block>, CoreError> {
+        Ok(mirror(self.inner.render_markdown(&markdown)?))
     }
 
     /// The user tags, in the order they were made.
@@ -1457,5 +1662,54 @@ mod tests {
         assert!(other.bookmarks("w26:0:20260800".into()).unwrap().is_empty());
         assert!(!other.undo_import().unwrap());
         assert_eq!(other.tags().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn notes_render_through_ffi() {
+        let dir = tempfile::tempdir().unwrap();
+        let ud = open_core(&dir).userdata();
+        let john = Location {
+            pub_key: "nwtsty:0:0".into(),
+            doc_id: None,
+            book: Some(43),
+            chapter: Some(1),
+            verse: Some(9),
+            paragraph: None,
+        };
+        let span = LocationSpan {
+            start: john.clone(),
+            end: john,
+        };
+        let url = passage_url(span.clone()).unwrap();
+        assert_eq!(url, "berean://bible/nwtsty:0:0/43/1/9");
+        assert_eq!(
+            ud.render_markdown(format!("[John 1:9]({url})\n\n- [x] #done"))
+                .unwrap(),
+            [
+                Block::PassageCard {
+                    text: "John 1:9".into(),
+                    span: span.clone(),
+                    missing: true,
+                },
+                Block::List {
+                    start: None,
+                    items: vec![ListItem {
+                        task: Some(NoteTask {
+                            index: 0,
+                            checked: true,
+                        }),
+                        blocks: vec![Block::Paragraph {
+                            inlines: vec![Inline::Tag {
+                                name: "done".into(),
+                            }],
+                        }],
+                    }],
+                },
+            ]
+        );
+        assert!(matches!(
+            publication_url(span.start),
+            Err(CoreError::Invalid(_))
+        ));
     }
 }

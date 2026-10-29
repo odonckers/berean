@@ -40,6 +40,7 @@
 //! keeping the previous database as `userData.prev.db` (and its media as
 //! `userData.prev.media/`) so that [`UserData::undo_import`] can put it back.
 
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -54,6 +55,7 @@ use zip::write::SimpleFileOptions;
 use zip::CompressionMethod;
 
 use crate::library::{format_pub_key, parse_pub_key};
+use crate::notes;
 use crate::reader::{Location, LocationSpan};
 use crate::{CancelToken, CoreError, Inner, ProgressSink};
 
@@ -1284,6 +1286,20 @@ impl UserData {
         tx.execute("DELETE FROM Note WHERE NoteId = ?1", [note])?;
         tx.commit()?;
         Ok(())
+    }
+
+    /// A note body parsed into the tree the apps draw (see `notes`), with
+    /// app links flagged `missing` when their publication isn't installed.
+    /// Fails only on reading the installed list.
+    pub fn render_markdown(&self, markdown: &str) -> Result<Vec<notes::Block>, CoreError> {
+        // One query per render; the core lock is released before parsing.
+        let installed: HashSet<String> = self
+            .inner
+            .conn()
+            .prepare("SELECT pub_key FROM installed_publication")?
+            .query_map([], |r| r.get(0))?
+            .collect::<Result<_, _>>()?;
+        Ok(notes::render(markdown, &|key| installed.contains(key)))
     }
 
     // Tags.

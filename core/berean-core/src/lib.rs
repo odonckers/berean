@@ -9,6 +9,7 @@ pub mod catalog;
 pub mod jwpub;
 pub mod languages;
 pub mod library;
+pub mod notes;
 pub mod reader;
 pub mod search;
 pub mod userdata;
