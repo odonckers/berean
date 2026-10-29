@@ -11,8 +11,8 @@
 //! - An image is its alt text. Nothing is fetched.
 //! - A paragraph whose only content is one passage link is a
 //!   [`Block::PassageCard`].
-//! - `#name` is an [`Inline::Tag`] (see [`split_tags`]), except in code and
-//!   link text.
+//! - `#name` is an [`Inline::Tag`] (see [`tag_tokens`]), except in code and
+//!   link text, or where it isn't the source verbatim (`\#x`, entities).
 //!
 //! App links (see [`passage_url`], [`publication_url`]):
 //!
@@ -27,6 +27,7 @@
 //! one, is [`LinkTarget::Invalid`].
 
 use std::iter::Peekable;
+use std::ops::Range;
 
 use pulldown_cmark::{Event, LinkType, Options, Parser, Tag};
 
@@ -307,20 +308,92 @@ fn parse_publication(url: &str) -> Option<Location> {
 /// is installed, for the links' `missing` flags. Never fails: Markdown has
 /// no syntax errors.
 pub(crate) fn render(markdown: &str, installed: &dyn Fn(&str) -> bool) -> Vec<Block> {
+    parse(markdown, installed).blocks
+}
+
+/// A parsed note body, with the source ranges edits need.
+struct Parsed {
+    blocks: Vec<Block>,
+    /// Each task marker (`[ ]`, `[x]`), by [`NoteTask::index`].
+    markers: Vec<Range<usize>>,
+    /// Each tag token (`#name`) whose source is exactly its text, in
+    /// document order. A token with an escape or entity in it isn't here.
+    tags: Vec<Range<usize>>,
+}
+
+fn parse(markdown: &str, installed: &dyn Fn(&str) -> bool) -> Parsed {
     let options = Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
     let mut builder = Builder {
-        events: Parser::new_ext(markdown, options).peekable(),
+        events: Parser::new_ext(markdown, options)
+            .into_offset_iter()
+            .peekable(),
+        source: markdown,
         installed,
         tasks: 0,
         items: Vec::new(),
         depth: 0,
+        markers: Vec::new(),
+        tags: Vec::new(),
     };
-    builder.blocks()
+    let blocks = builder.blocks();
+    let mut tags = builder.tags;
+    // Inner inlines finish before the text around them.
+    tags.sort_by_key(|r| r.start);
+    Parsed {
+        blocks,
+        markers: builder.markers,
+        tags,
+    }
+}
+
+/// Whether `name` is a whole inline tag name: one or more letters, digits,
+/// `_` or `-`.
+pub(crate) fn is_tag_name(name: &str) -> bool {
+    !name.is_empty() && name.chars().all(is_tag_char)
+}
+
+/// `markdown` with every inline `#old` (matched ignoring case, whole
+/// tokens only) rewritten to `#new`; all other bytes are kept. A `#old` in
+/// code or link text isn't a tag, so it is kept too.
+pub(crate) fn rename_inline_tag(markdown: &str, old: &str, new: &str) -> String {
+    let old = old.to_lowercase();
+    let mut out = String::with_capacity(markdown.len());
+    let mut copied = 0;
+    for token in parse(markdown, &|_| true).tags {
+        if markdown[token.start + 1..token.end].to_lowercase() == old {
+            out.push_str(&markdown[copied..token.start + 1]);
+            out.push_str(new);
+            copied = token.end;
+        }
+    }
+    out.push_str(&markdown[copied..]);
+    out
+}
+
+/// `markdown` with its task `index` (see [`NoteTask::index`]) checked or
+/// unchecked. Only the character inside the marker's brackets changes, and
+/// a checked `X` stays as is. Out of range => `None`.
+pub(crate) fn set_task(markdown: &str, index: u32, checked: bool) -> Option<String> {
+    let marker = parse(markdown, &|_| true)
+        .markers
+        .get(usize::try_from(index).ok()?)?
+        .clone();
+    let at = marker.start + markdown[marker].find('[')? + 1;
+    let current = markdown[at..].chars().next()?;
+    let mark = match (checked, current) {
+        (true, 'x' | 'X') | (false, ' ') => current,
+        (true, _) => 'x',
+        (false, _) => ' ',
+    };
+    let mut out = String::with_capacity(markdown.len());
+    out.push_str(&markdown[..at]);
+    out.push(mark);
+    out.push_str(&markdown[at + current.len_utf8()..]);
+    Some(out)
 }
 
 /// The distinct inline #tag names of a note body, in document order. Uses
 /// the same parse as [`render`], so code and link text have no tags.
-#[allow(dead_code, reason = "inline tag sync, the next PR, calls it")]
 pub(crate) fn inline_tags(markdown: &str) -> Vec<String> {
     let mut names = Vec::new();
     for block in render(markdown, &|_| true) {
@@ -364,13 +437,11 @@ fn is_tag_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_' || c == '-'
 }
 
-/// Split a run of text into `Text` and `Tag` inlines. A tag is `#` at the
-/// start of the run or after anything but a letter, digit or `#` (so after
+/// The tag tokens (`#name`) of a run of text. A tag is `#` at the start of
+/// the run or after anything but a letter, digit or `#` (so after
 /// whitespace or punctuation), then one or more letters, digits, `_` or `-`.
-pub(crate) fn split_tags(text: &str) -> Vec<Inline> {
+fn tag_tokens(text: &str) -> Vec<Range<usize>> {
     let mut out = Vec::new();
-    // `plain` is where the current run of plain text began.
-    let mut plain = 0;
     let mut prev: Option<char> = None;
     let mut chars = text.char_indices().peekable();
     while let Some((i, c)) = chars.next() {
@@ -390,13 +461,30 @@ pub(crate) fn split_tags(text: &str) -> Vec<Inline> {
             prev = Some(n);
             chars.next();
         }
-        if plain < i {
-            out.push(text_inline(&text[plain..i]));
+        out.push(i..end);
+    }
+    out
+}
+
+/// Split a run of text into `Text` and `Tag` inlines (see [`tag_tokens`]).
+#[cfg(test)]
+fn split_tags(text: &str) -> Vec<Inline> {
+    split_at_tags(text, &tag_tokens(text))
+}
+
+/// Split `text` into `Text` and `Tag` inlines at `tokens` (in order).
+fn split_at_tags(text: &str, tokens: &[Range<usize>]) -> Vec<Inline> {
+    let mut out = Vec::new();
+    // `plain` is where the current run of plain text began.
+    let mut plain = 0;
+    for token in tokens.iter().cloned() {
+        if plain < token.start {
+            out.push(text_inline(&text[plain..token.start]));
         }
         out.push(Inline::Tag {
-            name: text[i + 1..end].to_string(),
+            name: text[token.start + 1..token.end].to_string(),
         });
-        plain = end;
+        plain = token.end;
     }
     if plain < text.len() {
         out.push(text_inline(&text[plain..]));
@@ -416,13 +504,41 @@ enum Piece {
     Text {
         text: String,
         scan: bool,
+        /// The parts of `text` that are verbatim source.
+        sources: Vec<Source>,
     },
     Inline(Inline),
 }
 
+/// `text[at..at + range.len()]` is `source[range]`, byte for byte.
+struct Source {
+    at: usize,
+    range: Range<usize>,
+}
+
+/// Append `more`, which starts at `offset` in the text, to `sources`,
+/// joining parts adjacent in both (the parser splits text at characters
+/// like `_` that can be inside a tag).
+fn push_sources(sources: &mut Vec<Source>, more: &[Source], offset: usize) {
+    for part in more {
+        let at = part.at + offset;
+        if let Some(last) = sources.last_mut() {
+            if last.at + last.range.len() == at && last.range.end == part.range.start {
+                last.range.end = part.range.end;
+                continue;
+            }
+        }
+        sources.push(Source {
+            at,
+            range: part.range.clone(),
+        });
+    }
+}
+
 /// Walks pulldown-cmark's events into the tree, one container per call.
-struct Builder<'a, 'm, I: Iterator<Item = Event<'m>>> {
+struct Builder<'a, 'm, I: Iterator<Item = (Event<'m>, Range<usize>)>> {
     events: Peekable<I>,
+    source: &'m str,
     installed: &'a dyn Fn(&str) -> bool,
     /// Task items seen so far, for the next task's index.
     tasks: u32,
@@ -430,6 +546,9 @@ struct Builder<'a, 'm, I: Iterator<Item = Event<'m>>> {
     items: Vec<Option<NoteTask>>,
     /// Open quotes, lists and styled inlines around the current event.
     depth: usize,
+    /// See [`Parsed`].
+    markers: Vec<Range<usize>>,
+    tags: Vec<Range<usize>>,
 }
 
 /// How deep quotes, lists and styled inlines nest in the tree; deeper ones
@@ -465,21 +584,21 @@ fn is_inline(event: &Event) -> bool {
     }
 }
 
-impl<'m, I: Iterator<Item = Event<'m>>> Builder<'_, 'm, I> {
+impl<'m, I: Iterator<Item = (Event<'m>, Range<usize>)>> Builder<'_, 'm, I> {
     /// The blocks up to the end of the current container (consumed), or of
     /// the document.
     fn blocks(&mut self) -> Vec<Block> {
         let mut out = Vec::new();
         // Containers nested too deep, whose content joins this one.
         let mut flattened = 0;
-        while let Some(event) = self.events.peek() {
+        while let Some((event, _)) = self.events.peek() {
             if is_inline(event) {
                 // Loose inline content, as in a tight list item.
                 let inlines = self.inlines(false, false);
                 out.extend(paragraph(inlines));
                 continue;
             }
-            let Some(event) = self.events.next() else {
+            let Some((event, _)) = self.events.next() else {
                 break;
             };
             match event {
@@ -494,7 +613,7 @@ impl<'m, I: Iterator<Item = Event<'m>>> Builder<'_, 'm, I> {
                     inlines: self.inlines(false, true),
                 }),
                 Event::Start(Tag::CodeBlock(_)) => {
-                    let mut text = self.plain_text();
+                    let (mut text, _) = self.plain_text();
                     if text.ends_with('\n') {
                         text.pop();
                     }
@@ -527,7 +646,7 @@ impl<'m, I: Iterator<Item = Event<'m>>> Builder<'_, 'm, I> {
     fn list(&mut self, start: Option<u64>) -> Block {
         let mut items = Vec::new();
         while let Some(event) = self.events.next() {
-            match event {
+            match event.0 {
                 Event::Start(Tag::Item) => {
                     self.items.push(None);
                     let blocks = self.blocks();
@@ -545,23 +664,37 @@ impl<'m, I: Iterator<Item = Event<'m>>> Builder<'_, 'm, I> {
         }
     }
 
-    /// The text of the events up to the current container's end (consumed).
-    fn plain_text(&mut self) -> String {
+    /// The text of the events up to the current container's end (consumed),
+    /// and which parts of it are verbatim source.
+    fn plain_text(&mut self) -> (String, Vec<Source>) {
         let mut text = String::new();
+        let mut sources = Vec::new();
         let mut depth = 0;
-        for event in self.events.by_ref() {
+        while let Some((event, range)) = self.events.next() {
             match event {
                 Event::Start(_) => depth += 1,
                 Event::End(_) if depth == 0 => break,
                 Event::End(_) => depth -= 1,
-                Event::Text(s) | Event::Code(s) | Event::Html(s) | Event::InlineHtml(s) => {
-                    text.push_str(&s)
+                Event::Text(s) => {
+                    push_sources(&mut sources, &self.verbatim(&s, range), text.len());
+                    text.push_str(&s);
                 }
+                Event::Code(s) | Event::Html(s) | Event::InlineHtml(s) => text.push_str(&s),
                 Event::SoftBreak | Event::HardBreak => text.push('\n'),
                 _ => {}
             }
         }
-        text
+        (text, sources)
+    }
+
+    /// The text of the event at `range` as a [`Source`], if it is the
+    /// source verbatim (no escapes or entities).
+    fn verbatim(&self, text: &str, range: Range<usize>) -> Vec<Source> {
+        if self.source.get(range.clone()) == Some(text) {
+            vec![Source { at: 0, range }]
+        } else {
+            Vec::new()
+        }
     }
 
     /// Inline content up to the next block event. `in_link` turns off tag
@@ -571,7 +704,7 @@ impl<'m, I: Iterator<Item = Event<'m>>> Builder<'_, 'm, I> {
         let mut pieces = Vec::new();
         // Inlines nested too deep, whose content joins this one.
         let mut flattened = 0;
-        while let Some(event) = self.events.peek() {
+        while let Some((event, _)) = self.events.peek() {
             if !is_inline(event) {
                 let end = matches!(event, Event::End(_));
                 if end && (close || flattened > 0) {
@@ -583,15 +716,20 @@ impl<'m, I: Iterator<Item = Event<'m>>> Builder<'_, 'm, I> {
                 }
                 break;
             }
-            let Some(event) = self.events.next() else {
+            let Some((event, range)) = self.events.next() else {
                 break;
             };
             let text = |s: &str, scan| Piece::Text {
                 text: s.to_string(),
                 scan,
+                sources: Vec::new(),
             };
             let piece = match event {
-                Event::Text(s) => text(&s, true),
+                Event::Text(s) => Piece::Text {
+                    sources: self.verbatim(&s, range),
+                    text: s.to_string(),
+                    scan: true,
+                },
                 Event::Html(s) | Event::InlineHtml(s) => text(&s, false),
                 Event::InlineMath(s) | Event::DisplayMath(s) => text(&s, false),
                 Event::FootnoteReference(s) => text(&format!("[^{s}]"), false),
@@ -600,10 +738,17 @@ impl<'m, I: Iterator<Item = Event<'m>>> Builder<'_, 'm, I> {
                 }),
                 Event::SoftBreak | Event::HardBreak => Piece::Inline(Inline::LineBreak),
                 Event::TaskListMarker(checked) => {
-                    self.task(checked);
+                    self.task(checked, range);
                     continue;
                 }
-                Event::Start(Tag::Image { .. }) => text(&self.plain_text(), !in_link),
+                Event::Start(Tag::Image { .. }) => {
+                    let (text, sources) = self.plain_text();
+                    Piece::Text {
+                        text,
+                        scan: !in_link,
+                        sources,
+                    }
+                }
                 Event::Start(_) if self.depth >= MAX_DEPTH => {
                     flattened += 1;
                     continue;
@@ -643,13 +788,13 @@ impl<'m, I: Iterator<Item = Event<'m>>> Builder<'_, 'm, I> {
             };
             pieces.push(piece);
         }
-        finish(pieces, in_link)
+        self.finish(pieces, in_link)
     }
 
     /// Record a task marker on the innermost open list item. Every marker
     /// counts toward the next index, so indexes follow the markers in the
     /// source even if one can't be placed.
-    fn task(&mut self, checked: bool) {
+    fn task(&mut self, checked: bool, marker: Range<usize>) {
         if let Some(slot @ None) = self.items.last_mut() {
             *slot = Some(NoteTask {
                 index: self.tasks,
@@ -657,6 +802,70 @@ impl<'m, I: Iterator<Item = Event<'m>>> Builder<'_, 'm, I> {
             });
         }
         self.tasks = self.tasks.saturating_add(1);
+        self.markers.push(marker);
+    }
+
+    /// Merge adjacent text (the parser splits it, e.g. around `[`) and split
+    /// the scanned runs into text and tags, noting where each tag is in the
+    /// source.
+    fn finish(&mut self, pieces: Vec<Piece>, in_link: bool) -> Vec<Inline> {
+        let mut merged: Vec<Piece> = Vec::new();
+        for piece in pieces {
+            if let (
+                Some(Piece::Text {
+                    text,
+                    scan,
+                    sources,
+                }),
+                Piece::Text {
+                    text: more,
+                    scan: more_scan,
+                    sources: more_sources,
+                },
+            ) = (merged.last_mut(), &piece)
+            {
+                if scan == more_scan {
+                    push_sources(sources, more_sources, text.len());
+                    text.push_str(more);
+                    continue;
+                }
+            }
+            merged.push(piece);
+        }
+        let mut out = Vec::new();
+        for piece in merged {
+            match piece {
+                Piece::Text { text, .. } if text.is_empty() => {}
+                Piece::Text {
+                    text,
+                    scan: true,
+                    sources,
+                } if !in_link => {
+                    // A token is a tag only where it is the source verbatim
+                    // and its `#` isn't escaped, so `\#x` and `#x&#95;y` are
+                    // text. Rendering, tag sync and rename_tag then agree.
+                    let mut tokens = tag_tokens(&text);
+                    tokens.retain(|token| {
+                        let source = sources
+                            .iter()
+                            .find(|s| s.at <= token.start && token.end <= s.at + s.range.len());
+                        let Some(s) = source else {
+                            return false;
+                        };
+                        let start = s.range.start + token.start - s.at;
+                        if self.source[..start].ends_with('\\') {
+                            return false;
+                        }
+                        self.tags.push(start..start + token.len());
+                        true
+                    });
+                    out.extend(split_at_tags(&text, &tokens));
+                }
+                Piece::Text { text, .. } => out.push(Inline::Text { text }),
+                Piece::Inline(inline) => out.push(inline),
+            }
+        }
+        out
     }
 
     /// `f`, one container deeper.
@@ -691,38 +900,6 @@ fn paragraph(inlines: Vec<Inline>) -> Option<Block> {
         });
     }
     (!inlines.is_empty()).then_some(Block::Paragraph { inlines })
-}
-
-/// Merge adjacent text (the parser splits it, e.g. around `[`) and split
-/// the scanned runs into text and tags.
-fn finish(pieces: Vec<Piece>, in_link: bool) -> Vec<Inline> {
-    let mut merged: Vec<Piece> = Vec::new();
-    for piece in pieces {
-        if let (
-            Some(Piece::Text { text, scan }),
-            Piece::Text {
-                text: more,
-                scan: more_scan,
-            },
-        ) = (merged.last_mut(), &piece)
-        {
-            if scan == more_scan {
-                text.push_str(more);
-                continue;
-            }
-        }
-        merged.push(piece);
-    }
-    let mut out = Vec::new();
-    for piece in merged {
-        match piece {
-            Piece::Text { text, .. } if text.is_empty() => {}
-            Piece::Text { text, scan: true } if !in_link => out.extend(split_tags(&text)),
-            Piece::Text { text, .. } => out.push(Inline::Text { text }),
-            Piece::Inline(inline) => out.push(inline),
-        }
-    }
-    out
 }
 
 /// The plain text of `inlines`: their text, code and tags, without styling.
@@ -1241,6 +1418,14 @@ mod tests {
             }]
         );
         assert_eq!(render_nwt("#light"), [para(vec![tag("light")])]);
+        // Escapes and entities make a `#name` text, as rename_tag can't
+        // rewrite it in place.
+        assert_eq!(render_nwt("a \\#x"), [para(vec![text("a #x")])]);
+        assert_eq!(
+            render_nwt("#x&#95;y #z"),
+            [para(vec![text("#x_y "), tag("z")])]
+        );
+        assert_eq!(inline_tags("\\#x #a\\_b #c"), ["c"]);
         assert_eq!(
             render_nwt("###### Deep #tag"),
             [Block::Heading {
@@ -1487,5 +1672,66 @@ mod tests {
                         # Heading #d\n\
                         [John 1:9](berean://bible/nwtsty:0:0/43/1/9) #e";
         assert_eq!(inline_tags(markdown), ["b", "a", "alt", "c", "d", "e"]);
+    }
+
+    /// The source text of each tag token `parse` reports.
+    fn tag_sources(markdown: &str) -> Vec<&str> {
+        parse(markdown, &|_| true)
+            .tags
+            .into_iter()
+            .map(|r| &markdown[r])
+            .collect()
+    }
+
+    #[test]
+    fn tag_tokens_map_to_the_source() {
+        assert_eq!(
+            tag_sources("# H #a\n\n- x *#b* [#no](u) #c_d-e ![#f](i.png)\n\n> #g\n> #h"),
+            ["#a", "#b", "#c_d-e", "#f", "#g", "#h"]
+        );
+        // Every tag `render` finds maps, bar ones with an escape or entity.
+        assert_eq!(tag_sources("[#a"), ["#a"]);
+        assert_eq!(tag_sources("#a&amp;b #c"), ["#a", "#c"]);
+        assert_eq!(tag_sources("#x&#95;y #z"), ["#z"]);
+        assert_eq!(tag_sources("#a\\_b #c"), ["#c"]);
+        assert_eq!(tag_sources("`#a` <b>#c</b>"), ["#c"]);
+        assert_eq!(tag_sources("#日本 #luz"), ["#日本", "#luz"]);
+    }
+
+    #[test]
+    fn renames_whole_inline_tokens_only() {
+        let body = "#light #LIGHT #lights #light-x x#light `#light` [#light](u#light) #light\n";
+        assert_eq!(
+            rename_inline_tag(body, "Light", "lumen"),
+            "#lumen #lumen #lights #light-x x#light `#light` [#light](u#light) #lumen\n"
+        );
+        assert_eq!(rename_inline_tag("#ÑANDÚ", "ñandú", "x"), "#x");
+        assert_eq!(rename_inline_tag("no tags", "a", "b"), "no tags");
+    }
+
+    #[test]
+    fn set_task_flips_one_marker() {
+        let body = "- [ ] a\n  * [x] b\n1. [X] c\n- [\u{a0}] not a task\n";
+        assert_eq!(
+            set_task(body, 0, true).unwrap(),
+            "- [x] a\n  * [x] b\n1. [X] c\n- [\u{a0}] not a task\n"
+        );
+        assert_eq!(set_task(body, 1, true).unwrap(), body);
+        assert_eq!(
+            set_task(body, 1, false).unwrap(),
+            "- [ ] a\n  * [ ] b\n1. [X] c\n- [\u{a0}] not a task\n"
+        );
+        assert_eq!(set_task(body, 2, true).unwrap(), body);
+        assert_eq!(
+            set_task(body, 2, false).unwrap(),
+            "- [ ] a\n  * [x] b\n1. [ ] c\n- [\u{a0}] not a task\n"
+        );
+        assert_eq!(set_task(body, 3, true), None);
+        assert_eq!(set_task("", 0, true), None);
+        // CRLF and tabs around the marker are kept.
+        assert_eq!(
+            set_task("-\t[ ]\tx\r\n- [ ] y\r\n", 1, true).unwrap(),
+            "-\t[ ]\tx\r\n- [x] y\r\n"
+        );
     }
 }
