@@ -97,7 +97,9 @@ pub struct PublicationSummary {
     pub year: u32,
     pub title: String,
     /// The catalog's raw `Publication.IssueTitle` (e.g. "The Watchtower,
-    /// January 2026"); `None` when NULL or empty. Apps show `issue_title`
+    /// January 2026"); `None` when NULL or empty. Installed summaries take it
+    /// from the installed catalog's row for the same key (`None` without a
+    /// catalog or when the catalog lacks the key). Apps show `issue_title`
     /// when present, else `title`.
     pub issue_title: Option<String>,
     pub kind: PubKind,
@@ -246,27 +248,43 @@ impl Library {
         Ok(())
     }
 
-    /// All installed publications, ordered by key.
+    /// All installed publications, ordered by key. Each one's `issue_title`
+    /// comes from the installed catalog (`None` without a catalog or when the
+    /// catalog lacks its key). A catalog that cannot be opened, read or
+    /// queried gives every row a `None` issue title rather than an error;
+    /// only errors from the library's own database are returned.
     pub fn installed(&self) -> Result<Vec<PublicationSummary>, CoreError> {
-        let conn = self.inner.conn();
-        let mut stmt = conn.prepare(
-            "SELECT pub_key, symbol, meps_language, issue_tag, year, title, publication_type \
-             FROM installed_publication ORDER BY pub_key",
-        )?;
-        let rows = stmt.query_map([], |r| {
-            Ok(PublicationSummary {
-                pub_key: r.get(0)?,
-                symbol: r.get(1)?,
-                meps_language: r.get(2)?,
-                issue_tag: r.get(3)?,
-                year: r.get(4)?,
-                title: r.get(5)?,
-                // A `.jwpub`'s Publication table has no IssueTitle column.
-                issue_title: None,
-                kind: PubKind::from_publication_type(&r.get::<_, String>(6)?),
-            })
-        })?;
-        Ok(rows.collect::<Result<_, _>>()?)
+        let mut summaries: Vec<PublicationSummary> = {
+            let conn = self.inner.conn();
+            let mut stmt = conn.prepare(
+                "SELECT pub_key, symbol, meps_language, issue_tag, year, title, publication_type \
+                 FROM installed_publication ORDER BY pub_key",
+            )?;
+            let rows = stmt.query_map([], |r| {
+                Ok(PublicationSummary {
+                    pub_key: r.get(0)?,
+                    symbol: r.get(1)?,
+                    meps_language: r.get(2)?,
+                    issue_tag: r.get(3)?,
+                    year: r.get(4)?,
+                    title: r.get(5)?,
+                    issue_title: None,
+                    kind: PubKind::from_publication_type(&r.get::<_, String>(6)?),
+                })
+            })?;
+            rows.collect::<Result<_, _>>()?
+        };
+        // A `.jwpub`'s Publication table has no IssueTitle column, so the
+        // catalog is the source; it is queried after the lock is released.
+        // Issue titles are cosmetic, so a broken catalog must not hide the
+        // installed list: any catalog error just leaves every title `None`
+        // (the catalog's own calls still report it).
+        let keys: Vec<&str> = summaries.iter().map(|s| s.pub_key.as_str()).collect();
+        let mut titles = self.catalog().issue_titles(&keys).unwrap_or_default();
+        for summary in &mut summaries {
+            summary.issue_title = titles.remove(&summary.pub_key);
+        }
+        Ok(summaries)
     }
 
     /// Uninstall a publication: drop its record and search index rows, and

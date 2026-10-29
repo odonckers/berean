@@ -28,6 +28,7 @@ const LL_E: &str = "ll:0:0";
 const W_E_TITLE: &str = "The Watchtower Announcing Jehovah’s Kingdom (Study)—2026";
 const W_S_TITLE: &str = "La Atalaya. Anunciando el Reino de Jehová (estudio) 2026";
 const LL_E_TITLE: &str = "Listen to God and Live Forever";
+const W_E_ISSUE_TITLE: &str = "The Watchtower, August 2026";
 const REVISION: u64 = 2624030;
 const MWB_E: &str = "mwb26:0:20260900";
 const PUB_MEDIA: &str = "https://b.jw-cdn.org/apis/pub-media/GETPUBMEDIALINKS";
@@ -398,6 +399,60 @@ fn empty_issue_title_is_none() {
     assert!(find(&english, MWB27_MAR).unwrap().issue_title.is_some());
 }
 
+fn install_fixture(library: &Library, file: &str, key: &str) {
+    library
+        .install(key, fixture(file), &|_, _| {}, &CancelToken::new())
+        .unwrap();
+}
+
+#[test]
+fn installed_issue_title_comes_from_the_catalog() {
+    let env = Env::new();
+    let core = env.core();
+    let library = core.library();
+    install_fixture(&library, "w_E_202608.jwpub", W_E);
+    install_fixture(&library, "ll_E.jwpub", LL_E);
+
+    // No catalog: no issue titles.
+    let installed = library.installed().unwrap();
+    assert_eq!(find(&installed, W_E).unwrap().issue_title, None);
+    assert_eq!(find(&installed, LL_E).unwrap().issue_title, None);
+
+    // With one, a dated issue gets the catalog's; an undated one has none.
+    ingest(&core.catalog(), trimmed()).unwrap();
+    let installed = library.installed().unwrap();
+    assert_eq!(
+        find(&installed, W_E).unwrap().issue_title.as_deref(),
+        Some(W_E_ISSUE_TITLE)
+    );
+    assert_eq!(find(&installed, LL_E).unwrap().issue_title, None);
+}
+
+#[test]
+fn installed_survives_an_unreadable_catalog() {
+    let env = Env::new();
+    let core = env.core();
+    let catalog = core.catalog();
+    let library = core.library();
+    install_fixture(&library, "w_E_202608.jwpub", W_E);
+    install_fixture(&library, "ll_E.jwpub", LL_E);
+    ingest(&catalog, trimmed()).unwrap();
+    let installed = library.installed().unwrap();
+    assert!(find(&installed, W_E).unwrap().issue_title.is_some());
+
+    // Damage the stored catalog: it is no longer a SQLite database.
+    std::fs::write(env.data.join("catalog/catalog.db"), b"not a database").unwrap();
+
+    // The installed list is whole, just without issue titles...
+    let installed = library.installed().unwrap();
+    let keys: Vec<&str> = installed.iter().map(|s| s.pub_key.as_str()).collect();
+    assert_eq!(keys, [LL_E, W_E]);
+    assert!(installed.iter().all(|s| s.issue_title.is_none()));
+
+    // ...while the catalog's own calls still report the damage.
+    assert!(catalog.publications(&CatalogFilter::default()).is_err());
+}
+
 #[test]
 fn assets_match_the_jwpub_files() {
     let env = Env::new();
@@ -420,17 +475,13 @@ fn assets_match_the_jwpub_files() {
         assert_eq!(asset.size, std::fs::metadata(&path).unwrap().len(), "{key}");
         assert_eq!(asset.sha1, sha1_hex(&path), "{key}");
 
-        // And installing it lists the same summary the catalog does, less
-        // the issue title, which a .jwpub does not carry.
+        // And installing it lists the same summary the catalog does, issue
+        // title included (taken from the catalog, as a .jwpub has none).
         library
             .install(key, &path, &|_, _| {}, &CancelToken::new())
             .unwrap();
         let installed = library.installed().unwrap();
-        let catalogued = PublicationSummary {
-            issue_title: None,
-            ..find(&listed, key).unwrap().clone()
-        };
-        assert_eq!(find(&installed, key), Some(&catalogued), "{key}");
+        assert_eq!(find(&installed, key), find(&listed, key), "{key}");
     }
 
     let w_e = catalog.asset(W_E).unwrap();
