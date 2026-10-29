@@ -8,11 +8,11 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "bundleIdentifier": "com.odonckers.berean",
+      "bundleIdentifier": "com.odonckers.berean.mobile",
       "supportsTablet": true
     },
     "android": {
-      "package": "com.odonckers.berean",
+      "package": "com.odonckers.berean.mobile",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
