@@ -302,6 +302,31 @@ impl From<berean_core::library::HttpRequest> for HttpRequest {
     }
 }
 
+/// The FFI mirror of [`berean_core::catalog::CatalogUpdate`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct CatalogUpdate {
+    pub url: String,
+    pub id: String,
+}
+
+impl From<berean_core::catalog::CatalogUpdate> for CatalogUpdate {
+    fn from(u: berean_core::catalog::CatalogUpdate) -> Self {
+        CatalogUpdate {
+            url: u.url,
+            id: u.id,
+        }
+    }
+}
+
+impl From<CatalogUpdate> for berean_core::catalog::CatalogUpdate {
+    fn from(u: CatalogUpdate) -> Self {
+        berean_core::catalog::CatalogUpdate {
+            url: u.url,
+            id: u.id,
+        }
+    }
+}
+
 /// The FFI mirror of [`berean_core::catalog::CatalogFilter`].
 #[derive(Debug, Clone, Default, PartialEq, Eq, uniffi::Record)]
 pub struct CatalogFilter {
@@ -362,6 +387,44 @@ impl Catalog {
         let inner = self.inner.clone();
         run_on_thread(move || Ok(inner.ingest_file(path, &Progress(progress), &cancel.inner)?))
             .await
+    }
+
+    /// The request for the manifest that names the current catalog. The
+    /// caller makes it and passes the reply body to `plan_update`.
+    pub fn manifest_request(&self) -> HttpRequest {
+        self.inner.manifest_request().into()
+    }
+
+    /// The catalog to download, from the reply to `manifest_request`, or
+    /// `None` when the installed catalog is the manifest's current one.
+    pub fn plan_update(
+        &self,
+        manifest_response: Vec<u8>,
+    ) -> Result<Option<CatalogUpdate>, CoreError> {
+        Ok(self.inner.plan_update(&manifest_response)?.map(Into::into))
+    }
+
+    /// Install the catalog `update` names, downloaded to `file_path`, and
+    /// record its id once it has replaced the catalog. On any error before
+    /// then the previous catalog and recorded id are unchanged. The work runs
+    /// on its own thread; the call resolves when it is done.
+    pub async fn install_update(
+        &self,
+        update: CatalogUpdate,
+        file_path: String,
+        progress: Arc<dyn ProgressSink>,
+        cancel: Arc<CancelToken>,
+    ) -> Result<(), CoreError> {
+        let inner = self.inner.clone();
+        run_on_thread(move || {
+            Ok(inner.install_update(
+                &update.into(),
+                file_path,
+                &Progress(progress),
+                &cancel.inner,
+            )?)
+        })
+        .await
     }
 
     /// The catalog publications `filter` matches, newest first.
@@ -1744,6 +1807,56 @@ mod tests {
         );
         assert!(matches!(
             library.plan_download("ll:0:0".into(), b"garbage".to_vec()),
+            Err(CoreError::Corrupt)
+        ));
+    }
+
+    #[test]
+    fn catalog_update_through_ffi() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = open_core(&dir);
+        let catalog = core.catalog();
+        assert_eq!(
+            catalog.manifest_request(),
+            HttpRequest {
+                url: "https://app.jw-cdn.org/catalogs/publications/v5/manifest.json".into(),
+            }
+        );
+
+        let reply =
+            br#"{"version": 1, "current": "84939357-BE37-4893-8A5B-F3E87F137B08"}"#.to_vec();
+        let update = catalog.plan_update(reply.clone()).unwrap().unwrap();
+        assert_eq!(
+            update,
+            CatalogUpdate {
+                url: "https://app.jw-cdn.org/catalogs/publications/v5/\
+                      84939357-be37-4893-8a5b-f3e87f137b08/catalog.db.gz"
+                    .into(),
+                id: "84939357-be37-4893-8a5b-f3e87f137b08".into(),
+            }
+        );
+
+        assert!(catalog.languages().unwrap().is_empty());
+        let path = fixture("catalog-v5-ffa78686.db.gz").display().to_string();
+        let recorder = Arc::new(Recorder {
+            calls: Mutex::new(Vec::new()),
+        });
+        block_on(catalog.install_update(update, path, recorder.clone(), CancelToken::new()))
+            .unwrap();
+        let calls = recorder.calls.lock().unwrap().clone();
+        let (done, total) = *calls.last().unwrap();
+        assert_eq!(done, total);
+        assert_eq!(
+            catalog.languages().unwrap()[0],
+            Language {
+                meps_id: 0,
+                code: "E".into(),
+                name: "English".into(),
+            }
+        );
+        assert_eq!(catalog.plan_update(reply).unwrap(), None);
+        assert!(matches!(
+            catalog.plan_update(b"garbage".to_vec()),
             Err(CoreError::Corrupt)
         ));
     }

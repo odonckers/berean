@@ -35,6 +35,7 @@ Only features that a cited source describes are listed. Rows marked **to verify*
 | CAT-2 | Languages list | A Languages button lists every language with content; the languages used most are at the top, and the list is searchable. [S2][S3] | UI pending | both | Kiwi/Moss | #16 | `Catalog::languages` comes from the versioned language table. "Most used" ordering is UI/userdata, **to verify** where it lives. |
 | CAT-3 | What's New | Recently released publications in the browsed language. [S3] | Not started | both | Kiwi/Moss | #16 | No "recent" query yet. **to verify** which catalog field carries the release date and what cut-off JW Library uses. |
 | CAT-4 | Library search by title | The Search button on the Library tab finds publications, videos or audio by title (15.6). [S10] | Not started | both | Kiwi/Moss | Core: FTS5 search (Holding) | The catalog has titles. No title search API yet. |
+| CAT-5 | Catalog updates | JW Library keeps its publication catalog current in the background. **to verify**: no cited source describes it. | Core done | both | Kiwi/Moss | Core: catalog download/update / #41 | `Catalog::manifest_request` / `plan_update` / `install_update`. The platform owns transport and scheduling. The manifest id is recorded in `catalog/manifest-id` only after the catalog rename; `ingest_file` clears it. |
 
 ## Downloads
 | ID | Feature | JW Library behavior | Status | Layer | UI | Board row / PR | Notes |
