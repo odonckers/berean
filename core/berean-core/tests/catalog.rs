@@ -429,6 +429,31 @@ fn installed_issue_title_comes_from_the_catalog() {
 }
 
 #[test]
+fn installed_survives_an_unreadable_catalog() {
+    let env = Env::new();
+    let core = env.core();
+    let catalog = core.catalog();
+    let library = core.library();
+    install_fixture(&library, "w_E_202608.jwpub", W_E);
+    install_fixture(&library, "ll_E.jwpub", LL_E);
+    ingest(&catalog, trimmed()).unwrap();
+    let installed = library.installed().unwrap();
+    assert!(find(&installed, W_E).unwrap().issue_title.is_some());
+
+    // Damage the stored catalog: it is no longer a SQLite database.
+    std::fs::write(env.data.join("catalog/catalog.db"), b"not a database").unwrap();
+
+    // The installed list is whole, just without issue titles...
+    let installed = library.installed().unwrap();
+    let keys: Vec<&str> = installed.iter().map(|s| s.pub_key.as_str()).collect();
+    assert_eq!(keys, [LL_E, W_E]);
+    assert!(installed.iter().all(|s| s.issue_title.is_none()));
+
+    // ...while the catalog's own calls still report the damage.
+    assert!(catalog.publications(&CatalogFilter::default()).is_err());
+}
+
+#[test]
 fn assets_match_the_jwpub_files() {
     let env = Env::new();
     let core = env.core();
