@@ -54,6 +54,7 @@
 //! ISO-8601 UTC timestamp, so it orders as text.)
 
 use std::cell::Cell;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -84,6 +85,9 @@ const COPY_STEPS: u64 = 100;
 const TOTAL: u64 = COPY_STEPS + 3;
 /// How much of the file is copied between cancellation checks.
 const CHUNK: usize = 64 * 1024;
+/// How many keys one issue-title lookup matches (three parameters each),
+/// well under SQLite's limit on parameters per statement.
+const KEYS_PER_QUERY: usize = 1000;
 
 /// The columns the core reads, by table. A file missing any of them is not a
 /// catalog this build understands.
@@ -242,8 +246,8 @@ impl Catalog {
     /// The catalog to download, from the reply to
     /// [`manifest_request`](Self::manifest_request), or `None` when the
     /// installed catalog was installed from the manifest's current id.
-    /// An unreadable reply, a version other than 1, or a current id that is
-    /// not a UUID => `Corrupt`.
+    /// A malformed (unreadable) manifest, a `version` other than 1, or a
+    /// `current` that is not a UUID => [`CoreError::Corrupt`].
     pub fn plan_update(
         &self,
         manifest_response: &[u8],
@@ -493,6 +497,52 @@ impl Catalog {
             },
         )?;
         Ok(entry)
+    }
+
+    /// The issue title of the row each of `pub_keys` resolves to, by key.
+    /// Keys the catalog lacks, and rows whose `IssueTitle` is NULL or empty,
+    /// are left out; with no catalog the map is empty. Malformed key =>
+    /// `Invalid`.
+    pub(crate) fn issue_titles(
+        &self,
+        pub_keys: &[&str],
+    ) -> Result<HashMap<String, String>, CoreError> {
+        let mut out = HashMap::new();
+        let Some(conn) = self.open()? else {
+            return Ok(out);
+        };
+        // One query for any realistic library; more only past the chunk size.
+        for chunk in pub_keys.chunks(KEYS_PER_QUERY) {
+            let mut args: Vec<rusqlite::types::Value> = Vec::with_capacity(chunk.len() * 3);
+            for key in chunk {
+                let (symbol, lang, issue) = parse_pub_key(key)?;
+                args.push(i64::from(lang).into());
+                args.push(symbol.to_string().into());
+                args.push(i64::from(issue).into());
+            }
+            let sql = format!(
+                "WITH k (lang, symbol, issue) AS (VALUES {}) \
+                 SELECT p.Symbol, p.MepsLanguageId, p.IssueTagNumber, p.IssueTitle \
+                 FROM k JOIN Publication p \
+                   ON p.MepsLanguageId = k.lang AND p.Symbol = k.symbol \
+                  AND p.IssueTagNumber = k.issue \
+                 JOIN PublicationAsset a ON a.PublicationId = p.Id \
+                 WHERE {RESOLVED}",
+                vec!["(?, ?, ?)"; chunk.len()].join(", ")
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt.query_map(params_from_iter(args), |r| {
+                let key = format_pub_key(&r.get::<_, String>(0)?, r.get(1)?, r.get(2)?);
+                Ok((key, r.get::<_, Option<String>>(3)?))
+            })?;
+            for row in rows {
+                let (key, title) = row?;
+                if let Some(title) = title.filter(|t| !t.is_empty()) {
+                    out.insert(key, title);
+                }
+            }
+        }
+        Ok(out)
     }
 
     /// Create the catalog directory and empty `.staging`, which only ever
