@@ -745,6 +745,7 @@ pub struct Note {
     pub tag_ids: Vec<i64>,
     pub created: String,
     pub modified: String,
+    pub folder_id: Option<i64>,
 }
 
 impl From<berean_core::userdata::Note> for Note {
@@ -758,6 +759,7 @@ impl From<berean_core::userdata::Note> for Note {
             tag_ids: n.tag_ids,
             created: n.created,
             modified: n.modified,
+            folder_id: n.folder_id,
         }
     }
 }
@@ -766,14 +768,129 @@ impl From<berean_core::userdata::Note> for Note {
 #[derive(Debug, Clone, Default, PartialEq, Eq, uniffi::Record)]
 pub struct NoteFilter {
     pub location: Option<Location>,
-    pub tag_id: Option<i64>,
+    pub tag_ids: Vec<i64>,
+    pub folder: Option<FolderScope>,
 }
 
 impl From<NoteFilter> for berean_core::userdata::NoteFilter {
     fn from(f: NoteFilter) -> Self {
         berean_core::userdata::NoteFilter {
             location: f.location.map(Into::into),
-            tag_id: f.tag_id,
+            tag_ids: f.tag_ids,
+            folder: f.folder.map(Into::into),
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::userdata::FolderScope`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum FolderScope {
+    Unfiled,
+    Folder { id: i64, include_subfolders: bool },
+}
+
+impl From<FolderScope> for berean_core::userdata::FolderScope {
+    fn from(s: FolderScope) -> Self {
+        use berean_core::userdata::FolderScope as S;
+        match s {
+            FolderScope::Unfiled => S::Unfiled,
+            FolderScope::Folder {
+                id,
+                include_subfolders,
+            } => S::Folder {
+                id,
+                include_subfolders,
+            },
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::userdata::Folder`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct Folder {
+    pub id: i64,
+    pub parent_id: Option<i64>,
+    pub name: String,
+    pub position: u32,
+    pub depth: u32,
+    pub note_count: u32,
+    pub subfolder_count: u32,
+}
+
+impl From<berean_core::userdata::Folder> for Folder {
+    fn from(f: berean_core::userdata::Folder) -> Self {
+        Folder {
+            id: f.id,
+            parent_id: f.parent_id,
+            name: f.name,
+            position: f.position,
+            depth: f.depth,
+            note_count: f.note_count,
+            subfolder_count: f.subfolder_count,
+        }
+    }
+}
+
+impl From<Folder> for berean_core::userdata::Folder {
+    fn from(f: Folder) -> Self {
+        berean_core::userdata::Folder {
+            id: f.id,
+            parent_id: f.parent_id,
+            name: f.name,
+            position: f.position,
+            depth: f.depth,
+            note_count: f.note_count,
+            subfolder_count: f.subfolder_count,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::userdata::NoteFolder`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct NoteFolder {
+    pub note_id: String,
+    pub folder_id: i64,
+}
+
+impl From<berean_core::userdata::NoteFolder> for NoteFolder {
+    fn from(n: berean_core::userdata::NoteFolder) -> Self {
+        NoteFolder {
+            note_id: n.note_id,
+            folder_id: n.folder_id,
+        }
+    }
+}
+
+impl From<NoteFolder> for berean_core::userdata::NoteFolder {
+    fn from(n: NoteFolder) -> Self {
+        berean_core::userdata::NoteFolder {
+            note_id: n.note_id,
+            folder_id: n.folder_id,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::userdata::DeletedFolder`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct DeletedFolder {
+    pub folders: Vec<Folder>,
+    pub notes: Vec<NoteFolder>,
+}
+
+impl From<berean_core::userdata::DeletedFolder> for DeletedFolder {
+    fn from(d: berean_core::userdata::DeletedFolder) -> Self {
+        DeletedFolder {
+            folders: mirror(d.folders),
+            notes: mirror(d.notes),
+        }
+    }
+}
+
+impl From<DeletedFolder> for berean_core::userdata::DeletedFolder {
+    fn from(d: DeletedFolder) -> Self {
+        berean_core::userdata::DeletedFolder {
+            folders: mirror(d.folders),
+            notes: mirror(d.notes),
         }
     }
 }
@@ -1093,18 +1210,25 @@ impl UserData {
     }
 
     /// Add a note at `location` (none for a free-standing one), on the
-    /// highlight `highlight_id` if given.
+    /// highlight `highlight_id` if given, filed in `folder_id` if given.
     pub fn add_note(
         &self,
         title: String,
         content: String,
         location: Option<Location>,
         highlight_id: Option<String>,
+        folder_id: Option<i64>,
     ) -> Result<Note, CoreError> {
         let location = location.map(berean_core::reader::Location::from);
         Ok(self
             .inner
-            .add_note(&title, &content, location.as_ref(), highlight_id.as_deref())?
+            .add_note(
+                &title,
+                &content,
+                location.as_ref(),
+                highlight_id.as_deref(),
+                folder_id,
+            )?
             .into())
     }
 
@@ -1122,6 +1246,54 @@ impl UserData {
     /// flagged `missing` when their publication isn't installed.
     pub fn render_markdown(&self, markdown: String) -> Result<Vec<Block>, CoreError> {
         Ok(mirror(self.inner.render_markdown(&markdown)?))
+    }
+
+    /// Every note folder, flat, in tree order (depth-first, siblings by
+    /// position).
+    pub fn folders(&self) -> Result<Vec<Folder>, CoreError> {
+        Ok(mirror(self.inner.folders()?))
+    }
+
+    /// Add a folder called `name` under `parent_id` (none = top level),
+    /// last among its siblings.
+    pub fn create_folder(&self, name: String, parent_id: Option<i64>) -> Result<Folder, CoreError> {
+        Ok(self.inner.create_folder(&name, parent_id)?.into())
+    }
+
+    /// Rename folder `id`.
+    pub fn rename_folder(&self, id: i64, name: String) -> Result<(), CoreError> {
+        Ok(self.inner.rename_folder(id, &name)?)
+    }
+
+    /// Move folder `id` under `parent_id` at `position` (clamped to the
+    /// end): reparents, reorders, or both.
+    pub fn move_folder(
+        &self,
+        id: i64,
+        parent_id: Option<i64>,
+        position: u32,
+    ) -> Result<(), CoreError> {
+        Ok(self.inner.move_folder(id, parent_id, position)?)
+    }
+
+    /// Delete folder `id` and its subfolders; their notes become unfiled.
+    /// Returns what was removed, for `restore_folder`.
+    pub fn delete_folder(&self, id: i64) -> Result<DeletedFolder, CoreError> {
+        Ok(self.inner.delete_folder(id)?.into())
+    }
+
+    /// Undo `delete_folder`.
+    pub fn restore_folder(&self, deleted: DeletedFolder) -> Result<(), CoreError> {
+        Ok(self.inner.restore_folder(&deleted.into())?)
+    }
+
+    /// File the note `note_id` in `folder_id`, or unfile it for none.
+    pub fn set_note_folder(
+        &self,
+        note_id: String,
+        folder_id: Option<i64>,
+    ) -> Result<(), CoreError> {
+        Ok(self.inner.set_note_folder(&note_id, folder_id)?)
     }
 
     /// The user tags, in the order they were made.
@@ -1571,7 +1743,13 @@ mod tests {
         assert_eq!(h.range, range);
         let tag = ud.add_tag("Study".into()).unwrap();
         let note = ud
-            .add_note("T".into(), "C".into(), Some(para(2)), Some(h.id.clone()))
+            .add_note(
+                "T".into(),
+                "C".into(),
+                Some(para(2)),
+                Some(h.id.clone()),
+                None,
+            )
             .unwrap();
         ud.tag_note(note.id.clone(), tag.id).unwrap();
         ud.set_bookmark("w26:0:20260800".into(), 9, para(3), "B".into(), None)
@@ -1662,6 +1840,53 @@ mod tests {
         assert!(other.bookmarks("w26:0:20260800".into()).unwrap().is_empty());
         assert!(!other.undo_import().unwrap());
         assert_eq!(other.tags().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn folders_through_ffi() {
+        let dir = tempfile::tempdir().unwrap();
+        let ud = open_core(&dir).userdata();
+        let john = ud.create_folder("Gospel of John".into(), None).unwrap();
+        let signs = ud.create_folder("Signs".into(), Some(john.id)).unwrap();
+        assert_eq!((signs.depth, signs.position), (1, 0));
+        let note = ud
+            .add_note("Cana".into(), "".into(), None, None, Some(signs.id))
+            .unwrap();
+        assert_eq!(note.folder_id, Some(signs.id));
+        ud.add_note("Loose".into(), "".into(), None, None, None)
+            .unwrap();
+        let in_john = NoteFilter {
+            folder: Some(FolderScope::Folder {
+                id: john.id,
+                include_subfolders: true,
+            }),
+            ..NoteFilter::default()
+        };
+        assert_eq!(
+            ud.notes(in_john.clone()).unwrap(),
+            std::slice::from_ref(&note)
+        );
+        assert_eq!(ud.folders().unwrap()[0].note_count, 1);
+
+        let deleted = ud.delete_folder(john.id).unwrap();
+        assert!(ud.folders().unwrap().is_empty());
+        assert_eq!(ud.notes(NoteFilter::default()).unwrap().len(), 2);
+        ud.restore_folder(deleted).unwrap();
+        assert_eq!(ud.notes(in_john).unwrap(), std::slice::from_ref(&note));
+        ud.set_note_folder(note.id.clone(), None).unwrap();
+        let unfiled = NoteFilter {
+            folder: Some(FolderScope::Unfiled),
+            ..NoteFilter::default()
+        };
+        assert_eq!(ud.notes(unfiled).unwrap().len(), 2);
+        assert!(matches!(
+            ud.move_folder(john.id, Some(signs.id), 0),
+            Err(CoreError::Invalid(_))
+        ));
+        assert!(matches!(
+            ud.rename_folder(999, "x".into()),
+            Err(CoreError::NotFound)
+        ));
     }
 
     #[test]
