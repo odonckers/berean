@@ -1,6 +1,6 @@
 # Row 6 design: userdata + `.jwlibrary` backup (Phase 1, for Owen's decision)
 
-Status: **design only, nothing built.** The data model and API boundary are architecture; Owen decides.
+Status: Approved by Wren (Lead) 2026-10-28; implemented in #20
 
 ## 1. What JW Library writes (findings)
 
