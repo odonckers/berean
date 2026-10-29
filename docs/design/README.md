@@ -6,7 +6,7 @@ A spec's recommended direction stays **pending** until Owen decides on it in the
 
 | Spec | Status |
 | --- | --- |
-| [Berean design guide](berean-design-guide.md) | Approved direction (Oct 28, 2026), reference for all platforms |
+| [Berean design guide](berean-design-guide.md) | v3 with Notes section; approved direction (Oct 28, 2026), reference for all platforms |
 | [Inline study pane](inline-study-pane.md) | Decided: direction B, open questions resolved |
 | Studyspace infinite canvas | Planned |
 | Omnisearch | Planned |
