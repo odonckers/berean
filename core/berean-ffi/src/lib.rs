@@ -1210,7 +1210,8 @@ impl UserData {
     }
 
     /// Add a note at `location` (none for a free-standing one), on the
-    /// highlight `highlight_id` if given, filed in `folder_id` if given.
+    /// highlight `highlight_id` if given, filed in `folder_id` if given,
+    /// tagged with its body's inline #tags.
     pub fn add_note(
         &self,
         title: String,
@@ -1232,9 +1233,16 @@ impl UserData {
             .into())
     }
 
-    /// Replace the note `id`'s title and content.
+    /// Replace the note `id`'s title and content, syncing its tags with the
+    /// body's inline #tags.
     pub fn update_note(&self, id: String, title: String, content: String) -> Result<(), CoreError> {
         Ok(self.inner.update_note(&id, &title, &content)?)
+    }
+
+    /// Check or uncheck the note `id`'s task `index` (`NoteTask.index` in
+    /// its rendered body), rewriting only that marker.
+    pub fn set_task(&self, id: String, index: u32, checked: bool) -> Result<(), CoreError> {
+        Ok(self.inner.set_task(&id, index, checked)?)
     }
 
     /// Remove the note `id`.
@@ -1306,7 +1314,8 @@ impl UserData {
         Ok(self.inner.add_tag(&name)?.into())
     }
 
-    /// Rename the user tag `id`.
+    /// Rename the user tag `id`, rewriting inline `#old` to `#name` in its
+    /// notes when both are inline tag names.
     pub fn rename_tag(&self, id: i64, name: String) -> Result<(), CoreError> {
         Ok(self.inner.rename_tag(id, &name)?)
     }

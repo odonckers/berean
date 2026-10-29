@@ -828,6 +828,89 @@ fn next_position(conn: &Connection, tag: i64) -> Result<i64, CoreError> {
     )?)
 }
 
+/// Tag the note row `note` with `tag`, last among the tag's members;
+/// already tagged is a no-op.
+fn tag_note_row(conn: &Connection, note: i64, tag: i64) -> Result<(), CoreError> {
+    let tagged: bool = conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM TagMap WHERE TagId = ?1 AND NoteId = ?2)",
+        [tag, note],
+        |r| r.get(0),
+    )?;
+    if !tagged {
+        let position = next_position(conn, tag)?;
+        conn.execute(
+            "INSERT INTO TagMap (NoteId, TagId, Position) VALUES (?1, ?2, ?3)",
+            [note, tag, position],
+        )?;
+    }
+    Ok(())
+}
+
+/// Take `tag` off the note row `note`; not tagged is a no-op.
+fn untag_note_row(conn: &Connection, note: i64, tag: i64) -> Result<(), CoreError> {
+    conn.execute(
+        "DELETE FROM TagMap WHERE TagId = ?1 AND NoteId = ?2",
+        [tag, note],
+    )?;
+    Ok(())
+}
+
+/// The user tags as `(id, lowercased name)`, oldest first.
+fn user_tags_lower(conn: &Connection) -> Result<Vec<(i64, String)>, CoreError> {
+    let tags = conn
+        .prepare("SELECT TagId, Name FROM Tag WHERE Type = 1 ORDER BY TagId")?
+        .query_map([], |r| {
+            Ok((r.get(0)?, r.get::<_, String>(1)?.to_lowercase()))
+        })?
+        .collect::<Result<_, _>>()?;
+    Ok(tags)
+}
+
+/// Sync the note row `note`'s user tags with the inline #tags of its body,
+/// going from `old` (`None` for a new note) to `new`. Names match user
+/// tags ignoring case, Unicode-aware (oldest tag first); an unmatched one
+/// becomes a new user tag spelled as typed. Tags inline in `old` but not in
+/// `new` come off the note; tags that weren't inline in `old` (from
+/// `tag_note`) stay.
+fn sync_inline_tags(
+    conn: &Connection,
+    note: i64,
+    old: Option<&str>,
+    new: &str,
+) -> Result<(), CoreError> {
+    let new_names = notes::inline_tags(new);
+    let new_lower: HashSet<String> = new_names.iter().map(|n| n.to_lowercase()).collect();
+    let mut tags = user_tags_lower(conn)?;
+    let find = |tags: &[(i64, String)], lower: &str| {
+        tags.iter()
+            .find(|(_, name)| name == lower)
+            .map(|(id, _)| *id)
+    };
+    for name in &new_names {
+        let lower = name.to_lowercase();
+        let tag = match find(&tags, &lower) {
+            Some(tag) => tag,
+            None => {
+                conn.execute("INSERT INTO Tag (Type, Name) VALUES (1, ?1)", [name])?;
+                let tag = conn.last_insert_rowid();
+                tags.push((tag, lower));
+                tag
+            }
+        };
+        tag_note_row(conn, note, tag)?;
+    }
+    for name in old.map(notes::inline_tags).unwrap_or_default() {
+        let lower = name.to_lowercase();
+        if new_lower.contains(&lower) {
+            continue;
+        }
+        if let Some(tag) = find(&tags, &lower) {
+            untag_note_row(conn, note, tag)?;
+        }
+    }
+    Ok(())
+}
+
 /// The place a favorite is, which can't be a paragraph or verse.
 fn favorite_place(location: &Location) -> Result<Place, CoreError> {
     match split(location)? {
@@ -1439,9 +1522,10 @@ impl UserData {
     }
 
     /// Add a note at `location` (`None` for a free-standing one), on the
-    /// highlight `highlight_id` if given, filed in `folder_id` if given. An
-    /// unknown highlight or folder => `NotFound`; a malformed location =>
-    /// `Invalid`.
+    /// highlight `highlight_id` if given, filed in `folder_id` if given, and
+    /// tagged with its body's inline #tags: each matches a user tag ignoring
+    /// case, or becomes a new one. An unknown highlight or folder =>
+    /// `NotFound`; a malformed location => `Invalid`.
     pub fn add_note(
         &self,
         title: &str,
@@ -1485,25 +1569,54 @@ impl UserData {
                 [id, folder],
             )?;
         }
+        sync_inline_tags(&tx, id, None, content)?;
         tx.commit()?;
         read_notes(&conn, Some(id))?
             .pop()
             .ok_or_else(|| CoreError::Invalid("note not readable".into()))
     }
 
-    /// Replace the note `id`'s title and content, stamping it modified now.
+    /// Replace the note `id`'s title and content, stamping it modified now,
+    /// and sync its tags with the body's inline #tags (see `add_note`).
     /// Unknown => `NotFound`.
     pub fn update_note(&self, id: &str, title: &str, content: &str) -> Result<(), CoreError> {
-        let conn = self.inner.userdata();
-        let n = conn.execute(
-            &format!(
-                "UPDATE Note SET Title = ?2, Content = ?3, LastModified = {NOW} WHERE Guid = ?1"
-            ),
-            params![id, title, content],
+        let mut conn = self.inner.userdata();
+        let tx = conn.transaction()?;
+        let (note, old): (i64, Option<String>) = tx.query_row(
+            "SELECT NoteId, Content FROM Note WHERE Guid = ?1",
+            [id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
         )?;
-        if n == 0 {
-            return Err(CoreError::NotFound);
-        }
+        tx.execute(
+            &format!(
+                "UPDATE Note SET Title = ?2, Content = ?3, LastModified = {NOW} WHERE NoteId = ?1"
+            ),
+            params![note, title, content],
+        )?;
+        sync_inline_tags(&tx, note, old.as_deref(), content)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Check or uncheck the note `id`'s task `index` (`NoteTask::index` in
+    /// its rendered body), stamping it modified now. Only the marker's
+    /// character changes in the stored Markdown. Unknown => `NotFound`;
+    /// `index` past the last task => `Invalid`.
+    pub fn set_task(&self, id: &str, index: u32, checked: bool) -> Result<(), CoreError> {
+        let mut conn = self.inner.userdata();
+        let tx = conn.transaction()?;
+        let (note, content): (i64, Option<String>) = tx.query_row(
+            "SELECT NoteId, Content FROM Note WHERE Guid = ?1",
+            [id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        let content = notes::set_task(content.as_deref().unwrap_or_default(), index, checked)
+            .ok_or_else(|| CoreError::Invalid(format!("the note has no task {index}")))?;
+        tx.execute(
+            &format!("UPDATE Note SET Content = ?2, LastModified = {NOW} WHERE NoteId = ?1"),
+            params![note, content],
+        )?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -1781,18 +1894,45 @@ impl UserData {
         })
     }
 
-    /// Rename the user tag `id` to `name` (trimmed). Unknown => `NotFound`;
-    /// an empty name, or one another tag has => `Invalid`.
+    /// Rename the user tag `id` to `name` (trimmed). When both names are
+    /// inline tag names, the notes with the tag also have each inline
+    /// `#old` (ignoring case) in their body rewritten to `#name`, and are
+    /// stamped modified now. Unknown => `NotFound`; an empty name, or one
+    /// another tag has => `Invalid`.
     pub fn rename_tag(&self, id: i64, name: &str) -> Result<(), CoreError> {
         let name = tag_name(name)?;
         let mut conn = self.inner.userdata();
         let tx = conn.transaction()?;
-        check_user_tag(&tx, id)?;
+        let old: String = tx.query_row(
+            "SELECT Name FROM Tag WHERE TagId = ?1 AND Type = 1",
+            [id],
+            |r| r.get(0),
+        )?;
         check_tag_free(&tx, name, Some(id))?;
         tx.execute(
             "UPDATE Tag SET Name = ?2 WHERE TagId = ?1",
             params![id, name],
         )?;
+        if notes::is_tag_name(&old) && notes::is_tag_name(name) {
+            let bodies: Vec<(i64, String)> = tx
+                .prepare(
+                    "SELECT n.NoteId, n.Content FROM Note n JOIN TagMap m ON m.NoteId = n.NoteId \
+                     WHERE m.TagId = ?1 AND n.Content IS NOT NULL",
+                )?
+                .query_map([id], |r| Ok((r.get(0)?, r.get(1)?)))?
+                .collect::<Result<_, _>>()?;
+            for (note, body) in bodies {
+                let renamed = notes::rename_inline_tag(&body, &old, name);
+                if renamed != body {
+                    tx.execute(
+                        &format!(
+                            "UPDATE Note SET Content = ?2, LastModified = {NOW} WHERE NoteId = ?1"
+                        ),
+                        params![note, renamed],
+                    )?;
+                }
+            }
+        }
         tx.commit()?;
         Ok(())
     }
@@ -1816,18 +1956,7 @@ impl UserData {
         let tx = conn.transaction()?;
         let note = note_row(&tx, note_id)?;
         check_user_tag(&tx, tag_id)?;
-        let tagged: bool = tx.query_row(
-            "SELECT EXISTS (SELECT 1 FROM TagMap WHERE TagId = ?1 AND NoteId = ?2)",
-            [tag_id, note],
-            |r| r.get(0),
-        )?;
-        if !tagged {
-            let position = next_position(&tx, tag_id)?;
-            tx.execute(
-                "INSERT INTO TagMap (NoteId, TagId, Position) VALUES (?1, ?2, ?3)",
-                [note, tag_id, position],
-            )?;
-        }
+        tag_note_row(&tx, note, tag_id)?;
         tx.commit()?;
         Ok(())
     }
@@ -1839,10 +1968,7 @@ impl UserData {
         let tx = conn.transaction()?;
         let note = note_row(&tx, note_id)?;
         check_user_tag(&tx, tag_id)?;
-        tx.execute(
-            "DELETE FROM TagMap WHERE TagId = ?1 AND NoteId = ?2",
-            [tag_id, note],
-        )?;
+        untag_note_row(&tx, note, tag_id)?;
         tx.commit()?;
         Ok(())
     }
