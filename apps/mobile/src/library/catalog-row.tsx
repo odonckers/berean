@@ -7,6 +7,7 @@ import { useBerean } from '@/design/theme';
 import { hairline, spacing } from '@/design/tokens';
 import { type InstallJob, startInstall } from '@/library/installs';
 import { JobStatus } from '@/library/job-status';
+import { displayTitle } from '@/library/labels';
 
 type CatalogRowProps = {
   pub: PublicationSummary;
@@ -16,13 +17,14 @@ type CatalogRowProps = {
 
 export function CatalogRow({ pub, installed, job }: CatalogRowProps) {
   const { colors } = useBerean();
+  const title = displayTitle(pub);
   const detail = pub.year > 0 ? `${pub.symbol} · ${pub.year}` : pub.symbol;
   return (
     <View style={[styles.row, { borderColor: colors.separator }]}>
       <View style={styles.main}>
         <View style={styles.text}>
           <UIText numberOfLines={2} style={styles.title}>
-            {pub.title}
+            {title}
           </UIText>
           <UIText secondary style={styles.detail}>
             {detail}
@@ -36,7 +38,7 @@ export function CatalogRow({ pub, installed, job }: CatalogRowProps) {
           job === undefined && (
             <TextButton
               title="Download"
-              accessibilityLabel={`Download ${pub.title}`}
+              accessibilityLabel={`Download ${title}`}
               onPress={() => startInstall(pub)}
             />
           )

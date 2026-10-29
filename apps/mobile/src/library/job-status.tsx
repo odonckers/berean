@@ -12,6 +12,7 @@ import {
   jobPercent,
   startInstall,
 } from '@/library/installs';
+import { displayTitle } from '@/library/labels';
 
 function megabytes(bytes: number): string {
   return (bytes / 1_000_000).toFixed(1);
@@ -35,7 +36,8 @@ export function jobProgressText(job: InstallJob): string {
 /** A job's progress with Cancel, or its failure with Retry and Dismiss. */
 export function JobStatus({ job }: { job: InstallJob }) {
   const { colors } = useBerean();
-  const { title, pubKey } = job.pub;
+  const { pubKey } = job.pub;
+  const title = displayTitle(job.pub);
   const percent = jobPercent(job);
   return (
     <View style={styles.status}>

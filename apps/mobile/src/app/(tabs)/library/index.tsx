@@ -14,6 +14,7 @@ import { library } from '@/ffi/core';
 import { coreErrorMessage } from '@/ffi/errors';
 import { libraryChanged, onLibraryChanged, useInstalls } from '@/library/installs';
 import { JobStatus } from '@/library/job-status';
+import { displayTitle } from '@/library/labels';
 import { languageNames, load, type Loaded, publicationDetail } from '@/library/load';
 
 type LibraryData = { installed: PublicationSummary[]; names: ReadonlyMap<number, string> };
@@ -27,7 +28,8 @@ function openCatalog() {
 }
 
 function confirmRemove(pub: PublicationSummary) {
-  Alert.alert(`Remove ${pub.title}?`, undefined, [
+  const title = displayTitle(pub);
+  Alert.alert(`Remove ${title}?`, undefined, [
     { text: 'Cancel', style: 'cancel' },
     {
       text: 'Remove',
@@ -36,7 +38,7 @@ function confirmRemove(pub: PublicationSummary) {
         try {
           library().remove(pub.pubKey);
         } catch (e) {
-          Alert.alert(`Couldn't remove ${pub.title}`, coreErrorMessage(e));
+          Alert.alert(`Couldn't remove ${title}`, coreErrorMessage(e));
         }
         libraryChanged();
       },
@@ -111,7 +113,7 @@ export default function LibraryScreen() {
                     style={[styles.row, { borderColor: colors.separator }]}
                   >
                     <UIText numberOfLines={2} style={styles.title}>
-                      {job.pub.title}
+                      {displayTitle(job.pub)}
                     </UIText>
                     <JobStatus job={job} />
                   </View>
@@ -130,7 +132,7 @@ export default function LibraryScreen() {
           renderItem={({ item }) => (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`${item.title}, ${publicationDetail(item, data.value.names)}`}
+              accessibilityLabel={`${displayTitle(item)}, ${publicationDetail(item, data.value.names)}`}
               accessibilityHint="Long press to remove"
               accessibilityActions={[{ name: 'remove', label: 'Remove' }]}
               onAccessibilityAction={() => confirmRemove(item)}
@@ -138,7 +140,7 @@ export default function LibraryScreen() {
               style={[styles.row, { borderColor: colors.separator }]}
             >
               <UIText numberOfLines={2} style={styles.title}>
-                {item.title}
+                {displayTitle(item)}
               </UIText>
               <UIText secondary style={styles.detail}>
                 {publicationDetail(item, data.value.names)}

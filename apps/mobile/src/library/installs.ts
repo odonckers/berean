@@ -15,6 +15,7 @@ import { AccessibilityInfo } from 'react-native';
 import { library } from '@/ffi/core';
 import { coreErrorMessage } from '@/ffi/errors';
 import { fileUriToPath } from '@/ffi/paths';
+import { displayTitle } from '@/library/labels';
 
 export type InstallJob =
   | { state: 'downloading'; pub: PublicationSummary; bytesWritten: number; totalBytes: number }
@@ -279,7 +280,7 @@ export function startInstall(pub: PublicationSummary) {
         return;
       }
       // Even if Cancel came too late to stop it, the install did finish.
-      AccessibilityInfo.announceForAccessibility(`${pub.title} is installed.`);
+      AccessibilityInfo.announceForAccessibility(`${displayTitle(pub)} is installed.`);
       libraryChanged();
     },
     (e: unknown) => {

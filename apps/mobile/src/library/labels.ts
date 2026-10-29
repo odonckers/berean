@@ -1,4 +1,9 @@
-import { PubKind } from 'berean-ffi-rn';
+import { PubKind, type PublicationSummary } from 'berean-ffi-rn';
+
+/** The core's issue title for a dated periodical, else the catalog title. */
+export function displayTitle(pub: PublicationSummary): string {
+  return pub.issueTitle ?? pub.title;
+}
 
 export const KIND_LABELS: Record<PubKind, string> = {
   [PubKind.Bible]: 'Bible',
