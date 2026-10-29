@@ -2,9 +2,70 @@
 //! this crate only exposes it to foreign-language callers. Keeping every
 //! exported type in this one crate means UniFFI generates a single module.
 
-use std::sync::Arc;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll, Waker};
 
 uniffi::setup_scaffolding!();
+
+/// Run the blocking `f` on its own thread; the returned future resolves to
+/// its result once it is done. The core stays synchronous; this is the only
+/// place a call is moved off the caller's thread. If `f` panics, polling the
+/// future resumes that panic, so it surfaces on the caller's side as before.
+fn run_on_thread<T: Send + 'static>(
+    f: impl FnOnce() -> T + Send + 'static,
+) -> impl Future<Output = T> {
+    let shared = Arc::new(Mutex::new(Slot {
+        result: None,
+        waker: None,
+    }));
+    let thread_shared = shared.clone();
+    std::thread::spawn(move || {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+        // Store the result and take the waker under one lock, so a poll can't
+        // slip in between and miss the wake-up.
+        let waker = {
+            let mut slot = thread_shared.lock().unwrap();
+            slot.result = Some(result);
+            slot.waker.take()
+        };
+        if let Some(waker) = waker {
+            waker.wake();
+        }
+    });
+    OnThread { shared }
+}
+
+/// The state [`run_on_thread`]'s thread and future share.
+struct Slot<T> {
+    result: Option<std::thread::Result<T>>,
+    waker: Option<Waker>,
+}
+
+/// The future [`run_on_thread`] returns.
+struct OnThread<T> {
+    shared: Arc<Mutex<Slot<T>>>,
+}
+
+impl<T> Future for OnThread<T> {
+    type Output = T;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<T> {
+        let mut slot = self.shared.lock().unwrap();
+        let result = slot.result.take();
+        if result.is_none() {
+            slot.waker = Some(cx.waker().clone());
+        }
+        // Release the lock before a resumed panic unwinds through here.
+        drop(slot);
+        match result {
+            Some(Ok(result)) => Poll::Ready(result),
+            Some(Err(payload)) => std::panic::resume_unwind(payload),
+            None => Poll::Pending,
+        }
+    }
+}
 
 /// The core version string.
 #[uniffi::export]
@@ -275,16 +336,17 @@ pub struct Catalog {
 #[uniffi::export]
 impl Catalog {
     /// Replace the catalog with the `catalog.db.gz` (or `catalog.db`) at
-    /// `path`. On any error the previous catalog is unchanged.
-    pub fn ingest_file(
+    /// `path`. On any error the previous catalog is unchanged. The work runs
+    /// on its own thread; the call resolves when it is done.
+    pub async fn ingest_file(
         &self,
         path: String,
         progress: Arc<dyn ProgressSink>,
         cancel: Arc<CancelToken>,
     ) -> Result<(), CoreError> {
-        Ok(self
-            .inner
-            .ingest_file(path, &Progress(progress), &cancel.inner)?)
+        let inner = self.inner.clone();
+        run_on_thread(move || Ok(inner.ingest_file(path, &Progress(progress), &cancel.inner)?))
+            .await
     }
 
     /// The catalog publications `filter` matches, newest first.
@@ -329,16 +391,19 @@ impl berean_core::ProgressSink for Progress {
 #[uniffi::export]
 impl Library {
     /// Verify, unpack and record the `.jwpub` at `file_path` as `pub_key`.
-    pub fn install(
+    /// The work runs on its own thread; the call resolves when it is done.
+    pub async fn install(
         &self,
         pub_key: String,
         file_path: String,
         progress: Arc<dyn ProgressSink>,
         cancel: Arc<CancelToken>,
     ) -> Result<(), CoreError> {
-        Ok(self
-            .inner
-            .install(&pub_key, file_path, &Progress(progress), &cancel.inner)?)
+        let inner = self.inner.clone();
+        run_on_thread(move || {
+            Ok(inner.install(&pub_key, file_path, &Progress(progress), &cancel.inner)?)
+        })
+        .await
     }
 
     /// All installed publications, ordered by key.
@@ -559,7 +624,30 @@ impl Reader {
 mod tests {
     use super::*;
     use std::path::PathBuf;
-    use std::sync::Mutex;
+    use std::task::Wake;
+    use std::thread::Thread;
+
+    /// Wakes a parked thread.
+    struct Unpark(Thread);
+
+    impl Wake for Unpark {
+        fn wake(self: Arc<Self>) {
+            self.0.unpark();
+        }
+    }
+
+    /// Drive `future` to completion on this thread, parking between polls.
+    fn block_on<F: Future>(future: F) -> F::Output {
+        let mut future = std::pin::pin!(future);
+        let waker = Waker::from(Arc::new(Unpark(std::thread::current())));
+        let mut cx = Context::from_waker(&waker);
+        loop {
+            match future.as_mut().poll(&mut cx) {
+                Poll::Ready(output) => return output,
+                Poll::Pending => std::thread::park(),
+            }
+        }
+    }
 
     struct Recorder {
         calls: Mutex<Vec<(u64, u64)>>,
@@ -610,17 +698,15 @@ mod tests {
         let recorder = Arc::new(Recorder {
             calls: Mutex::new(Vec::new()),
         });
-        let err = library
-            .install("ll:0:0".into(), path.clone(), recorder.clone(), cancelled)
-            .unwrap_err();
+        let err =
+            block_on(library.install("ll:0:0".into(), path.clone(), recorder.clone(), cancelled))
+                .unwrap_err();
         assert!(matches!(err, CoreError::Cancelled), "{err:?}");
         assert!(library.installed().unwrap().is_empty());
 
         let token = CancelToken::new();
         assert!(!token.is_cancelled());
-        library
-            .install("ll:0:0".into(), path, recorder.clone(), token)
-            .unwrap();
+        block_on(library.install("ll:0:0".into(), path, recorder.clone(), token)).unwrap();
         let calls = recorder.calls.lock().unwrap().clone();
         let (done, total) = *calls.last().unwrap();
         assert_eq!(done, total);
@@ -659,9 +745,8 @@ mod tests {
 
         let cancelled = CancelToken::new();
         cancelled.cancel();
-        let err = catalog
-            .ingest_file(path.clone(), recorder.clone(), cancelled)
-            .unwrap_err();
+        let err =
+            block_on(catalog.ingest_file(path.clone(), recorder.clone(), cancelled)).unwrap_err();
         assert!(matches!(err, CoreError::Cancelled), "{err:?}");
         assert!(catalog.languages().unwrap().is_empty());
         assert!(matches!(
@@ -669,9 +754,7 @@ mod tests {
             Err(CoreError::NotFound)
         ));
 
-        catalog
-            .ingest_file(path, recorder.clone(), CancelToken::new())
-            .unwrap();
+        block_on(catalog.ingest_file(path, recorder.clone(), CancelToken::new())).unwrap();
         let calls = recorder.calls.lock().unwrap().clone();
         let (done, total) = *calls.last().unwrap();
         assert_eq!(done, total);
@@ -733,14 +816,13 @@ mod tests {
             let progress = Arc::new(Recorder {
                 calls: Mutex::new(Vec::new()),
             });
-            library
-                .install(
-                    key.into(),
-                    fixture(file).display().to_string(),
-                    progress,
-                    CancelToken::new(),
-                )
-                .unwrap();
+            block_on(library.install(
+                key.into(),
+                fixture(file).display().to_string(),
+                progress,
+                CancelToken::new(),
+            ))
+            .unwrap();
         }
 
         let toc = reader.toc("ll:0:0".into()).unwrap();
@@ -789,5 +871,50 @@ mod tests {
             reader.toc("zz:0:0".into()),
             Err(CoreError::NotFound)
         ));
+    }
+
+    #[test]
+    fn async_calls_fail_through_ffi() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = open_core(&dir);
+        let catalog = core.catalog();
+        let library = core.library();
+        let missing = dir.path().join("missing").display().to_string();
+        let garbage = dir.path().join("garbage.jwpub");
+        std::fs::write(&garbage, b"not a jwpub").unwrap();
+        let garbage = garbage.display().to_string();
+        let recorder = Arc::new(Recorder {
+            calls: Mutex::new(Vec::new()),
+        });
+
+        let err =
+            block_on(catalog.ingest_file(missing.clone(), recorder.clone(), CancelToken::new()))
+                .unwrap_err();
+        assert!(matches!(err, CoreError::Io(_)), "{err:?}");
+        assert!(catalog.languages().unwrap().is_empty());
+
+        let err = block_on(library.install(
+            "ll:0:0".into(),
+            missing,
+            recorder.clone(),
+            CancelToken::new(),
+        ))
+        .unwrap_err();
+        assert!(matches!(err, CoreError::Io(_)), "{err:?}");
+        let err = block_on(library.install(
+            "ll:0:0".into(),
+            garbage,
+            recorder.clone(),
+            CancelToken::new(),
+        ))
+        .unwrap_err();
+        assert!(matches!(err, CoreError::Corrupt), "{err:?}");
+        assert!(library.installed().unwrap().is_empty());
+    }
+
+    #[test]
+    #[should_panic(expected = "core call panicked")]
+    fn run_on_thread_resumes_a_panic() {
+        block_on(run_on_thread(|| -> () { panic!("core call panicked") }));
     }
 }
