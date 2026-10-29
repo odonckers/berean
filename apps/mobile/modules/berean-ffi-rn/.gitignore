@@ -1,0 +1,27 @@
+# Everything uniffi-bindgen-react-native writes is regenerated from
+# package.json + ubrn.config.yaml by `npm run ubrn:android` (or ubrn:ios).
+# Only package.json, ubrn.config.yaml, README.md and this file are tracked.
+
+# Generated bindings (TypeScript and JSI C++)
+/src/generated/
+/cpp/
+
+# Generated turbo-module glue: entrypoint and Codegen spec
+/src/index.tsx
+/src/Native*.ts
+
+# Generated Android library: build.gradle, CMakeLists.txt, cpp-adapter.cpp,
+# manifest, Kotlin installer, jniLibs/*.a, and build output (build/, .cxx/)
+/android/
+
+# Generated iOS library: podspec, installer (.h/.mm), xcframework
+/ios/
+/*.podspec
+/build/
+
+# Rust build output goes to core/target (already ignored there)
+*.a
+*.so
+*.xcframework/
+
+node_modules/

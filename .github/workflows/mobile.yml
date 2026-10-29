@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - "apps/mobile/**"
+      - "core/**"
       - ".github/workflows/mobile.yml"
   pull_request:
     paths:
       - "apps/mobile/**"
+      - "core/**"
       - ".github/workflows/mobile.yml"
 
 jobs:
@@ -25,5 +27,39 @@ jobs:
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
       - run: npm ci
+
+      # berean-ffi bindings (apps/mobile/modules/berean-ffi-rn). Typecheck
+      # needs them, and none of the generated code is committed.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android, x86_64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # core/target, plus the ubrn CLI that npm builds on first use.
+          workspaces: |
+            core
+            apps/mobile/node_modules/uniffi-bindgen-react-native
+
+      - name: Install cargo-ndk
+        run: cargo install --locked cargo-ndk@4.1.2
+
+      - name: Use the runner's NDK
+        run: echo "ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
+
+      - name: Build berean-ffi for Android and generate bindings
+        run: npm run ubrn:android
+
+      - name: Generated code is not tracked
+        # Everything ubrn writes must be gitignored, and must not touch
+        # tracked files.
+        run: |
+          git diff --exit-code
+          untracked=$(git status --porcelain --untracked-files=all)
+          if [ -n "$untracked" ]; then
+            echo "$untracked"
+            exit 1
+          fi
+
       - run: npm run typecheck
       - run: npm run lint
