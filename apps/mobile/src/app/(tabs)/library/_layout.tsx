@@ -12,9 +12,7 @@ export default function LibraryLayout() {
         {/* Pushed screens keep the native header for back and the search field,
             even where the stack options hide it (iOS look on Android). */}
         <Stack.Screen name="catalog" options={{ title: 'Catalog', headerShown: true }} />
-        <Stack.Screen name="languages" options={{ title: 'Language', headerShown: true }} />
-        <Stack.Screen name="reader" options={{ title: '', headerShown: true }} />
-      </Stack>
+        <Stack.Screen name="languages" options={{ title: 'Language', headerShown: true }} />      </Stack>
     </SelectedLanguageProvider>
   );
 }

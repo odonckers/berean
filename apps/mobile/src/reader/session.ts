@@ -3,6 +3,20 @@ import type { PaneTab } from '@/reader/study-pane';
 // Session memory for the reader: plain module state, gone when the app
 // restarts. Nothing here is persisted.
 
+// The Bible and chapter last open in the Read tab, shown when Read opens
+// without params.
+export type BibleLocation = { pubKey: string; title: string; book: number; chapter: number };
+
+let lastBible: BibleLocation | undefined;
+
+export function rememberedBible(): BibleLocation | undefined {
+  return lastBible;
+}
+
+export function rememberBible(location: BibleLocation) {
+  lastBible = location;
+}
+
 // The last study pane tab used, per publication (spec §2).
 const lastTab = new Map<string, PaneTab>();
 

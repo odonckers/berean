@@ -27,12 +27,15 @@ function openCatalog() {
   router.push('/library/catalog');
 }
 
+// Publications read in the Read tab: navigate selects it, and its stack
+// either takes the new params in place (same screen on top) or pushes.
 function openReader(pub: PublicationSummary) {
-  router.push({
-    pathname: '/library/reader',
-    // The kind travels as its enum name ("Bible"), not its number.
-    params: { pubKey: pub.pubKey, kind: PubKind[pub.kind], title: displayTitle(pub) },
-  });
+  const params = { pubKey: pub.pubKey, title: displayTitle(pub) };
+  if (pub.kind === PubKind.Bible) {
+    router.navigate({ pathname: '/', params });
+  } else {
+    router.navigate({ pathname: '/publication', params });
+  }
 }
 
 function confirmRemove(pub: PublicationSummary) {

@@ -1,46 +1,16 @@
-import type { TocEntry } from 'berean-ffi-rn';
 import * as Haptics from 'expo-haptics';
-import {
-  router,
-  Stack,
-  useFocusEffect,
-  useLocalSearchParams,
-  usePreventRemove,
-} from 'expo-router';
-import {
-  type ComponentProps,
-  type ComponentRef,
-  type ReactNode,
-  useCallback,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
-import {
-  BackHandler,
-  FlatList,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-  useWindowDimensions,
-} from 'react-native';
+import { router, useFocusEffect, usePreventRemove } from 'expo-router';
+import { type ComponentRef, useCallback, useMemo, useRef, useState } from 'react';
+import { BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { LinearTransition, useReducedMotion } from 'react-native-reanimated';
 
 import { ScriptureText, UIText } from '@/components/text';
 import { TextButton } from '@/components/text-button';
-import { useContentInsets } from '@/design/tab-chrome';
 import { useBerean } from '@/design/theme';
-import {
-  hairline,
-  radii,
-  readingColumnPadding,
-  readingMeasure,
-  spacing,
-} from '@/design/tokens';
+import { radii, spacing } from '@/design/tokens';
 import { reader } from '@/ffi/core';
 import { load } from '@/library/load';
+import { CONTENT_PADDING_TOP, ReadingColumn } from '@/reader/reading-column';
 import { forgetVerse, rememberVerse, restoredVerse } from '@/reader/session';
 import {
   OPEN_SPRING,
@@ -62,75 +32,12 @@ const GUIDE_INSTALLED = false;
 const SCROLL_ZONE = 0.65;
 const SCROLL_TARGET = 0.2;
 
-// ReadingColumn's top padding: the column's y in the scroll content.
-const CONTENT_PADDING_TOP = spacing.lg;
-
-type ReaderParams = {
-  pubKey: string;
-  kind: string;
-  title?: string;
-  book?: string;
-  chapter?: string;
-  docId?: string;
-};
-
-export default function ReaderScreen() {
-  const params = useLocalSearchParams<ReaderParams>();
-  return (
-    <>
-      <Stack.Screen options={{ title: params.title ?? '' }} />
-      {params.kind === 'Bible' ? (
-        <BibleChapterView
-          pubKey={params.pubKey}
-          title={params.title ?? ''}
-          book={Number(params.book ?? 1)}
-          chapter={Number(params.chapter ?? 1)}
-        />
-      ) : params.docId === undefined ? (
-        <TocView params={params} />
-      ) : (
-        <DocumentView pubKey={params.pubKey} docId={params.docId} />
-      )}
-    </>
-  );
-}
-
-/** A scrolling surface with the reading column: capped at the measure, centered. */
-function ReadingColumn({
-  children,
-  ...scrollProps
-}: { children: ReactNode } & Pick<
-  ComponentProps<typeof ScrollView>,
-  'ref' | 'onScroll' | 'onLayout' | 'scrollEventThrottle'
->) {
-  const { look, colors } = useBerean();
-  const { fontScale } = useWindowDimensions();
-  const insets = useContentInsets();
-  const measure = readingMeasure * fontScale;
-  const padding = readingColumnPadding[look];
-  return (
-    <ScrollView
-      {...scrollProps}
-      style={{ backgroundColor: colors.surface }}
-      contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={{
-        paddingTop: CONTENT_PADDING_TOP,
-        paddingBottom: insets.bottom + spacing.lg,
-        paddingLeft: insets.left + padding,
-        paddingRight: insets.right + padding,
-      }}
-    >
-      <View style={[styles.column, { maxWidth: measure }]}>{children}</View>
-    </ScrollView>
-  );
-}
-
 // Verses after the study pane slide with the pane's open spring.
 const verseShift = LinearTransition.springify(OPEN_SPRING.duration).dampingRatio(
   OPEN_SPRING.dampingRatio,
 );
 
-function BibleChapterView({
+export function BibleChapterView({
   pubKey,
   title,
   book,
@@ -207,15 +114,18 @@ function BibleChapterView({
   };
 
   // Moving to another chapter closes the pane (spec §8) without returning focus.
+  // The params change in place on the Read route; the whole location is set
+  // since the route may have opened without params (the session's Bible).
   const goToChapter = (next: number) => {
     forgetVerse(chapterKey);
     setSelection(undefined);
-    router.setParams({ chapter: String(next) });
+    router.setParams({ pubKey, title, book: String(book), chapter: String(next) });
   };
 
   // While the pane is open, back closes it first: the Android back button
-  // here, and the header back button, the iOS swipe and predictive back
-  // through usePreventRemove (beforeRemove under the hood).
+  // here (also on the Read tab's root, where nothing is removed), and the
+  // header back button, the iOS swipe and predictive back through
+  // usePreventRemove (beforeRemove under the hood).
   useFocusEffect(
     useCallback(() => {
       if (selected === undefined) return;
@@ -347,104 +257,9 @@ function BibleChapterView({
   );
 }
 
-function TocView({ params }: { params: ReaderParams }) {
-  const { colors, look } = useBerean();
-  const insets = useContentInsets();
-  const loaded = useMemo(() => load(() => reader().toc(params.pubKey)), [params.pubKey]);
-  const rowStyle = [
-    styles.row,
-    { minHeight: look === 'material' ? 48 : 44, borderColor: colors.separator },
-  ];
-
-  if (!loaded.ok) {
-    return (
-      <ReadingColumn>
-        <UIText secondary>{loaded.message}</UIText>
-      </ReadingColumn>
-    );
-  }
-
-  return (
-    <FlatList
-      style={[styles.list, { backgroundColor: colors.surface }]}
-      contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={{
-        paddingBottom: insets.bottom,
-        paddingLeft: insets.left,
-        paddingRight: insets.right,
-      }}
-      data={loaded.value}
-      keyExtractor={(entry, index) => `${index}:${entry.docId ?? ''}`}
-      renderItem={({ item }: { item: TocEntry }) => {
-        const indent = { paddingStart: spacing.lg + item.depth * spacing.lg };
-        const docId = item.docId;
-        if (docId === undefined) {
-          return (
-            <View style={[rowStyle, indent]}>
-              <UIText variant="label" secondary accessibilityRole="header">
-                {item.title}
-              </UIText>
-            </View>
-          );
-        }
-        return (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={item.title}
-            onPress={() =>
-              router.push({
-                pathname: '/library/reader',
-                params: {
-                  pubKey: params.pubKey,
-                  kind: params.kind,
-                  title: params.title ?? '',
-                  docId: String(docId),
-                },
-              })
-            }
-            style={({ pressed }) => [rowStyle, indent, pressed && { opacity: 0.6 }]}
-          >
-            <UIText numberOfLines={2}>{item.title}</UIText>
-          </Pressable>
-        );
-      }}
-    />
-  );
-}
-
-function DocumentView({ pubKey, docId }: { pubKey: string; docId: string }) {
-  // BigInt throws on a malformed id; load() turns that into a message too.
-  const loaded = useMemo(
-    () => load(() => reader().document(pubKey, BigInt(docId))),
-    [pubKey, docId],
-  );
-  return (
-    <ReadingColumn>
-      {loaded.ok ? (
-        <>
-          <ScriptureText variant="chapterHeading">{loaded.value.title}</ScriptureText>
-          <UIText secondary>
-            Document text rendering needs structured blocks from the core (pending).
-          </UIText>
-        </>
-      ) : (
-        <UIText secondary>{loaded.message}</UIText>
-      )}
-    </ReadingColumn>
-  );
-}
-
 const styles = StyleSheet.create({
-  column: { width: '100%', alignSelf: 'center', gap: spacing.md },
   // The selected number's accent pill: radii.chip, 1 x 4 padding.
   verseNumber: { borderRadius: radii.chip, paddingVertical: 1, paddingHorizontal: spacing.xs },
   navRow: { flexDirection: 'row', alignItems: 'center' },
   navSpacer: { flex: 1 },
-  list: { flex: 1 },
-  row: {
-    justifyContent: 'center',
-    paddingEnd: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: hairline,
-  },
 });
