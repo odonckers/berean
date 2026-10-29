@@ -1,5 +1,5 @@
-// Dev only. There is deliberately no production catalog download yet: the
-// core has no catalog request API. Push the file for testing with
+// Dev only. The real download is CatalogUpdatePanel (catalog-update.ts);
+// this stays for offline testing with a file pushed by
 // `adb push catalog.db.gz <cache dir>/dev-catalog/catalog.db.gz`.
 import { CancelToken, type ProgressSink } from 'berean-ffi-rn';
 import { useTheme } from 'expo-router';

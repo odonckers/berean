@@ -30,7 +30,7 @@ export type InstallsSnapshot = {
 type Controls = { abort: AbortController; cancel: CancelToken; cancelled: boolean };
 
 /** Least time between progress-driven snapshots. */
-const THROTTLE_MS = 100;
+export const THROTTLE_MS = 100;
 const NETWORK_ERROR = "Couldn't reach the server. Check your connection and try again.";
 
 const jobs = new Map<string, InstallJob>();
@@ -144,11 +144,11 @@ function isCoreError(e: unknown): e is CoreError {
   return typeof e === 'object' && e !== null && CoreError.instanceOf(e);
 }
 
-function isCancellation(e: unknown): boolean {
+export function isCancellation(e: unknown): boolean {
   return isAbortError(e) || (isCoreError(e) && e.tag === CoreError_Tags.Cancelled);
 }
 
-function failure(e: unknown): { message: string; retryable: boolean } {
+export function failure(e: unknown): { message: string; retryable: boolean } {
   if (isCoreError(e)) {
     // A bad request or a broken DB won't fix itself on retry.
     const permanent = e.tag === CoreError_Tags.Invalid || e.tag === CoreError_Tags.Migration;
@@ -161,13 +161,29 @@ function failure(e: unknown): { message: string; retryable: boolean } {
   return { message: String(e), retryable: true };
 }
 
-function downloadFile(pubKey: string): File {
+/** `name` in the cache's downloads dir, which this creates if needed. */
+export function downloadTarget(name: string): File {
   const dir = new Directory(Paths.cache, 'downloads');
   dir.create({ idempotent: true, intermediates: true });
-  return new File(dir, `${pubKey.replace(/[^A-Za-z0-9._-]/g, '_')}.jwpub`);
+  return new File(dir, name);
 }
 
-function deleteQuietly(file: File) {
+/** fetch, with a network failure or a non-2xx reply as a readable error. */
+export async function fetchOk(url: string, signal: AbortSignal): Promise<Response> {
+  let res: Response;
+  try {
+    res = await fetch(url, { signal });
+  } catch (e) {
+    // fetch rejects with a TypeError when the network fails.
+    throw e instanceof TypeError ? new Error(NETWORK_ERROR) : e;
+  }
+  if (!res.ok) {
+    throw new Error(`Server returned HTTP ${res.status}`);
+  }
+  return res;
+}
+
+export function deleteQuietly(file: File) {
   try {
     if (file.exists) {
       file.delete();
@@ -183,20 +199,11 @@ async function run(pub: PublicationSummary, ctl: Controls): Promise<boolean> {
   update(pubKey, ctl, { state: 'downloading', pub, bytesWritten: 0, totalBytes: 0 });
 
   const request = library().downloadRequest(pubKey);
-  let res: Response;
-  try {
-    res = await fetch(request.url, { signal: ctl.abort.signal });
-  } catch (e) {
-    // fetch rejects with a TypeError when the network fails.
-    throw e instanceof TypeError ? new Error(NETWORK_ERROR) : e;
-  }
-  if (!res.ok) {
-    throw new Error(`Server returned HTTP ${res.status}`);
-  }
+  const res = await fetchOk(request.url, ctl.abort.signal);
   const plan = library().planDownload(pubKey, await res.arrayBuffer());
   const planned = Number(plan.size);
 
-  const target = downloadFile(pubKey);
+  const target = downloadTarget(`${pubKey.replace(/[^A-Za-z0-9._-]/g, '_')}.jwpub`);
   try {
     const file = await File.downloadFileAsync(plan.url, target, {
       idempotent: true,

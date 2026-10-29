@@ -1,11 +1,13 @@
 import type { Language, PubKind } from 'berean-ffi-rn';
 import { router, Stack, useTheme } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { TextButton } from '@/components/text-button';
 import { catalog, library } from '@/ffi/core';
 import { CatalogRow } from '@/library/catalog-row';
+import { checkForUpdate, getCatalogUpdate, useCatalogUpdate } from '@/library/catalog-update';
+import { CatalogUpdatePanel } from '@/library/catalog-update-panel';
 import { DevCatalogIngest } from '@/library/dev-catalog-ingest';
 import { onLibraryChanged, useInstalls } from '@/library/installs';
 import { KIND_FILTERS } from '@/library/labels';
@@ -33,13 +35,31 @@ export default function CatalogScreen() {
   const { colors } = useTheme();
   const { jobs } = useInstalls();
   const { mepsLanguage } = useSelectedLanguage();
+  const { catalogVersion } = useCatalogUpdate();
   const [meta, setMeta] = useState(loadMeta);
+  const [metaVersion, setMetaVersion] = useState(catalogVersion);
   const [installed, setInstalled] = useState(loadInstalledKeys);
   const [kind, setKind] = useState<PubKind | undefined>(undefined);
   const [query, setQuery] = useState('');
   const text = useDebounced(query.trim(), 250);
 
   useEffect(() => onLibraryChanged(() => setInstalled(loadInstalledKeys())), []);
+
+  // A new catalog was installed: reload, and the publications follow meta.
+  if (metaVersion !== catalogVersion) {
+    setMetaVersion(catalogVersion);
+    setMeta(loadMeta());
+  }
+
+  // Offer the download unasked, once, when there is no catalog at all.
+  const empty = meta.ok && meta.value.empty;
+  const autoChecked = useRef(false);
+  useEffect(() => {
+    if (empty && !autoChecked.current && getCatalogUpdate().status.state === 'idle') {
+      autoChecked.current = true;
+      checkForUpdate();
+    }
+  }, [empty]);
 
   const languages = meta.ok ? meta.value.languages : [];
   const language = languages.find((l) => l.mepsId === mepsLanguage);
@@ -83,12 +103,13 @@ export default function CatalogScreen() {
     );
   }
 
-  if (meta.ok && meta.value.empty) {
+  if (empty) {
     return (
       <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.message}>
         <Text style={[styles.body, { color: colors.text }]}>
           The publication catalog hasn&apos;t been downloaded yet.
         </Text>
+        <CatalogUpdatePanel />
         {__DEV__ && <DevCatalogIngest onIngested={() => setMeta(loadMeta())} />}
       </ScrollView>
     );
@@ -106,6 +127,7 @@ export default function CatalogScreen() {
         extraData={jobs}
         ListHeaderComponent={
           <View style={styles.filters}>
+            <CatalogUpdatePanel compact />
             <TextButton
               title={language?.name ?? 'All languages'}
               accessibilityLabel={`Language: ${language?.name ?? 'All languages'}. Change language`}
