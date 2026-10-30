@@ -8,6 +8,7 @@ import {
   cappedDetents,
   dragFraction,
   emptyDetents,
+  emptyFraction,
   openFit,
   openFraction,
   paneDetents,
@@ -192,6 +193,22 @@ describe('emptyDetents', () => {
 
   test('a short height a detent matches stays once', () => {
     assert.deepEqual(emptyDetents(0.4, detents), [0.4, 0.85]);
+  });
+});
+
+describe('emptyFraction', () => {
+  test('header, body and My notes inside the border, as a window fraction', () => {
+    const parts = { header: 60, body: 52, footer: 48, border: 1, windowHeight: 800 };
+    assert.equal(emptyFraction(parts), 162 / 800);
+  });
+
+  test('waits for every part, in any order', () => {
+    const base = { border: 1, windowHeight: 800 };
+    assert.equal(emptyFraction({ ...base, header: 60, footer: 48 }), undefined);
+    assert.equal(emptyFraction({ ...base, body: 52, footer: 48 }), undefined);
+    assert.equal(emptyFraction({ ...base, header: 60, body: 52 }), undefined);
+    const noWindow = { ...base, header: 60, body: 52, footer: 48, windowHeight: 0 };
+    assert.equal(emptyFraction(noWindow), undefined);
   });
 });
 

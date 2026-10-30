@@ -77,6 +77,29 @@ export function emptyDetents(short: number, detents: readonly number[]): number[
   return [short, ...detents.filter((detent) => detent > short)];
 }
 
+/**
+ * An empty pane's short height (spec §4): its header, its body (the one
+ * line with the body's padding) and My notes, inside its border, as a
+ * window fraction. Undefined until all three parts have laid out.
+ */
+export function emptyFraction({
+  header,
+  body,
+  footer,
+  border,
+  windowHeight,
+}: {
+  header?: number;
+  body?: number;
+  footer?: number;
+  border: number;
+  windowHeight: number;
+}): number | undefined {
+  if (header === undefined || body === undefined || footer === undefined) return undefined;
+  if (windowHeight <= 0) return undefined;
+  return (header + body + footer + 2 * border) / windowHeight;
+}
+
 // Spec §5: opening a verse in the bottom 35% of the viewport scrolls it to
 // about 20% from the top so the pane fits.
 export const SCROLL_ZONE = 0.65;

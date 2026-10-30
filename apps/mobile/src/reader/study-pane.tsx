@@ -42,6 +42,7 @@ import {
   cappedDetents,
   dragFraction,
   emptyDetents,
+  emptyFraction,
   openFraction,
   paneDetents,
   releaseTarget,
@@ -206,7 +207,13 @@ export function StudyPane({
   const [opened] = useState(() => initialFraction ?? openFraction(fontScale));
   // Mirrors the settled height for the accessibility value, the session and
   // a reopen while closing; it never feeds back into a running drag.
-  const [fraction, setFraction] = useState(opened);
+  const [fraction, setFractionState] = useState(opened);
+  // The same, current between renders, for the layout callbacks.
+  const fractionRef = useRef(opened);
+  const setFraction = (target: number) => {
+    fractionRef.current = target;
+    setFractionState(target);
+  };
   const settled = (target: number) => {
     setFraction(target);
     onResize?.(target);
@@ -245,16 +252,30 @@ export function StudyPane({
     laidOut: false,
   });
   const openPlayed = useRef(false);
+  const shortRef = useRef<number>(undefined);
   const tryOpen = () => {
-    if (openPlayed.current) return;
-    const { laidOut, header, body, footer } = measured.current;
+    const { laidOut } = measured.current;
     if (!laidOut) return;
     let shortHeight: number | undefined;
     if (empty) {
-      if (header === undefined || body === undefined || footer === undefined) return;
-      shortHeight = (header + body + footer + 2 * border) / windowHeight;
-      setShort(shortHeight);
+      shortHeight = emptyFraction({ ...measured.current, border, windowHeight });
+      if (shortHeight === undefined) return;
+      // The parts first lay out mid-mount, in a pane still 0 tall, and
+      // report again as they settle (the body's line among them), so the
+      // short height follows every report, not just the first. A pane
+      // resting at the old short height moves to the new one.
+      const was = shortRef.current;
+      if (shortHeight !== was) {
+        shortRef.current = shortHeight;
+        setShort(shortHeight);
+        if (openPlayed.current && !closing && fractionRef.current === was) {
+          const next = Math.min(shortHeight, maxFraction?.get() ?? MAX_HEIGHT);
+          setFraction(next);
+          height.set(settle(next));
+        }
+      }
     }
+    if (openPlayed.current) return;
     openPlayed.current = true;
     const wanted = initialFraction ?? shortHeight ?? opened;
     if (restored) {
@@ -562,7 +583,13 @@ export function StudyPane({
         contentContainerStyle={styles.bodyContent}
         onContentSizeChange={(_, contentHeight) => measure('body', contentHeight)}
       >
-        <Animated.View key={tab ?? 'empty'} entering={tabFade} style={styles.items}>
+        {/* The fade is for a tab switch; the empty line has none, and
+            fades in with the pane. */}
+        <Animated.View
+          key={tab ?? 'empty'}
+          entering={empty ? undefined : tabFade}
+          style={styles.items}
+        >
           {tab === undefined && <UIText secondary>{EMPTY_COPY}</UIText>}
           {tab === 'research' && <UIText secondary>{RESEARCH_COPY}</UIText>}
           {/* The core's strings as given, one step smaller than the
