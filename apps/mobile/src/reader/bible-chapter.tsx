@@ -1,3 +1,4 @@
+import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { router, Stack, useFocusEffect, usePreventRemove } from 'expo-router';
 import {
@@ -15,11 +16,13 @@ import {
   AccessibilityInfo,
   BackHandler,
   type LayoutChangeEvent,
+  Platform,
   Pressable,
   type ScrollView,
   StyleSheet,
   Text,
   type TextLayoutEvent,
+  ToastAndroid,
   View,
   useWindowDimensions,
 } from 'react-native';
@@ -45,6 +48,7 @@ import {
   verseReference,
 } from '@/reader/bible-nav';
 import { BiblePicker } from '@/reader/bible-picker';
+import { copiedVerse, verseText } from '@/reader/copy-verse';
 import { HighlightSheet } from '@/reader/highlight-sheet';
 import { highlightActionLabel, segmentHighlight, verseSubject } from '@/reader/highlights';
 import { type LandedVerse, landedLabel, landedVerse } from '@/reader/landed-verse';
@@ -84,9 +88,10 @@ import { markersByVerse, paneStudy, studyActionLabel } from '@/reader/verse-stud
 const GUIDE_INSTALLED = false;
 
 // Per-verse accessibility actions on a paragraph block, named by verse:
-// study, and highlight.
+// study, highlight, and copy.
 const VERSE_ACTION = 'verse-';
 const HIGHLIGHT_ACTION = 'highlight-';
+const COPY_ACTION = 'copy-';
 
 type Selection = {
   chapterKey: string;
@@ -215,6 +220,23 @@ export function BibleChapterView({
     }
     setActions({ chapterKey, verse, error });
     AccessibilityInfo.announceForAccessibility(error);
+  };
+  // Copy verse: the reference as the sheet titles it, then the verse's text
+  // from the chapter's runs. The material look confirms with a toast where
+  // Android has one; otherwise the confirmation is announced.
+  const copyVerse = (verse: number) => {
+    closeActions();
+    const copied = copiedVerse(verseReference(heading, verse), verseText(chapterContent, verse));
+    Clipboard.setStringAsync(copied).then(
+      () => {
+        if (material && Platform.OS === 'android') {
+          ToastAndroid.show('Verse copied', ToastAndroid.SHORT);
+        } else {
+          AccessibilityInfo.announceForAccessibility('Verse copied');
+        }
+      },
+      () => AccessibilityInfo.announceForAccessibility("Couldn't copy the verse"),
+    );
   };
 
   // Where accessibility focus returns on close: the first block of the
@@ -583,6 +605,7 @@ export function BibleChapterView({
             name: `${HIGHLIGHT_ACTION}${verse}`,
             label: highlightActionLabel(verse, spokenHighlight(verse)),
           },
+          { name: `${COPY_ACTION}${verse}`, label: `Copy verse ${verse}` },
         ])}
         onAccessibilityAction={(e) => {
           const { actionName } = e.nativeEvent;
@@ -596,6 +619,9 @@ export function BibleChapterView({
           } else if (actionName.startsWith(HIGHLIGHT_ACTION)) {
             const verse = numbered(HIGHLIGHT_ACTION);
             if (verse !== undefined) openActions(verse);
+          } else if (actionName.startsWith(COPY_ACTION)) {
+            const verse = numbered(COPY_ACTION);
+            if (verse !== undefined) copyVerse(verse);
           }
         }}
       >
@@ -780,6 +806,7 @@ export function BibleChapterView({
             settle(actionsHere.verse, highlights.highlight(actionsHere.verse, color))
           }
           onRemove={() => settle(actionsHere.verse, highlights.remove(actionsHere.verse))}
+          onCopy={() => copyVerse(actionsHere.verse)}
           onClose={closeActions}
         />
       )}

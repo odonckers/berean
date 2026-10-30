@@ -1,3 +1,4 @@
+import { SymbolView } from 'expo-symbols';
 import { type ComponentRef, useEffect, useRef } from 'react';
 import {
   Modal,
@@ -13,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { UIText } from '@/components/text';
 import { TextButton } from '@/components/text-button';
 import { useBerean } from '@/design/theme';
-import { type HighlightName, radii, spacing } from '@/design/tokens';
+import { type HighlightName, hairline, radii, spacing } from '@/design/tokens';
 import { HIGHLIGHT_ORDER, highlightLabel } from '@/reader/highlights';
 import { moveAccessibilityFocus } from '@/reader/study-pane';
 import { followFocusRingIn } from '../../modules/berean-shortcuts';
@@ -28,6 +29,7 @@ type HighlightSheetProps = {
   error: string | undefined;
   onChoose: (color: HighlightName) => void;
   onRemove: () => void;
+  onCopy: () => void;
   onClose: () => void;
 };
 
@@ -35,12 +37,13 @@ type HighlightSheetProps = {
 const followRing = (e: NativeSyntheticEvent<TargetedEvent>) => followFocusRingIn(e.nativeEvent.target);
 
 /**
- * A verse's actions, opened by a long press on its text or its Highlight
- * accessibility action. Highlight is the first and, for now, only action:
- * its chips row, each chip "Aa" on its fill and the color's name, and
- * Remove highlight while the verse has one. iOS look: a compact sheet on
- * the raised surface, with Cancel. Material: an M3 bottom sheet on
- * surface-container with a drag handle; the scrim or Back closes it.
+ * A verse's context menu, opened by a long press on its text or its
+ * Highlight accessibility action. Highlight comes first: its chips row,
+ * each chip "Aa" on its fill and the color's name, and Remove highlight
+ * while the verse has one. Then Copy verse. iOS look: a compact sheet on
+ * the raised surface, with Cancel, Copy verse a plain row. Material: an M3
+ * bottom sheet on surface-container with a drag handle, Copy verse a
+ * one-line list item; the scrim or Back closes it.
  */
 export function HighlightSheet({
   visible,
@@ -49,6 +52,7 @@ export function HighlightSheet({
   error,
   onChoose,
   onRemove,
+  onCopy,
   onClose,
 }: HighlightSheetProps) {
   const { look, colors, m3, highlights, type } = useBerean();
@@ -167,6 +171,29 @@ export function HighlightSheet({
               />
             </View>
           )}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Copy verse"
+            onPress={onCopy}
+            onFocus={followRing}
+            style={({ pressed }) => [
+              material ? styles.materialItem : styles.iosRow,
+              !material && { borderTopColor: colors.separator },
+              { opacity: pressed ? 0.6 : 1 },
+            ]}
+          >
+            {material && (
+              <SymbolView
+                name={{ ios: 'doc.on.doc', android: 'content_copy' }}
+                size={24}
+                tintColor={m3.onSurfaceVariant}
+                accessible={false}
+                importantForAccessibility="no-hide-descendants"
+                accessibilityElementsHidden
+              />
+            )}
+            <UIText style={{ color: material ? m3.onSurface : colors.accent }}>Copy verse</UIText>
+          </Pressable>
         </View>
       </View>
     </Modal>
@@ -213,4 +240,20 @@ const styles = StyleSheet.create({
   selectedLabel: { fontWeight: '600' },
   error: { marginTop: spacing.md },
   actions: { marginTop: spacing.sm, flexDirection: 'row' },
+  // A plain action row under a hairline, as in an iOS action list: 44pt.
+  iosRow: {
+    minHeight: 44,
+    justifyContent: 'center',
+    marginTop: spacing.md,
+    borderTopWidth: hairline,
+  },
+  // M3 one-line list item with a leading icon: 56dp, the icon 16dp from
+  // the label. The sheet's padding is the item's.
+  materialItem: {
+    minHeight: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.lg,
+    marginTop: spacing.sm,
+  },
 });
