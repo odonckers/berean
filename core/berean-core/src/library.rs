@@ -447,9 +447,19 @@ impl Library {
         pub_key: &str,
         f: impl FnOnce(&Publication) -> Result<T, CoreError>,
     ) -> Result<T, CoreError> {
-        let (_, publication) = self.open_cached(pub_key)?;
+        self.with_publication_in(pub_key, |publication, _| f(publication))
+    }
+
+    /// [`with_publication`](Self::with_publication), also passing `f` the
+    /// directory the publication is installed in (where its media files are).
+    pub(crate) fn with_publication_in<T>(
+        &self,
+        pub_key: &str,
+        f: impl FnOnce(&Publication, &Path) -> Result<T, CoreError>,
+    ) -> Result<T, CoreError> {
+        let (dir, publication) = self.open_cached(pub_key)?;
         let publication = publication.lock().unwrap_or_else(PoisonError::into_inner);
-        f(&publication)
+        f(&publication, &self.store().join(dir))
     }
 
     /// The cached publication `pub_key` and its store directory, opening and

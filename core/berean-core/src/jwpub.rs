@@ -1058,9 +1058,10 @@ fn db_err(e: rusqlite::Error) -> CoreError {
     }
 }
 
-/// The manifest's database name must be a plain file name, so it can only
-/// ever name a file directly inside an unpacked publication's directory.
-fn check_file_name(name: &str) -> Result<(), CoreError> {
+/// The manifest's database name (or a media file's) must be a plain file
+/// name, so it can only ever name a file directly inside an unpacked
+/// publication's directory.
+pub(crate) fn check_file_name(name: &str) -> Result<(), CoreError> {
     let mut parts = Path::new(name).components();
     match (parts.next(), parts.next()) {
         (Some(std::path::Component::Normal(_)), None) => Ok(()),

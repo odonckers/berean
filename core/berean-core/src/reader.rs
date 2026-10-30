@@ -111,7 +111,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::catalog::{Catalog, CatalogFilter};
-use crate::doc_blocks::DocBlock;
+use crate::doc_blocks::{self, DocBlock};
 use crate::jwpub::{self, DocumentParagraph, DocumentSummary, Publication, PublicationViewItem};
 use crate::languages;
 use crate::library::{format_pub_key, Library, PubKind, PublicationSummary};
@@ -456,22 +456,24 @@ impl Reader {
     /// `pub_key`. Malformed key => `Invalid`; not installed, or no such
     /// document (or one without content) => `NotFound`.
     pub fn document(&self, pub_key: &str, doc_id: i64) -> Result<Document, CoreError> {
-        self.library().with_publication(pub_key, |publication| {
-            let summary = find_document(publication, doc_id)?.ok_or(CoreError::NotFound)?;
-            let html = publication.document_html(summary.document_id)?;
-            let paragraphs = publication
-                .document_paragraphs(summary.document_id)?
-                .into_iter()
-                .map(|p| paragraph_anchor(&html, p))
-                .collect::<Result<_, _>>()?;
-            Ok(Document {
-                doc_id,
-                title: summary.title,
-                html,
-                paragraphs,
-                blocks: Vec::new(),
+        self.library()
+            .with_publication_in(pub_key, |publication, dir| {
+                let summary = find_document(publication, doc_id)?.ok_or(CoreError::NotFound)?;
+                let html = publication.document_html(summary.document_id)?;
+                let paragraphs: Vec<ParagraphAnchor> = publication
+                    .document_paragraphs(summary.document_id)?
+                    .into_iter()
+                    .map(|p| paragraph_anchor(&html, p))
+                    .collect::<Result<_, _>>()?;
+                let blocks = doc_blocks::document_blocks(&html, &paragraphs, dir)?;
+                Ok(Document {
+                    doc_id,
+                    title: summary.title,
+                    html,
+                    paragraphs,
+                    blocks,
+                })
             })
-        })
     }
 
     /// Chapter `chapter` of book `book` (1-66) of the installed Bible
@@ -953,7 +955,7 @@ type ParagraphRange = (u32, u32);
 /// Split the part of a Bible link after `jwpub://b/`,
 /// `<symbol>/<book>:<chapter>:<verse>[-<book>:<chapter>:<verse>]`, into its
 /// symbol and its first and last verse.
-fn bible_link(rest: &str) -> Option<(&str, VerseRef, VerseRef)> {
+pub(crate) fn bible_link(rest: &str) -> Option<(&str, VerseRef, VerseRef)> {
     let verse_ref = |s: &str| -> Option<VerseRef> {
         let mut parts = s.split(':');
         let r = (
@@ -971,7 +973,7 @@ fn bible_link(rest: &str) -> Option<(&str, VerseRef, VerseRef)> {
 /// Split the part of a document link after `jwpub://p/`,
 /// `<code>:<doc_id>[/[<paragraph>[-<paragraph>]]]`, into its language code,
 /// MEPS document id and first and last paragraph (in either order).
-fn document_link(rest: &str) -> Option<(&str, i64, Option<ParagraphRange>)> {
+pub(crate) fn document_link(rest: &str) -> Option<(&str, i64, Option<ParagraphRange>)> {
     let rest = rest.strip_suffix('/').unwrap_or(rest);
     let (head, paragraphs) = match rest.split_once('/') {
         Some((head, paragraphs)) => (head, Some(paragraphs)),
@@ -1109,7 +1111,7 @@ fn xt_link(div: &str) -> Option<(&str, &str)> {
 }
 
 /// The value of `name="..."` in an opening tag.
-fn attribute<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
+pub(crate) fn attribute<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
     let key = format!(" {name}=\"");
     let rest = &tag[tag.find(&key)? + key.len()..];
     Some(&rest[..rest.find('"')?])
@@ -1879,7 +1881,7 @@ fn verse_parts(html: &str, book: u32, chapter: u32) -> Result<Vec<(u32, usize, u
 
 /// The end of the `<{name}>` element starting at `begin`, just past its
 /// matching `</{name}>`.
-fn element_end(html: &str, begin: usize, name: &str) -> Option<usize> {
+pub(crate) fn element_end(html: &str, begin: usize, name: &str) -> Option<usize> {
     let open = format!("<{name}");
     let close = format!("</{name}>");
     let mut depth = 0usize;
@@ -1928,7 +1930,7 @@ pub(crate) fn plain_text(html: &str) -> String {
 
 /// Decode `&amp;`, `&lt;`, `&gt;`, `&quot;`, `&apos;`, `&nbsp;` and numeric
 /// character references; anything else is left as written.
-fn decode_references(text: &str) -> String {
+pub(crate) fn decode_references(text: &str) -> String {
     let mut out = String::new();
     let mut rest = text;
     while let Some(i) = rest.find('&') {
@@ -2038,7 +2040,7 @@ fn parse_citation(reference: &str) -> Result<Citation, CoreError> {
 }
 
 /// A non-empty run of ASCII digits as a number.
-fn number<T: std::str::FromStr>(s: &str) -> Option<T> {
+pub(crate) fn number<T: std::str::FromStr>(s: &str) -> Option<T> {
     if s.is_empty() || !s.bytes().all(|b| b.is_ascii_digit()) {
         return None;
     }
