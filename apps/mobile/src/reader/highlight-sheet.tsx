@@ -1,4 +1,3 @@
-import { SymbolView } from 'expo-symbols';
 import { type ComponentRef, useEffect, useRef } from 'react';
 import {
   Modal,
@@ -11,6 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ScaledSymbol } from '@/components/scaled-symbol';
 import { UIText } from '@/components/text';
 import { TextButton } from '@/components/text-button';
 import { systemBarStyle, useBerean } from '@/design/theme';
@@ -185,7 +185,7 @@ export function HighlightSheet({
             ]}
           >
             {material && (
-              <SymbolView
+              <ScaledSymbol
                 name={{ ios: 'doc.on.doc', android: 'content_copy' }}
                 size={24}
                 tintColor={m3.onSurfaceVariant}
