@@ -3,7 +3,17 @@ import { describe, test } from 'node:test';
 
 import type { ParagraphStyle } from 'berean-ffi-rn';
 
-import { type CoreBlock, chapterBlocks, verseLabel } from './chapter-blocks.ts';
+import {
+  type Block,
+  type CoreBlock,
+  blockSegments,
+  chapterBlocks,
+  numberBlock,
+  numberSpan,
+  numberedVerses,
+  paneSplit,
+  verseLabel,
+} from './chapter-blocks.ts';
 
 // The generated ParagraphStyle is a numeric enum (Prose, PoetryLine, ...
 // from 0), which Node can't load; the mapping passes it through untouched.
@@ -86,5 +96,110 @@ describe('verse labels', () => {
 
   test('an empty label falls back to the verse number', () => {
     assert.equal(verseLabel({ verse: 12, label: '', text: '' }), '12');
+  });
+
+  test('a note run has no number, even with a label', () => {
+    assert.equal(verseLabel({ verse: 0, label: '*', text: 'A note' }), undefined);
+    assert.equal(verseLabel({ verse: 0, label: '', text: 'A note' }), undefined);
+  });
+});
+
+describe('block segments', () => {
+  test('a space between consecutive runs, none before the first; a number holds its own', () => {
+    assert.deepEqual(
+      blockSegments([
+        { verse: 1, label: '1', text: 'In the beginning' },
+        { verse: 2, label: '2', text: 'Now the earth' },
+        { verse: 2, text: 'was formless' },
+      ]),
+      [
+        { kind: 'number', verse: 1, label: '1', separated: false },
+        { kind: 'text', verse: 1, text: 'In the beginning' },
+        { kind: 'number', verse: 2, label: '2', separated: true },
+        { kind: 'text', verse: 2, text: 'Now the earth' },
+        { kind: 'space' },
+        { kind: 'text', verse: 2, text: 'was formless' },
+      ],
+    );
+  });
+
+  test('a note run is a note, spaced like any run, with no number', () => {
+    assert.deepEqual(
+      blockSegments([
+        { verse: 0, label: '0', text: 'To the director.' },
+        { verse: 1, label: '1', text: 'Hear' },
+        { verse: 0, text: 'Selah' },
+      ]),
+      [
+        { kind: 'note', text: 'To the director.' },
+        { kind: 'number', verse: 1, label: '1', separated: true },
+        { kind: 'text', verse: 1, text: 'Hear' },
+        { kind: 'space' },
+        { kind: 'note', text: 'Selah' },
+      ],
+    );
+  });
+
+  test('none for no runs', () => {
+    assert.deepEqual(blockSegments([]), []);
+  });
+
+  test("a number's span: narrow no-break pads, a no-break space after", () => {
+    assert.deepEqual(numberSpan('12', true), {
+      separator: ' ',
+      pad: String.fromCharCode(0x202f),
+      label: '12',
+      trailing: String.fromCharCode(0xa0),
+    });
+    assert.equal(numberSpan('1', false).separator, '');
+  });
+});
+
+describe('verses and the pane split', () => {
+  const blocks: Block[] = [
+    { kind: 'heading', text: 'Heading' },
+    {
+      kind: 'paragraph',
+      paragraph: 1,
+      style: PROSE,
+      runs: [
+        { verse: 0, label: '0', text: 'A note' },
+        { verse: 1, label: '1', text: 'one' },
+        { verse: 2, label: '2', text: 'two' },
+      ],
+    },
+    {
+      kind: 'paragraph',
+      paragraph: 2,
+      style: POETRY_LINE,
+      runs: [
+        { verse: 2, text: 'two, again' },
+        { verse: 0, text: 'Selah' },
+        { verse: 3, label: '3', text: 'three' },
+      ],
+    },
+  ];
+
+  test('numbered verses leave out notes and later parts', () => {
+    assert.deepEqual(numberedVerses(blocks[1].kind === 'paragraph' ? blocks[1].runs : []), [1, 2]);
+    assert.deepEqual(numberedVerses(blocks[2].kind === 'paragraph' ? blocks[2].runs : []), [3]);
+  });
+
+  test("the pane goes after the verse's last part", () => {
+    assert.deepEqual(paneSplit(blocks, 1), { block: 1, run: 1 });
+    assert.deepEqual(paneSplit(blocks, 2), { block: 2, run: 0 });
+    assert.deepEqual(paneSplit(blocks, 3), { block: 2, run: 2 });
+  });
+
+  test('a note is never a verse to split at', () => {
+    assert.equal(paneSplit(blocks, 0), undefined);
+    assert.equal(paneSplit(blocks, undefined), undefined);
+    assert.equal(paneSplit(blocks, 9), undefined);
+  });
+
+  test("focus returns to the block with the verse's number", () => {
+    assert.equal(numberBlock(blocks, 2), 1);
+    assert.equal(numberBlock(blocks, 3), 2);
+    assert.equal(numberBlock(blocks, 0), -1);
   });
 });

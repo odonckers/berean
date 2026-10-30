@@ -36,10 +36,19 @@ import {
   nextChapter,
   previousChapter,
   shouldResetScroll,
+  spanReference,
   verseReference,
 } from '@/reader/bible-nav';
 import { BiblePicker } from '@/reader/bible-picker';
-import { type Run, chapterBlocks, verseLabel } from '@/reader/chapter-blocks';
+import {
+  type Run,
+  blockSegments,
+  chapterBlocks,
+  numberBlock,
+  numberSpan,
+  numberedVerses,
+  paneSplit,
+} from '@/reader/chapter-blocks';
 import { MAX_HEIGHT, MIN_HEIGHT, paneMaxFraction } from '@/reader/pane-snap';
 import { ReadingColumn, useColumnPaddingTop } from '@/reader/reading-column';
 import {
@@ -48,11 +57,8 @@ import {
   rememberVerse,
   restoredPane,
 } from '@/reader/session';
-import { StudyPane, moveAccessibilityFocus, type PaneTab } from '@/reader/study-pane';
-
-// The core does not yet report study content per verse (pending Echo's
-// verseStudy / studyReferences / markers), so every verse is Empty.
-const NO_STUDY_CONTENT: readonly PaneTab[] = [];
+import { StudyPane, moveAccessibilityFocus } from '@/reader/study-pane';
+import { markersByVerse, paneStudy, studyActionLabel } from '@/reader/verse-study';
 
 // Study guide installation isn't modelled yet, so the guide is treated as
 // not installed (the pane offers a Research tab when there is content).
@@ -62,10 +68,6 @@ const GUIDE_INSTALLED = false;
 // about 20% from the top so the pane fits.
 const SCROLL_ZONE = 0.65;
 const SCROLL_TARGET = 0.2;
-
-// U+00A0 keeps a verse number on the same line as its verse's first word,
-// and pads the number inside its selection background.
-const NO_BREAK_SPACE = String.fromCharCode(0xa0);
 
 // Per-verse accessibility actions on a paragraph block, named by verse.
 const VERSE_ACTION = 'verse-';
@@ -139,6 +141,20 @@ export function BibleChapterView({
     [loaded],
   );
 
+  // The study content of the verse under the pane, read (synchronously)
+  // only while a pane is mounted. Any error, NotFound included (no Study
+  // Edition for the Bible's language, no catalog), is the Empty state.
+  const study = useMemo(() => {
+    if (selected === undefined) return undefined;
+    const read = load(() => reader().verseStudy({ pubKey, book, chapter, verse: selected }));
+    return paneStudy(read.ok ? read.value : undefined, (span) => spanReference(bookList, span));
+  }, [pubKey, book, chapter, selected, bookList]);
+  // How much study each verse has, once per chapter; on any error, none.
+  const markers = useMemo(() => {
+    const read = load(() => reader().chapterStudyMarkers(pubKey, book, chapter));
+    return markersByVerse(read.ok ? read.value : undefined);
+  }, [pubKey, book, chapter]);
+
   // Where accessibility focus returns on close: the first block of the
   // paragraph holding the verse's number, by its index in the chapter's
   // blocks. It is the same element before and after the close, so it
@@ -201,13 +217,7 @@ export function BibleChapterView({
     forgetVerse(chapterKey);
     setSelection(undefined);
     // Focus goes back to the paragraph the verse's number is in.
-    const target = blockRefs.current.get(
-      chapterContent.findIndex(
-        (block) =>
-          block.kind === 'paragraph' &&
-          block.runs.some((run) => run.verse === selected && run.label !== undefined),
-      ),
-    );
+    const target = blockRefs.current.get(numberBlock(chapterContent, selected));
     requestAnimationFrame(() => moveAccessibilityFocus(target));
   }, [chapterKey, selected, closing, chapterContent]);
 
@@ -357,9 +367,11 @@ export function BibleChapterView({
   // break a line differently, every number after it lands a word off.)
   // A span can't be raised off the baseline or take padding or hitSlop, so
   // the number sits on the baseline, its selection background is padded
-  // with no-break spaces, and its touch target is the number with those
-  // spaces and the one after it, a line tall. The background is the only
-  // thing selection changes, so selecting never reflows the paragraph.
+  // with narrow no-break spaces, and its touch target is the space before
+  // it, the number with its pads and the no-break space after it, a line
+  // tall. Only the number opens study; verse text never does. The
+  // background is the only thing selection changes, so selecting never
+  // reflows the paragraph.
   // Runs without a label (a verse's later parts, a superscription, a note)
   // have no number and no study.
   // Screen readers reach the verses through the block's actions, one per
@@ -380,55 +392,61 @@ export function BibleChapterView({
             }
       }
       style={[type.reading.scripture, { color: colors.text }]}
-      accessibilityActions={runs
-        .filter((run) => run.label !== undefined)
-        .map((run) => ({
-          name: `${VERSE_ACTION}${run.verse}`,
-          label: run.verse === open ? `Close study for verse ${run.verse}` : `Study verse ${run.verse}`,
-        }))}
+      accessibilityActions={numberedVerses(runs).map((verse) => ({
+        name: `${VERSE_ACTION}${verse}`,
+        label: studyActionLabel(verse, markers.get(verse), verse === open),
+      }))}
       onAccessibilityAction={(e) => {
         const { actionName } = e.nativeEvent;
         if (!actionName.startsWith(VERSE_ACTION)) return;
         const verse = Number(actionName.slice(VERSE_ACTION.length));
-        if (runs.some((run) => run.verse === verse && run.label !== undefined)) toggle(verse);
+        if (numberedVerses(runs).includes(verse)) toggle(verse);
       }}
     >
-      {runs.map((run, index) => {
-        const label = verseLabel(run);
-        const isSelected = run.verse === open;
-        return (
-          <Fragment key={index}>
-            {index > 0 && ' '}
-            {/* A note-count badge will sit beside the number later. */}
-            {label !== undefined && (
-              <Text onPress={() => toggle(run.verse)}>
+      {blockSegments(runs).map((segment, index) => {
+        switch (segment.kind) {
+          case 'space':
+            return <Fragment key={index}> </Fragment>;
+          // The design gives the closed state's study marker no style yet,
+          // so the markers' counts are only in the verse's action label.
+          case 'number': {
+            const span = numberSpan(segment.label, segment.separated);
+            return (
+              <Text key={index} onPress={() => toggle(segment.verse)}>
+                {span.separator}
                 <Text
                   style={[
                     type.verseNumber,
-                    isSelected
+                    segment.verse === open
                       ? { color: colors.surfaceRaised, backgroundColor: colors.accent }
                       : { color: colors.textSecondary },
                   ]}
                 >
-                  {NO_BREAK_SPACE}
-                  {label}
-                  {NO_BREAK_SPACE}
+                  {span.pad}
+                  {span.label}
+                  {span.pad}
                 </Text>
-                {NO_BREAK_SPACE}
+                {span.trailing}
               </Text>
-            )}
-            {run.text}
-          </Fragment>
-        );
+            );
+          }
+          case 'text':
+            return <Fragment key={index}>{segment.text}</Fragment>;
+          // A note isn't verse text: secondary, with no number or study.
+          case 'note':
+            return (
+              <Text key={index} style={{ color: colors.textSecondary }}>
+                {segment.text}
+              </Text>
+            );
+        }
       })}
     </Text>
   );
 
   // The study pane goes after the selected verse's last part, so the whole
   // verse is above it, even when it runs on over lines of poetry.
-  const paneBlock = chapterContent.findLastIndex(
-    (block) => block.kind === 'paragraph' && block.runs.some((run) => run.verse === selected),
-  );
+  const split = paneSplit(chapterContent, selected);
 
   // Each paragraph is one block; a heading is its own block. The paragraph
   // ending the selected verse splits after it: the runs up to it, the study
@@ -442,10 +460,11 @@ export function BibleChapterView({
         </ScriptureText>,
       ];
     }
-    if (index !== paneBlock) return [renderBlock(`b${index}`, block.runs, index)];
-    const split = block.runs.findLastIndex((run) => run.verse === selected);
-    const before = block.runs.slice(0, split + 1);
-    const after = block.runs.slice(split + 1);
+    if (split === undefined || index !== split.block || study === undefined) {
+      return [renderBlock(`b${index}`, block.runs, index)];
+    }
+    const before = block.runs.slice(0, split.run + 1);
+    const after = block.runs.slice(split.run + 1);
     return [
       renderBlock(`b${index}`, before, index),
       <StudyPane
@@ -453,7 +472,7 @@ export function BibleChapterView({
         reference={reference}
         subtitle={title}
         pubKey={pubKey}
-        available={NO_STUDY_CONTENT}
+        study={study}
         guideInstalled={GUIDE_INSTALLED}
         restored={current?.restored ?? false}
         initialFraction={current?.fraction}

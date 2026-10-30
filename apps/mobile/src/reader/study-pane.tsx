@@ -26,7 +26,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
-import { UIText } from '@/components/text';
+import { ScriptureText, UIText } from '@/components/text';
 import { useBerean } from '@/design/theme';
 import {
   hairline,
@@ -46,8 +46,9 @@ import {
   releaseTarget,
 } from '@/reader/pane-snap';
 import { rememberTab, rememberedTab } from '@/reader/session';
+import type { PaneStudy, PaneTab } from '@/reader/verse-study';
 
-export type PaneTab = 'studyNotes' | 'crossRefs' | 'research' | 'footnotes';
+export type { PaneTab };
 
 // Lookups only: which tabs show, and in what order, comes from the data.
 const TAB_LABELS: Record<PaneTab, string> = {
@@ -57,14 +58,9 @@ const TAB_LABELS: Record<PaneTab, string> = {
   footnotes: 'Footnotes',
 };
 
-// Tab content arrives with the core's per-verse study content; until then
-// each tab says so.
-const TAB_EMPTY_COPY: Record<PaneTab, string> = {
-  studyNotes: "Study notes aren't available in the app yet.",
-  crossRefs: "Cross references aren't available in the app yet.",
-  research: "Research needs the study guide, which isn't installed.",
-  footnotes: "Footnotes aren't available in the app yet.",
-};
+// Spec §4, Empty: the verse has no study content.
+const EMPTY_COPY = 'No study notes for this verse';
+const RESEARCH_COPY = "Research needs the study guide, which isn't installed.";
 
 // Spec §5: open is a spring (response 0.38 s, damping 0.9), close a spring
 // (0.30 s, damping 1.0).
@@ -93,11 +89,12 @@ type StudyPaneProps = {
   subtitle: string;
   pubKey: string;
   /**
-   * The tabs that have content for this verse, in display order. Tabs not
-   * listed are hidden; none shows the Empty state with no tab row.
-   * 'research' is ignored here: it follows guideInstalled.
+   * The verse's study content: the tabs that have content, in display
+   * order, and their items. Tabs not listed are hidden; none shows the
+   * Empty state with no tab row. 'research' is ignored here: it follows
+   * guideInstalled.
    */
-  available: readonly PaneTab[];
+  study: PaneStudy;
   /** While the study guide isn't installed, a Research tab offers it. */
   guideInstalled: boolean;
   /** Re-opened after a remount: no opening animation or announcement (spec §8). */
@@ -143,7 +140,7 @@ export function StudyPane({
   reference,
   subtitle,
   pubKey,
-  available,
+  study,
   guideInstalled,
   restored,
   initialFraction,
@@ -162,7 +159,7 @@ export function StudyPane({
 
   // The tab row is built from the data. With no content there is no tab
   // row at all, and Research alone never counts as content.
-  const content: PaneTab[] = available.filter((key) => key !== 'research');
+  const content: PaneTab[] = study.tabs.filter((key) => key !== 'research');
   const shown: PaneTab[] =
     content.length === 0 || guideInstalled ? content : [...content, 'research'];
   const [openedOn] = useState<PaneTab | undefined>(() => {
@@ -518,10 +515,33 @@ export function StudyPane({
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
       >
-        <Animated.View key={tab ?? 'empty'} entering={tabFade}>
-          <UIText secondary>
-            {tab === undefined ? TAB_EMPTY_COPY.studyNotes : TAB_EMPTY_COPY[tab]}
-          </UIText>
+        <Animated.View key={tab ?? 'empty'} entering={tabFade} style={styles.items}>
+          {tab === undefined && <UIText secondary>{EMPTY_COPY}</UIText>}
+          {tab === 'research' && <UIText secondary>{RESEARCH_COPY}</UIText>}
+          {/* The core's strings as given, one step smaller than the
+              reading text (spec §6); each label leads its text. */}
+          {tab === 'studyNotes' &&
+            study.studyNotes.map((note, index) => (
+              <ScriptureText key={index} variant="noteBody">
+                <Text style={styles.lead}>{note.label}</Text> {note.text}
+              </ScriptureText>
+            ))}
+          {tab === 'crossRefs' &&
+            study.crossRefs.map((ref, index) => (
+              <ScriptureText key={index} variant="noteBody">
+                <Text style={styles.lead}>{ref.label}</Text>
+                {ref.reference !== undefined && ` ${ref.reference}`}
+                {ref.snippet !== undefined && (
+                  <Text style={{ color: colors.textSecondary }}> {ref.snippet}</Text>
+                )}
+              </ScriptureText>
+            ))}
+          {tab === 'footnotes' &&
+            study.footnotes.map((note, index) => (
+              <ScriptureText key={index} variant="noteBody">
+                <Text style={styles.lead}>{note.marker}</Text> {note.text}
+              </ScriptureText>
+            ))}
         </Animated.View>
       </ScrollView>
 
@@ -638,6 +658,9 @@ const styles = StyleSheet.create({
   // The body scrolls on its own between the tabs and My notes.
   body: { flex: 1 },
   bodyContent: { paddingVertical: spacing.lg },
+  items: { gap: spacing.md },
+  // A study note's, cross reference's or footnote's label, leading its text.
+  lead: { fontWeight: '600' },
   // Full-bleed: out through the pane's horizontal padding to its edges.
   myNotes: {
     flexDirection: 'row',

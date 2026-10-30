@@ -19,6 +19,42 @@ export function verseReference(heading: string, verse: number): string {
   return `${heading}:${verse}`;
 }
 
+/** A Bible location, structurally: the parts of the core's Location these use. */
+export type VerseLocation = { book?: number; chapter?: number; verse?: number };
+
+/**
+ * A span's reference, from the core's locations and the book list:
+ * "Genesis 1:3", "Genesis 1:3–5", "Genesis 1:3–2:4", "Genesis 50:26–Exodus 1:2".
+ * None for a book that isn't listed or a location without a chapter. An
+ * end whose book isn't listed leaves just the start.
+ */
+export function spanReference(
+  books: readonly (BookName & { book: number })[] | undefined,
+  span: { start: VerseLocation; end: VerseLocation },
+): string | undefined {
+  const point = (at: VerseLocation) => {
+    const book = books?.find((b) => b.book === at.book);
+    if (book === undefined || at.chapter === undefined) return undefined;
+    const heading = chapterHeading(book, at.chapter);
+    return at.verse === undefined ? heading : verseReference(heading, at.verse);
+  };
+  const { start, end } = span;
+  const first = point(start);
+  if (first === undefined) return undefined;
+  if (end.book !== start.book) {
+    const last = point(end);
+    return last === undefined ? first : `${first}–${last}`;
+  }
+  if (end.chapter === undefined) return first;
+  if (end.chapter !== start.chapter) {
+    const last = end.verse === undefined ? String(end.chapter) : verseReference(String(end.chapter), end.verse);
+    return `${first}–${last}`;
+  }
+  return start.verse === undefined || end.verse === undefined || end.verse === start.verse
+    ? first
+    : `${first}–${end.verse}`;
+}
+
 /** "50 chapters", "1 chapter". */
 export function chapterCountLabel(count: number): string {
   return count === 1 ? '1 chapter' : `${count} chapters`;

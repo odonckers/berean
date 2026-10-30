@@ -8,6 +8,7 @@ import {
   nextChapter,
   previousChapter,
   shouldResetScroll,
+  spanReference,
   verseReference,
 } from './bible-nav.ts';
 
@@ -33,6 +34,37 @@ describe('headings', () => {
     assert.equal(verseReference('Genesis 1', 3), 'Genesis 1:3');
     assert.equal(chapterCountLabel(1), '1 chapter');
     assert.equal(chapterCountLabel(50), '50 chapters');
+  });
+});
+
+describe('span references', () => {
+  // Made-up names: the names are always the list's.
+  const named = [
+    { book: 10, name: 'Alpha' },
+    { book: 11, name: 'Betas', chapterName: 'Beta' },
+  ];
+  const at = (book: number, chapter?: number, verse?: number) => ({ book, chapter, verse });
+
+  test('one verse, or a whole chapter', () => {
+    assert.equal(spanReference(named, { start: at(10, 1, 3), end: at(10, 1, 3) }), 'Alpha 1:3');
+    assert.equal(spanReference(named, { start: at(11, 23), end: at(11, 23) }), 'Beta 23');
+  });
+
+  test('verses in a chapter, across chapters, across books', () => {
+    assert.equal(spanReference(named, { start: at(10, 1, 3), end: at(10, 1, 5) }), 'Alpha 1:3–5');
+    assert.equal(spanReference(named, { start: at(10, 1, 3), end: at(10, 2, 4) }), 'Alpha 1:3–2:4');
+    assert.equal(spanReference(named, { start: at(10, 1), end: at(10, 3) }), 'Alpha 1–3');
+    assert.equal(
+      spanReference(named, { start: at(10, 50, 26), end: at(11, 1, 2) }),
+      'Alpha 50:26–Beta 1:2',
+    );
+  });
+
+  test('none for an unlisted book or no chapter; an unlisted end keeps the start', () => {
+    assert.equal(spanReference(named, { start: at(12, 1, 1), end: at(12, 1, 1) }), undefined);
+    assert.equal(spanReference(undefined, { start: at(10, 1, 1), end: at(10, 1, 1) }), undefined);
+    assert.equal(spanReference(named, { start: at(10), end: at(10) }), undefined);
+    assert.equal(spanReference(named, { start: at(10, 1, 1), end: at(12, 1, 1) }), 'Alpha 1:1');
   });
 });
 
