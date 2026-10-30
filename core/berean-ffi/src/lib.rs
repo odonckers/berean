@@ -1168,6 +1168,23 @@ impl From<berean_core::reader::LocationSpan> for LocationSpan {
     }
 }
 
+/// The FFI mirror of [`berean_core::reader::Resolved`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum Resolved {
+    Span { span: LocationSpan },
+    External { url: String },
+}
+
+impl From<berean_core::reader::Resolved> for Resolved {
+    fn from(r: berean_core::reader::Resolved) -> Self {
+        use berean_core::reader::Resolved as R;
+        match r {
+            R::Span { span } => Resolved::Span { span: span.into() },
+            R::External { url } => Resolved::External { url },
+        }
+    }
+}
+
 /// The FFI mirror of [`berean_core::reader::StudyAvailability`].
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
 pub enum StudyAvailability {
@@ -1357,8 +1374,10 @@ impl Reader {
             .collect())
     }
 
-    /// Resolve a citation or `jwpub://` link to the span it names.
-    pub fn resolve(&self, reference: String) -> Result<LocationSpan, CoreError> {
+    /// Resolve a citation or `jwpub://` link to the span it names, or an
+    /// `http://`, `https://` or `mailto:` link to `External`, for the app to
+    /// hand to the system.
+    pub fn resolve(&self, reference: String) -> Result<Resolved, CoreError> {
         Ok(self.inner.resolve(&reference)?.into())
     }
 
@@ -2652,11 +2671,23 @@ mod tests {
         };
         assert_eq!(
             reader.resolve("John 3:16-18".into()).unwrap(),
-            LocationSpan {
-                start: john(16),
-                end: john(18),
+            Resolved::Span {
+                span: LocationSpan {
+                    start: john(16),
+                    end: john(18),
+                }
             }
         );
+        assert_eq!(
+            reader.resolve(" HTTPS://www.jw.org/ ".into()).unwrap(),
+            Resolved::External {
+                url: "HTTPS://www.jw.org/".into()
+            }
+        );
+        assert!(matches!(
+            reader.resolve("javascript:alert(1)".into()),
+            Err(CoreError::Invalid(_))
+        ));
         assert!(matches!(
             reader.resolve("John 3:18-16".into()),
             Err(CoreError::Invalid(_))
@@ -2669,7 +2700,9 @@ mod tests {
         let labels: Vec<&str> = study.cross_refs.iter().map(|c| c.label.as_str()).collect();
         assert_eq!(labels, ["p", "p", "p", "p", "q", "q", "q", "q", "q"]);
         assert_eq!(
-            study.cross_refs[0].target,
+            Resolved::Span {
+                span: study.cross_refs[0].target.clone()
+            },
             reader.resolve("Romans 5:8".into()).unwrap()
         );
         assert!(study.cross_refs[0].snippet.is_some());

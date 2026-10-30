@@ -13,7 +13,7 @@ use berean_core::library::PubKind;
 use berean_core::reader::Location;
 use berean_core::search::{Hit, SearchScope, MAX_LIMIT};
 use berean_core::{CancelToken, Core, CoreError};
-use common::fixture;
+use common::{fixture, span_of};
 use rusqlite::Connection;
 
 const NWT_E: &str = "nwt:0:0";
@@ -122,7 +122,7 @@ fn assert_safe_snippet(snippet: &str) {
 #[test]
 fn john_3_16() {
     let core = &core().0;
-    let john_3_16 = core.reader().resolve("John 3:16").unwrap().start;
+    let john_3_16 = span_of(core.reader().resolve("John 3:16")).start;
     for text in ["loved the world so much", "\"loved the world so much\""] {
         let hits = query(text, &SearchScope::default(), 3);
         let hit = hits

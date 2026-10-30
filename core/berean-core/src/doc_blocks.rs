@@ -27,8 +27,8 @@ use std::path::Path;
 use crate::jwpub::check_file_name;
 use crate::notes::Inline;
 use crate::reader::{
-    attribute, bible_link, decode_references, document_link, element_end, number, plain_text,
-    ParagraphAnchor,
+    attribute, bible_link, decode_references, document_link, element_end, is_external, number,
+    plain_text, ParagraphAnchor,
 };
 use crate::CoreError;
 
@@ -235,8 +235,10 @@ impl DocLinkTarget {
     /// `jwpub://b/<symbol>/<b>:<c>:<v>[-<b>:<c>:<v>]` is `Bible`;
     /// `jwpub://p/<code>:<doc>/[<p>[-<p>]]` is `Document`, a paragraph's word
     /// token (`360:4`) dropped and only the first of a `$` list taken;
-    /// `jwpub://c/<code>:<doc>/<c>:<v>` is `StudyNote`; an `http`, `https`
-    /// or `mailto` URL is `External`. Anything else is `Invalid`.
+    /// `jwpub://c/<code>:<doc>/<c>:<v>` is `StudyNote`; an `http://`,
+    /// `https://` or `mailto:` URL (in any case) with something after the
+    /// prefix is `External`, as `Reader::resolve` judges it. Anything else is
+    /// `Invalid`.
     pub fn from_href(href: &str) -> DocLinkTarget {
         let target = if let Some(rest) = href.strip_prefix("jwpub://b/") {
             bible_target(rest)
@@ -296,13 +298,9 @@ fn study_note_target(rest: &str) -> Option<DocLinkTarget> {
 }
 
 fn external_target(href: &str) -> Option<DocLinkTarget> {
-    let (scheme, _) = href.split_once(':')?;
-    ["http", "https", "mailto"]
-        .iter()
-        .any(|s| scheme.eq_ignore_ascii_case(s))
-        .then(|| DocLinkTarget::External {
-            url: href.to_string(),
-        })
+    is_external(href).then(|| DocLinkTarget::External {
+        url: href.to_string(),
+    })
 }
 
 /// Elements with no content and no closing tag.
@@ -1269,6 +1267,24 @@ mod tests {
             number: None,
             role: ParagraphRole::Body,
             inlines,
+        }
+    }
+
+    #[test]
+    fn external_hrefs_match_resolve() {
+        for href in ["http:example.com", "http://", "mailto:"] {
+            assert_eq!(
+                DocLinkTarget::from_href(href),
+                DocLinkTarget::Invalid,
+                "{href}"
+            );
+        }
+        for href in ["https://www.jw.org/", "MAILTO:x@y.z"] {
+            let url = href.to_string();
+            assert_eq!(
+                DocLinkTarget::from_href(href),
+                DocLinkTarget::External { url }
+            );
         }
     }
 

@@ -13,9 +13,9 @@ use berean_core::doc_blocks::{
 };
 use berean_core::jwpub::Publication;
 use berean_core::notes::Inline;
-use berean_core::reader::{Document, LocationSpan};
+use berean_core::reader::{Document, Resolved};
 use berean_core::{CancelToken, Core, CoreError};
-use common::fixture;
+use common::{fixture, span_of};
 
 const W_E: &str = "w26:0:20260800";
 const LL_E: &str = "ll:0:0";
@@ -1026,10 +1026,11 @@ fn href_shape(href: &str) -> &'static str {
     }
 }
 
-/// The name of `resolve`'s outcome: `Ok` or the error's variant.
-fn outcome(result: &Result<LocationSpan, CoreError>) -> &'static str {
+/// The name of `resolve`'s outcome: `Span`, `External` or the error's variant.
+fn outcome(result: &Result<Resolved, CoreError>) -> &'static str {
     match result {
-        Ok(_) => "Ok",
+        Ok(Resolved::Span { .. }) => "Span",
+        Ok(Resolved::External { .. }) => "External",
         Err(CoreError::Invalid(_)) => "Invalid",
         Err(CoreError::NotFound) => "NotFound",
         Err(CoreError::Corrupt) => "Corrupt",
@@ -1040,9 +1041,10 @@ fn outcome(result: &Result<LocationSpan, CoreError>) -> &'static str {
 }
 
 /// `Reader::resolve` on every href in the fixtures gives the outcome the
-/// design states for its shape (§3 Link targets): `Ok` for a Bible link with
-/// the Bible installed, `Ok` or `NotFound` for a document link, `Invalid`
-/// for the shapes it does not support yet. Counts are visible with
+/// design states for its shape (§3 Link targets): `Span` for a Bible link
+/// with the Bible installed, `Span` or `NotFound` for a document link,
+/// `External` with the href for an external link, `Invalid` for the shapes
+/// it does not support yet. Counts are visible with
 /// `--nocapture`.
 #[test]
 fn every_fixture_href_resolves_to_its_shape_outcome() {
@@ -1065,11 +1067,15 @@ fn every_fixture_href_resolves_to_its_shape_outcome() {
         let (shape, outcome) = (href_shape(href), outcome(&result));
         *counts.entry(shape).or_default().entry(outcome).or_default() += 1;
         let expected: &[&str] = match shape {
-            "bible" => &["Ok"],
-            "document" | "document paragraphs" => &["Ok", "NotFound"],
+            "bible" => &["Span"],
+            "document" | "document paragraphs" => &["Span", "NotFound"],
+            "external" => &["External"],
             _ => &["Invalid"],
         };
         assert!(expected.contains(&outcome), "{href}: {result:?}");
+        if let Ok(Resolved::External { url }) = &result {
+            assert_eq!(url, href.trim(), "{href}");
+        }
     }
     eprintln!("{total} hrefs, {} distinct; resolve outcomes:", hrefs.len());
     for (shape, outcomes) in &counts {
@@ -1087,7 +1093,7 @@ fn every_fixture_href_resolves_to_its_shape_outcome() {
     }
     let result = reader.resolve("jwpub://p/E:999999999/");
     assert!(matches!(result, Err(CoreError::NotFound)), "{result:?}");
-    let span = reader.resolve("jwpub://b/NWTR/43:3:16-43:3:16").unwrap();
+    let span = span_of(reader.resolve("jwpub://b/NWTR/43:3:16-43:3:16"));
     assert_eq!(
         (span.start.pub_key.as_str(), span.start.verse),
         (NWT_E, Some(16))

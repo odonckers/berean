@@ -15,9 +15,9 @@
 //!
 //! # Resolving
 //!
-//! [`Reader::resolve`] returns a [`LocationSpan`], from its `start` through
-//! its `end`; a single verse, chapter, document or paragraph gives
-//! `start == end`. It takes one of:
+//! [`Reader::resolve`] returns a [`Resolved::Span`] holding a
+//! [`LocationSpan`], from its `start` through its `end`; a single verse,
+//! chapter, document or paragraph gives `start == end`. It takes one of:
 //!
 //! - A citation: `<book> <chapter>`, `<book> <chapter>:<verse>`, a verse
 //!   range in one chapter `<book> <chapter>:<verse>-<verse>`, one across
@@ -45,6 +45,11 @@
 //!   document, or a paragraph or range of paragraphs of it, by JW language
 //!   code and MEPS document id. It resolves to the first installed
 //!   publication, in key order, in that language holding the document.
+//!
+//! An `http://`, `https://` or `mailto:` link (the scheme in any case, with
+//! something after it) is not looked up: it gives [`Resolved::External`]
+//! with the link as given, for the apps to hand to the system. Any other
+//! scheme (`javascript:`, `ftp:`, `data:`, `file:`, ...) is `Invalid`.
 //!
 //! Both ends of a range must exist, and the end may not come before the start
 //! (in Bible order: book, chapter, verse; or paragraph order). A span stays
@@ -156,6 +161,19 @@ pub struct Location {
 pub struct LocationSpan {
     pub start: Location,
     pub end: Location,
+}
+
+/// What [`Reader::resolve`] gives: a span of the library, or a web or mail
+/// link for the apps to hand to the system.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Resolved {
+    Span {
+        span: LocationSpan,
+    },
+    /// An `http://`, `https://` or `mailto:` link, as given (trimmed).
+    External {
+        url: String,
+    },
 }
 
 /// One table-of-contents entry. The entries of a publication form a flat
@@ -527,9 +545,20 @@ impl Reader {
     }
 
     /// Resolve a citation or `jwpub://` link to the span of locations it
-    /// names; see the module docs for the forms accepted.
-    pub fn resolve(&self, reference: &str) -> Result<LocationSpan, CoreError> {
+    /// names, or an `http://`, `https://` or `mailto:` link to
+    /// [`Resolved::External`]; see the module docs for the forms accepted.
+    pub fn resolve(&self, reference: &str) -> Result<Resolved, CoreError> {
         let reference = reference.trim();
+        if is_external(reference) {
+            return Ok(Resolved::External {
+                url: reference.to_string(),
+            });
+        }
+        self.resolve_span(reference)
+            .map(|span| Resolved::Span { span })
+    }
+
+    fn resolve_span(&self, reference: &str) -> Result<LocationSpan, CoreError> {
         match reference.strip_prefix("jwpub://") {
             Some(link) => {
                 if let Some(rest) = link.strip_prefix("b/") {
@@ -951,6 +980,17 @@ type VerseRef = (u32, u32, u32);
 
 /// A first and last paragraph.
 type ParagraphRange = (u32, u32);
+
+/// Whether `reference` starts with `http://`, `https://` or `mailto:` (in
+/// any case) and has something after it.
+pub(crate) fn is_external(reference: &str) -> bool {
+    ["http://", "https://", "mailto:"].iter().any(|prefix| {
+        reference.len() > prefix.len()
+            && reference
+                .get(..prefix.len())
+                .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
+    })
+}
 
 /// Split the part of a Bible link after `jwpub://b/`,
 /// `<symbol>/<book>:<chapter>:<verse>[-<book>:<chapter>:<verse>]`, into its
