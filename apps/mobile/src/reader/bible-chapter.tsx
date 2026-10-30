@@ -12,6 +12,7 @@ import {
   useState,
 } from 'react';
 import {
+  AccessibilityInfo,
   BackHandler,
   type LayoutChangeEvent,
   Pressable,
@@ -29,6 +30,7 @@ import { ScriptureText, UIText } from '@/components/text';
 import { TextButton } from '@/components/text-button';
 import { useContentInsets } from '@/design/tab-chrome';
 import { useBerean } from '@/design/theme';
+import { highlightSpokenNames } from '@/design/tokens';
 import { useTopAppBarFill } from '@/design/use-top-app-bar-fill';
 import { reader } from '@/ffi/core';
 import { load } from '@/library/load';
@@ -43,11 +45,14 @@ import {
   verseReference,
 } from '@/reader/bible-nav';
 import { BiblePicker } from '@/reader/bible-picker';
+import { HighlightSheet } from '@/reader/highlight-sheet';
+import { highlightActionLabel, segmentHighlight, verseSubject } from '@/reader/highlights';
 import { type LandedVerse, landedLabel, landedVerse } from '@/reader/landed-verse';
 import {
   type Run,
   blockSegments,
   chapterBlocks,
+  isVerseRun,
   lineAt,
   numberBlock,
   numberOffset,
@@ -71,14 +76,17 @@ import {
   restoredPane,
 } from '@/reader/session';
 import { StudyPane, moveAccessibilityFocus } from '@/reader/study-pane';
+import { useChapterHighlights } from '@/reader/use-chapter-highlights';
 import { markersByVerse, paneStudy, studyActionLabel } from '@/reader/verse-study';
 
 // Study guide installation isn't modelled yet, so the guide is treated as
 // not installed (the pane offers a Research tab when there is content).
 const GUIDE_INSTALLED = false;
 
-// Per-verse accessibility actions on a paragraph block, named by verse.
+// Per-verse accessibility actions on a paragraph block, named by verse:
+// study, and highlight.
 const VERSE_ACTION = 'verse-';
+const HIGHLIGHT_ACTION = 'highlight-';
 
 type Selection = {
   chapterKey: string;
@@ -104,7 +112,7 @@ export function BibleChapterView({
   /** A verse to open the chapter at (a search hit), scrolled to once. */
   verse?: number;
 }) {
-  const { look, colors, m3, type } = useBerean();
+  const { look, colors, m3, type, highlights: fills } = useBerean();
   const material = look === 'material';
   const reducedMotion = useReducedMotion();
   // The Read tab's root: the material top app bar's tonal fill, and the
@@ -169,6 +177,45 @@ export function BibleChapterView({
     const read = load(() => reader().chapterStudyMarkers(pubKey, book, chapter));
     return markersByVerse(read.ok ? read.value : undefined);
   }, [pubKey, book, chapter]);
+
+  // The chapter's highlights, as the core last returned them.
+  const verses = useMemo(
+    () =>
+      chapterContent.flatMap((block) =>
+        block.kind === 'paragraph' ? block.runs.filter(isVerseRun).map((run) => run.verse) : [],
+      ),
+    [chapterContent],
+  );
+  const highlights = useChapterHighlights(pubKey, book, chapter, verses);
+  const spokenHighlight = (verse: number) => {
+    const color = highlights.byVerse.get(verse)?.color;
+    return color === undefined ? undefined : highlightSpokenNames[color];
+  };
+  // The verse whose actions are open (a long press on its text, or its
+  // Highlight action), with the last change's error. It belongs to one
+  // chapter, as the selection does.
+  const [actions, setActions] = useState<{ chapterKey: string; verse: number; error?: string }>();
+  const actionsHere = actions?.chapterKey === chapterKey ? actions : undefined;
+  const openActions = (verse: number) => {
+    setActions({ chapterKey, verse });
+    void Haptics.selectionAsync().catch(() => {});
+  };
+  // Focus goes back to the paragraph the verse's number is in.
+  const closeActions = () => {
+    if (actionsHere === undefined) return;
+    setActions(undefined);
+    const target = blockRefs.current.get(numberBlock(chapterContent, actionsHere.verse));
+    requestAnimationFrame(() => moveAccessibilityFocus(target));
+  };
+  // A change the core refuses keeps the sheet open with its message.
+  const settle = (verse: number, error: string | undefined) => {
+    if (error === undefined) {
+      closeActions();
+      return;
+    }
+    setActions({ chapterKey, verse, error });
+    AccessibilityInfo.announceForAccessibility(error);
+  };
 
   // Where accessibility focus returns on close: the first block of the
   // paragraph holding the verse's number, by its index in the chapter's
@@ -482,94 +529,140 @@ export function BibleChapterView({
   // reflows the paragraph.
   // Runs without a label (a verse's later parts, a superscription, a note)
   // have no number and no study.
-  // Screen readers reach the verses through the block's actions, one per
-  // numbered verse, which TalkBack and VoiceOver list as the element's
+  // Screen readers reach the verses through the block's actions, two per
+  // numbered verse (its study, and Highlight, which opens the same sheet as
+  // a long press), which TalkBack and VoiceOver list as the element's
   // actions.
   // RN Text has no first-line indent yet, so a continuation block (the rest
   // of a paragraph after the pane) has the same style as its first block;
   // once paragraphs carry an indent, the continuation leaves it off.
-  const renderBlock = (key: string, runs: readonly Run[], blockIndex?: number) => (
-    <Text
-      key={key}
-      ref={
-        blockIndex === undefined
-          ? undefined
-          : (node) => {
-              if (node) blockRefs.current.set(blockIndex, node);
-              else blockRefs.current.delete(blockIndex);
-            }
-      }
-      onLayout={
-        blockIndex === undefined
-          ? undefined
-          : (e) => {
-              blockTops.current.set(blockIndex, e.nativeEvent.layout.y);
-              scrollToPending();
-            }
-      }
-      onTextLayout={
-        blockIndex === undefined
-          ? undefined
-          : (e) => {
-              blockLines.current.set(blockIndex, e.nativeEvent.lines);
-              scrollToPending();
-            }
-      }
-      style={[type.reading.scripture, { color: colors.text }]}
-      accessibilityActions={numberedVerses(runs).map((verse) => ({
-        name: `${VERSE_ACTION}${verse}`,
-        label: landedLabel(
-          studyActionLabel(verse, markers.get(verse), verse === open),
-          verse === landedHere,
-        ),
-      }))}
-      onAccessibilityAction={(e) => {
-        const { actionName } = e.nativeEvent;
-        if (!actionName.startsWith(VERSE_ACTION)) return;
-        const verse = Number(actionName.slice(VERSE_ACTION.length));
-        if (numberedVerses(runs).includes(verse)) toggle(verse);
-      }}
-    >
-      {blockSegments(runs).map((segment, index) => {
-        switch (segment.kind) {
-          case 'space':
-            return <Fragment key={index}> </Fragment>;
-          // The design gives the closed state's study marker no style yet,
-          // so the markers' counts are only in the verse's action label.
-          case 'number': {
-            const span = numberSpan(segment.label, segment.separated);
-            return (
-              <Text key={index} onPress={() => toggle(segment.verse)}>
-                {span.separator}
-                <Text
-                  style={[
-                    type.verseNumber,
-                    segment.verse === open || segment.verse === landedHere
-                      ? { color: colors.surfaceRaised, backgroundColor: colors.accent }
-                      : { color: colors.textSecondary },
-                  ]}
-                >
-                  {span.pad}
-                  {span.label}
-                  {span.pad}
-                </Text>
-                {span.trailing}
-              </Text>
-            );
-          }
-          case 'text':
-            return <Fragment key={index}>{segment.text}</Fragment>;
-          // A note isn't verse text: secondary, with no number or study.
-          case 'note':
-            return (
-              <Text key={index} style={{ color: colors.textSecondary }}>
-                {segment.text}
-              </Text>
-            );
+  const renderBlock = (key: string, runs: readonly Run[], blockIndex?: number) => {
+    const segments = blockSegments(runs);
+    return (
+      <Text
+        key={key}
+        ref={
+          blockIndex === undefined
+            ? undefined
+            : (node) => {
+                if (node) blockRefs.current.set(blockIndex, node);
+                else blockRefs.current.delete(blockIndex);
+              }
         }
-      })}
-    </Text>
-  );
+        onLayout={
+          blockIndex === undefined
+            ? undefined
+            : (e) => {
+                blockTops.current.set(blockIndex, e.nativeEvent.layout.y);
+                scrollToPending();
+              }
+        }
+        onTextLayout={
+          blockIndex === undefined
+            ? undefined
+            : (e) => {
+                blockLines.current.set(blockIndex, e.nativeEvent.lines);
+                scrollToPending();
+              }
+        }
+        style={[type.reading.scripture, { color: colors.text }]}
+        accessibilityActions={numberedVerses(runs).flatMap((verse) => [
+          {
+            name: `${VERSE_ACTION}${verse}`,
+            label: landedLabel(
+              studyActionLabel(
+                verse,
+                markers.get(verse),
+                verse === open,
+                verseSubject(verse, spokenHighlight(verse)),
+              ),
+              verse === landedHere,
+            ),
+          },
+          {
+            name: `${HIGHLIGHT_ACTION}${verse}`,
+            label: highlightActionLabel(verse, spokenHighlight(verse)),
+          },
+        ])}
+        onAccessibilityAction={(e) => {
+          const { actionName } = e.nativeEvent;
+          const numbered = (prefix: string) => {
+            const verse = Number(actionName.slice(prefix.length));
+            return numberedVerses(runs).includes(verse) ? verse : undefined;
+          };
+          if (actionName.startsWith(VERSE_ACTION)) {
+            const verse = numbered(VERSE_ACTION);
+            if (verse !== undefined) toggle(verse);
+          } else if (actionName.startsWith(HIGHLIGHT_ACTION)) {
+            const verse = numbered(HIGHLIGHT_ACTION);
+            if (verse !== undefined) openActions(verse);
+          }
+        }}
+      >
+        {segments.map((segment, index) => {
+          switch (segment.kind) {
+            // Between two parts of a highlighted verse, the space is filled too.
+            case 'space': {
+              const fill = segmentHighlight(segments, index, highlights.byVerse);
+              return fill === undefined ? (
+                <Fragment key={index}> </Fragment>
+              ) : (
+                <Text key={index} style={{ backgroundColor: fills[fill] }}>
+                  {' '}
+                </Text>
+              );
+            }
+            // The design gives the closed state's study marker no style yet,
+            // so the markers' counts are only in the verse's action label.
+            case 'number': {
+              const span = numberSpan(segment.label, segment.separated);
+              return (
+                <Text key={index} onPress={() => toggle(segment.verse)}>
+                  {span.separator}
+                  <Text
+                    style={[
+                      type.verseNumber,
+                      segment.verse === open || segment.verse === landedHere
+                        ? { color: colors.surfaceRaised, backgroundColor: colors.accent }
+                        : { color: colors.textSecondary },
+                    ]}
+                  >
+                    {span.pad}
+                    {span.label}
+                    {span.pad}
+                  </Text>
+                  {span.trailing}
+                </Text>
+              );
+            }
+            // Verse text: a long press opens the verse's actions; a tap does
+            // nothing (and shows no press highlight on iOS). A highlight
+            // fills the text only, never the number.
+            case 'text': {
+              const fill = segmentHighlight(segments, index, highlights.byVerse);
+              return (
+                <Text
+                  key={index}
+                  suppressHighlighting
+                  onLongPress={() => openActions(segment.verse)}
+                  style={fill === undefined ? undefined : { backgroundColor: fills[fill] }}
+                >
+                  {segment.text}
+                </Text>
+              );
+            }
+            // A note isn't verse text: secondary, with no number or study.
+            case 'note':
+              return (
+                <Text key={index} style={{ color: colors.textSecondary }}>
+                  {segment.text}
+                </Text>
+              );
+          }
+        })}
+      </Text>
+    );
+  };
 
   // The study pane goes after the selected verse's last part, so the whole
   // verse is above it, even when it runs on over lines of poetry.
@@ -677,6 +770,19 @@ export function BibleChapterView({
         </View>
       </ReadingColumn>
       {picker}
+      {actionsHere !== undefined && (
+        <HighlightSheet
+          visible
+          reference={verseReference(heading, actionsHere.verse)}
+          current={highlights.byVerse.get(actionsHere.verse)?.color}
+          error={actionsHere.error}
+          onChoose={(color) =>
+            settle(actionsHere.verse, highlights.highlight(actionsHere.verse, color))
+          }
+          onRemove={() => settle(actionsHere.verse, highlights.remove(actionsHere.verse))}
+          onClose={closeActions}
+        />
+      )}
     </>
   );
 }

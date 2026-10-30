@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet } from 'react-native';
+import { type NativeSyntheticEvent, Pressable, StyleSheet, type TargetedEvent } from 'react-native';
 
 import { UIText } from '@/components/text';
 import { useBerean } from '@/design/theme';
@@ -16,6 +16,8 @@ type TextButtonProps = {
    * starts at the content's leading edge. Default 'center'.
    */
   align?: 'center' | 'leading';
+  /** Keyboard or accessibility focus; a Modal's buttons pass on the focus ring here. */
+  onFocus?: (e: NativeSyntheticEvent<TargetedEvent>) => void;
 };
 
 const BORDER_WIDTH = 1;
@@ -38,6 +40,7 @@ export function TextButton({
   selected,
   disabled = false,
   align = 'center',
+  onFocus,
 }: TextButtonProps) {
   const { colors, look } = useBerean();
   const target = look === 'material' ? MATERIAL_TARGET : IOS_TARGET;
@@ -48,6 +51,7 @@ export function TextButton({
       accessibilityState={{ selected, disabled }}
       disabled={disabled}
       onPress={onPress}
+      onFocus={onFocus}
       style={({ pressed }) => [
         styles.button,
         { minHeight: target, minWidth: target },
