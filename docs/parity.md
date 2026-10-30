@@ -49,7 +49,7 @@ Only features that a cited source describes are listed. Rows marked **to verify*
 ## JWPUB reading (Publications reader)
 | ID | Feature | JW Library behavior | Status | Layer | UI | Board row / PR | Notes |
 |---|---|---|---|---|---|---|---|
-| PUB-1 | Open and read an article | Tap a publication, then an article. [S1] | UI pending | both | Kiwi/Moss | Core: JWPUB open/decrypt/parse / #14; reader #17 | `Reader::toc`, `Reader::document` (decrypted HTML + whole-element paragraph anchors). |
+| PUB-1 | Open and read an article | Tap a publication, then an article. [S1] | UI pending | both | Kiwi/Moss | Core: JWPUB open/decrypt/parse / #14; reader #17 | `Reader::toc`, `Reader::document` (decrypted HTML + whole-element paragraph anchors). `Reader::document` also returns `Document.blocks`: the article as a native block tree (headings, paragraphs with roles, questions, answer fields, figures with absolute image paths, asides, lists, tables, footnotes); `DocInline` links are parsed and resolved on tap via `Reader::resolve`; anchored per paragraph. |
 | PUB-2 | Bible citations in articles | Tap a citation to see the verse in the study pane; links in the pane go to the Bible. [S1] | UI pending | both | Kiwi/Moss | #17 | `Reader::resolve` turns `jwpub://b/…` and `jwpub://p/…` links (including ranges) into a `LocationSpan`. |
 | PUB-3 | Change language of the current article | Lists the languages that have this page; a cloud icon marks ones not downloaded. [S6] | Not started | both | Kiwi/Moss | — | MEPS doc ids are shared across languages (see #17), so the core can find the same document in another language. No API yet. |
 | PUB-4 | Text size | One slider for all publications. [S6] | Not started | ui | Kiwi/Moss | — | UI setting. |

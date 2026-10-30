@@ -5,7 +5,7 @@
 
 mod common;
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::OnceLock;
 
 use berean_core::doc_blocks::{
@@ -13,8 +13,8 @@ use berean_core::doc_blocks::{
 };
 use berean_core::jwpub::Publication;
 use berean_core::notes::Inline;
-use berean_core::reader::Document;
-use berean_core::{CancelToken, Core};
+use berean_core::reader::{Document, LocationSpan};
+use berean_core::{CancelToken, Core, CoreError};
 use common::fixture;
 
 const W_E: &str = "w26:0:20260800";
@@ -22,6 +22,7 @@ const LL_E: &str = "ll:0:0";
 const TE_E: &str = "te:0:0";
 const IT_E: &str = "it:0:0";
 const RSG_E: &str = "rsg:0:0";
+const NWT_E: &str = "nwt:0:0";
 
 const FIXTURES: [(&str, &str); 5] = [
     (W_E, "w_E_202608.jwpub"),
@@ -39,6 +40,8 @@ const IT_CHRONOLOGY_DOC: i64 = 1200000970;
 const TE_SHEPHERD_DOC: i64 = 1101971128;
 
 struct Fixtures {
+    /// The core they are installed in, with the Bible for their links.
+    core: Core,
     data_dir: std::path::PathBuf,
     /// Every content document of each publication, by key.
     documents: HashMap<&'static str, Vec<Document>>,
@@ -79,7 +82,16 @@ fn fixtures() -> &'static Fixtures {
                 .collect();
             documents.insert(key, read);
         }
+        core.library()
+            .install(
+                NWT_E,
+                fixture("nwt_E.jwpub"),
+                &|_, _| {},
+                &CancelToken::new(),
+            )
+            .unwrap_or_else(|e| panic!("install nwt_E.jwpub: {e:?}"));
         Fixtures {
+            core,
             data_dir,
             documents,
         }
@@ -983,6 +995,103 @@ fn every_fixture_link_parses() {
             }
         }
     }
+}
+
+/// The shape of `href`, for counting resolve outcomes.
+fn href_shape(href: &str) -> &'static str {
+    if href.starts_with("jwpub://b/") {
+        "bible"
+    } else if let Some(rest) = href.strip_prefix("jwpub://p/") {
+        let paragraphs = rest.split_once('/').map_or("", |(_, p)| p);
+        if rest.contains('$') {
+            "document $ list"
+        } else if paragraphs.contains(':') {
+            "document paragraph:token"
+        } else if paragraphs.is_empty() {
+            "document"
+        } else {
+            "document paragraphs"
+        }
+    } else if href.starts_with("jwpub://c/") {
+        "study note"
+    } else if href.starts_with('#') {
+        "#"
+    } else if matches!(
+        DocLinkTarget::from_href(href),
+        DocLinkTarget::External { .. }
+    ) {
+        "external"
+    } else {
+        "other"
+    }
+}
+
+/// The name of `resolve`'s outcome: `Ok` or the error's variant.
+fn outcome(result: &Result<LocationSpan, CoreError>) -> &'static str {
+    match result {
+        Ok(_) => "Ok",
+        Err(CoreError::Invalid(_)) => "Invalid",
+        Err(CoreError::NotFound) => "NotFound",
+        Err(CoreError::Corrupt) => "Corrupt",
+        Err(CoreError::Io(_)) => "Io",
+        Err(CoreError::Cancelled) => "Cancelled",
+        Err(CoreError::Migration(_)) => "Migration",
+    }
+}
+
+/// `Reader::resolve` on every href in the fixtures gives the outcome the
+/// design states for its shape (§3 Link targets): `Ok` for a Bible link with
+/// the Bible installed, `Ok` or `NotFound` for a document link, `Invalid`
+/// for the shapes it does not support yet. Counts are visible with
+/// `--nocapture`.
+#[test]
+fn every_fixture_href_resolves_to_its_shape_outcome() {
+    let mut total = 0;
+    let mut hrefs = BTreeSet::new();
+    for (key, _) in FIXTURES {
+        for doc in documents(key) {
+            for inline in document_inlines(&doc.blocks) {
+                if let DocInline::Link { url, .. } = inline {
+                    total += 1;
+                    hrefs.insert(url.as_str());
+                }
+            }
+        }
+    }
+    let reader = fixtures().core.reader();
+    let mut counts: BTreeMap<&str, BTreeMap<&str, usize>> = BTreeMap::new();
+    for href in &hrefs {
+        let result = reader.resolve(href);
+        let (shape, outcome) = (href_shape(href), outcome(&result));
+        *counts.entry(shape).or_default().entry(outcome).or_default() += 1;
+        let expected: &[&str] = match shape {
+            "bible" => &["Ok"],
+            "document" | "document paragraphs" => &["Ok", "NotFound"],
+            _ => &["Invalid"],
+        };
+        assert!(expected.contains(&outcome), "{href}: {result:?}");
+    }
+    eprintln!("{total} hrefs, {} distinct; resolve outcomes:", hrefs.len());
+    for (shape, outcomes) in &counts {
+        eprintln!("  {shape}: {outcomes:?}");
+    }
+
+    for href in [
+        "jwpub://p/E:1200004129/360-360:4",
+        "jwpub://p/E:1200002904/14:1-32:8",
+        "jwpub://p/E:1102021206/4-5$p/E:1102021206/22-30",
+        "jwpub://c/E:1001070161/1:18",
+    ] {
+        let result = reader.resolve(href);
+        assert!(matches!(result, Err(CoreError::Invalid(_))), "{result:?}");
+    }
+    let result = reader.resolve("jwpub://p/E:999999999/");
+    assert!(matches!(result, Err(CoreError::NotFound)), "{result:?}");
+    let span = reader.resolve("jwpub://b/NWTR/43:3:16-43:3:16").unwrap();
+    assert_eq!(
+        (span.start.pub_key.as_str(), span.start.verse),
+        (NWT_E, Some(16))
+    );
 }
 
 /// The kind of a value, as its debug name up to the first `{`, `(` or space.
