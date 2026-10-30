@@ -333,7 +333,10 @@ function useKeepInView(groups: Group<ResultRow>[], selectedKey: string | undefin
 const FULLY_VISIBLE = { itemVisiblePercentThreshold: 100 };
 
 const styles = StyleSheet.create({
-  chipScroll: { flexGrow: 0 },
+  // Every user stacks the chips in a column above the results. ScrollView's
+  // base style shrinks, so without flexShrink: 0 an overflowing list squeezes
+  // the row below its (font-scaled) chip height and clips the chips.
+  chipScroll: { flexGrow: 0, flexShrink: 0 },
   groupHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
   groupLabel: { fontWeight: '600' },
   row: { flexDirection: 'row', alignItems: 'flex-start' },

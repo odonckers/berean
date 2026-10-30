@@ -168,7 +168,10 @@ export function SearchPalette({ visible, onClose }: SearchPaletteProps) {
               </View>
             </View>
           ) : (
-            field({ marginHorizontal: spacing.xl })
+            // In the dialog's column only the results may shrink: SearchField's
+            // flexShrink (for row layouts) would otherwise clip the field once
+            // the results reach maxHeight.
+            field({ marginHorizontal: spacing.xl, flexShrink: 0 })
           )}
           {chips && total > 0 && <SearchScopeChips style={{ paddingHorizontal: spacing.xl }} />}
           <SearchResults
