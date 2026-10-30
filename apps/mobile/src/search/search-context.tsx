@@ -185,10 +185,16 @@ export function SearchProvider({ children }: { children: ReactNode }) {
       // opened underneath it.
       if (inSearchView) router.back();
       if (verse !== undefined && book !== undefined && chapter !== undefined) {
-        // The Bible route opens at a chapter; it has no verse param.
+        // The Bible route opens the chapter scrolled to the verse.
         router.navigate({
           pathname: '/',
-          params: { pubKey, title, book: String(book), chapter: String(chapter) },
+          params: {
+            pubKey,
+            title,
+            book: String(book),
+            chapter: String(chapter),
+            verse: String(verse),
+          },
         });
       } else if (docId !== undefined) {
         router.navigate({ pathname: '/publication', params: { pubKey, title, docId: String(docId) } });

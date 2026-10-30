@@ -12,7 +12,14 @@ import { load, type Loaded } from '@/library/load';
 import { BibleChapterView } from '@/reader/bible-chapter';
 import { type BibleLocation, rememberBible, rememberedBible } from '@/reader/session';
 
-type ReadParams = { pubKey?: string; title?: string; book?: string; chapter?: string };
+// verse opens the chapter at a verse (a search hit); it isn't remembered.
+type ReadParams = {
+  pubKey?: string;
+  title?: string;
+  book?: string;
+  chapter?: string;
+  verse?: string;
+};
 
 // The first installed Bible, at its first chapter.
 function firstInstalledBible(): Loaded<BibleLocation | undefined> {
@@ -92,6 +99,7 @@ export default function ReadScreen() {
       title={bible.title}
       book={bible.book}
       chapter={bible.chapter}
+      verse={fromParams === undefined || params.verse === undefined ? undefined : Number(params.verse)}
     />
   );
 }
