@@ -13,6 +13,10 @@ export const LARGE_TEXT_SCALE = 1.5;
 // downward, as Gesture Handler reports it.
 export const DISMISS_VELOCITY = 800;
 
+// The guide's pane margin, in dp, kept between the pane's bottom and the
+// tab bar.
+export const PANE_BOTTOM_MARGIN = 12;
+
 export type Release = { kind: 'close' } | { kind: 'snap'; fraction: number };
 
 export function paneDetents(fontScale: number): readonly number[] {
@@ -33,11 +37,12 @@ function clampFraction(value: number, min: number, max: number): number {
 
 /**
  * The tallest the pane may be, as a window fraction: from its top down to
- * the bottom of the chapter's visible area (above the tab bar and the
- * bottom inset), so its bottom never runs under them. All in the viewport's
- * coordinates: paneTop from the top of the visible area, visibleHeight that
- * area's height. It stays within [min, max]: a pane low in the viewport can
- * still be dragged to the minimum.
+ * PANE_BOTTOM_MARGIN above the bottom of the chapter's visible area (above
+ * the tab bar and the bottom inset), so its bottom never runs under them
+ * or sits flush on them. All in the viewport's coordinates: paneTop from
+ * the top of the visible area, visibleHeight that area's height. It stays
+ * within [min, max]: a pane low in the viewport can still be dragged to the
+ * minimum.
  */
 export function paneMaxFraction({
   paneTop,
@@ -54,7 +59,7 @@ export function paneMaxFraction({
 }): number {
   'worklet';
   if (windowHeight <= 0 || visibleHeight <= 0) return max;
-  return clampFraction((visibleHeight - paneTop) / windowHeight, min, max);
+  return clampFraction((visibleHeight - PANE_BOTTOM_MARGIN - paneTop) / windowHeight, min, max);
 }
 
 /**
@@ -114,9 +119,10 @@ export const SCROLL_TARGET = 0.2;
  *
  * A verse in the bottom 35% scrolls to about 20% from the top. Otherwise
  * the reader scrolls only as far as the pane needs to fit above the tab
- * bar, and never past that 20%. A pane that still doesn't fit opens
- * shorter, down to `lowest`; if not even that fits, the reader scrolls on
- * until the verse's top reaches the top of the visible area, never above.
+ * bar, PANE_BOTTOM_MARGIN clear of it, and never past that 20%. A pane
+ * that still doesn't fit opens shorter, down to `lowest`; if not even that
+ * fits, the reader scrolls on until the verse's top reaches the top of the
+ * visible area, never above.
  */
 export function openFit({
   verseTop,
@@ -137,10 +143,13 @@ export function openFit({
 }): { scrollBy: number; fraction: number } {
   if (windowHeight <= 0 || visibleHeight <= 0) return { scrollBy: 0, fraction: wanted };
   const toTarget = Math.max(verseTop - visibleHeight * SCROLL_TARGET, 0);
-  const overflow = paneTop + wanted * windowHeight - visibleHeight;
+  // The 20% target and the bottom-35% zone are of the whole visible area;
+  // the pane's fit stops PANE_BOTTOM_MARGIN short of its bottom.
+  const bottom = visibleHeight - PANE_BOTTOM_MARGIN;
+  const overflow = paneTop + wanted * windowHeight - bottom;
   let scrollBy =
     verseTop > visibleHeight * SCROLL_ZONE ? toTarget : clampFraction(overflow, 0, toTarget);
-  let room = visibleHeight - (paneTop - scrollBy);
+  let room = bottom - (paneTop - scrollBy);
   const short = lowest * windowHeight - room;
   if (short > 0) {
     const extra = Math.min(short, Math.max(verseTop - scrollBy, 0));

@@ -5,6 +5,7 @@ import { type NativeGesture, ScrollView } from 'react-native-gesture-handler';
 import { useContentInsets } from '@/design/tab-chrome';
 import { useBerean } from '@/design/theme';
 import { readingColumnPadding, readingMeasure, spacing } from '@/design/tokens';
+import { edgeFade } from '@/reader/edge-fade';
 
 // ReadingColumn's top padding: the column's y in the scroll content. A tab
 // root follows the look's stack options, which may hide the native header,
@@ -40,7 +41,7 @@ export function ReadingColumn({
   const paddingTop = useColumnPaddingTop(tabRoot);
   const measure = readingMeasure * fontScale;
   const padding = readingColumnPadding[look];
-  return (
+  const scroll = (
     <ScrollView
       {...scrollProps}
       onGestureUpdate_CAN_CAUSE_INFINITE_RERENDER={onScrollGesture}
@@ -56,8 +57,28 @@ export function ReadingColumn({
       <View style={[styles.column, { maxWidth: measure }]}>{children}</View>
     </ScrollView>
   );
+  if (!tabRoot || look !== 'ios') return scroll;
+  // The iOS look's tab root hides the native header, so scrolled text would
+  // sit under the status bar: a fade over its inset, a sibling over the
+  // scroll so the content's layout is untouched. On real iOS this becomes
+  // the system scroll-edge effect; this fade is for the preview look, where
+  // nothing covers the status bar. Wrapped whenever the look is iOS, so an
+  // inset change (rotation) doesn't remount the scroll.
+  return (
+    <View style={styles.fill}>
+      {scroll}
+      {insets.top > 0 && (
+        <View
+          pointerEvents="none"
+          style={[styles.edge, { height: insets.top + 8, backgroundImage: edgeFade(colors.surface) }]}
+        />
+      )}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
   column: { width: '100%', alignSelf: 'center', gap: spacing.md },
+  fill: { flex: 1 },
+  edge: { position: 'absolute', top: 0, left: 0, right: 0 },
 });

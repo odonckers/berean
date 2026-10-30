@@ -5,6 +5,7 @@ import {
   DISMISS_VELOCITY,
   MAX_HEIGHT,
   MIN_HEIGHT,
+  PANE_BOTTOM_MARGIN,
   cappedDetents,
   dragFraction,
   emptyDetents,
@@ -139,12 +140,16 @@ describe('paneMaxFraction', () => {
   const cap = (paneTop: number, visible = visibleHeight) =>
     paneMaxFraction({ paneTop, visibleHeight: visible, windowHeight, min: MIN_HEIGHT, max: MAX_HEIGHT });
 
-  test('from the pane top to the bottom of the visible area', () => {
-    // A pane 20% down the visible area: room for 632 - 126.4 = 505.6.
-    assert.ok(Math.abs(cap(126.4) - 505.6 / windowHeight) < 1e-9);
+  test('from the pane top to the margin above the bottom of the visible area', () => {
+    // A pane 20% down the visible area: room for 632 - 12 - 126.4 = 493.6.
+    assert.ok(Math.abs(cap(126.4) - 493.6 / windowHeight) < 1e-9);
     assert.ok(cap(126.4) < MAX_HEIGHT);
-    // Its bottom lands on the tab bar's top, never under it.
-    assert.ok(Math.abs(126.4 + cap(126.4) * windowHeight - visibleHeight) < 1e-9);
+  });
+
+  test('the cap leaves 12 between the pane and the tab bar', () => {
+    assert.equal(PANE_BOTTOM_MARGIN, 12);
+    const bottom = 126.4 + cap(126.4) * windowHeight;
+    assert.ok(Math.abs(visibleHeight - bottom - PANE_BOTTOM_MARGIN) < 1e-9);
   });
 
   test('never above 85%, however much room', () => {
@@ -237,23 +242,45 @@ describe('openFit', () => {
   test('at large text, a pane that would run under the tab bar scrolls just enough to fit', () => {
     // The verse about 45% down, the pane opening at 60% below it.
     const result = fit(315, 375, 0.6);
-    assert.equal(result.scrollBy, 155);
+    assert.equal(result.scrollBy, 167);
     assert.equal(result.fraction, 0.6);
-    assert.equal(paneBottom(375, result), visibleHeight);
+    assert.equal(paneBottom(375, result), visibleHeight - PANE_BOTTOM_MARGIN);
   });
 
   test('the fit scroll stops at 20%; past that the pane opens shorter', () => {
     const result = fit(200, 450, 0.6);
     assert.equal(result.scrollBy, 60);
     assert.equal(200 - result.scrollBy, 140);
-    assert.equal(result.fraction, 310 / windowHeight);
-    assert.equal(paneBottom(450, result), visibleHeight);
+    assert.equal(result.fraction, 298 / windowHeight);
+    assert.equal(paneBottom(450, result), visibleHeight - PANE_BOTTOM_MARGIN);
+  });
+
+  test('a room-limited pane leaves exactly 12 above the bottom of the visible area', () => {
+    for (const [verseTop, paneTop, wanted] of [
+      [200, 450, 0.6],
+      [300, 400, 0.85],
+      [150, 600, 0.4],
+    ] as const) {
+      const result = fit(verseTop, paneTop, wanted);
+      assert.ok(result.fraction < wanted, `room-limited at ${verseTop}`);
+      assert.ok(
+        Math.abs(visibleHeight - paneBottom(paneTop, result) - PANE_BOTTOM_MARGIN) < 1e-9,
+        `margin at ${verseTop}`,
+      );
+    }
+  });
+
+  test('a verse in the bottom 35% still lands its first line at 20% of the visible area', () => {
+    for (const verseTop of [460, 560, 690]) {
+      const result = fit(verseTop, verseTop + 40, 0.4);
+      assert.equal(verseTop - result.scrollBy, visibleHeight * 0.2, `verse at ${verseTop}`);
+    }
   });
 
   test('if not even the lowest height fits, it scrolls on, never past the top', () => {
     const result = fit(150, 600, 0.4);
     assert.equal(result.fraction, MIN_HEIGHT);
-    assert.equal(paneBottom(600, result), visibleHeight);
+    assert.equal(paneBottom(600, result), visibleHeight - PANE_BOTTOM_MARGIN);
     assert.ok(150 - result.scrollBy >= 0);
     // A verse taller than the visible area: its top stops at the top.
     const tall = fit(120, 690, 0.4);
