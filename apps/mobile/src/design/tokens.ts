@@ -290,8 +290,11 @@ export const readingType: Record<ReadingVariant, TypeRole> = {
 const averageCharEm = 0.48;
 export const readingMeasure = Math.round(70 * averageCharEm * scriptureFontSize);
 
-// Verse numbers use the UI font with tabular figures.
+// Verse numbers use the UI font with tabular figures. They are spans in the
+// serif scripture text, so they name the system family ('System' on iOS;
+// Android falls back to its default sans) rather than inherit the serif.
 export const verseNumberType: TypeRole = {
+  fontFamily: 'System',
   fontSize: 11,
   fontWeight: '600',
   fontVariant: ['tabular-nums'],
