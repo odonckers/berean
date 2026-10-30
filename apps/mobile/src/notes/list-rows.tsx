@@ -69,6 +69,8 @@ type ListRowProps = {
   separated?: boolean;
   chevron?: boolean;
   accent?: boolean;
+  /** The row whose note is open beside the list (list-detail). */
+  selected?: boolean;
   onPress: () => void;
   onLongPress?: () => void;
   /** Material look: a trailing overflow ⋮ that opens the row's menu there. */
@@ -93,6 +95,7 @@ export function ListRow({
   separated = false,
   chevron = false,
   accent = false,
+  selected,
   onPress,
   onLongPress,
   onMenu,
@@ -116,6 +119,7 @@ export function ListRow({
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? (detail ? `${label}, ${detail}` : label)}
       accessibilityHint={accessibilityHint}
+      accessibilityState={selected === undefined ? undefined : { selected }}
       accessibilityActions={accessibilityActions ? [...accessibilityActions] : undefined}
       onAccessibilityAction={onAccessibilityAction}
       onPress={onPress}
@@ -124,6 +128,7 @@ export function ListRow({
       style={({ pressed }) => [
         material ? styles.materialRow : styles.iosRow,
         { backgroundColor: material ? m3.surface : colors.surfaceRaised },
+        selected && { backgroundColor: material ? m3.secondaryContainer : colors.separator },
         !material && pressed && { backgroundColor: colors.separator },
       ]}
     >

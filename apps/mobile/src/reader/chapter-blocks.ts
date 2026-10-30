@@ -113,17 +113,20 @@ const NO_BREAK_SPACE = String.fromCharCode(0xa0);
 /**
  * A verse number's span, in pieces: the separator from the run before (a
  * plain space, or none at the block's start), the pad either side of the
- * label inside its background, and the space after it. All of it is the
- * number's touch target.
+ * label inside its background, the notes count badge after it on compact
+ * layouts (padded the same, empty without notes), and the space after it.
+ * All of it is the number's touch target.
  */
 export function numberSpan(
   label: string,
   separated: boolean,
-): { separator: string; pad: string; label: string; trailing: string } {
+  notes?: string,
+): { separator: string; pad: string; label: string; badge: string; trailing: string } {
   return {
     separator: separated ? ' ' : '',
     pad: NARROW_NO_BREAK_SPACE,
     label,
+    badge: notes === undefined ? '' : `${NARROW_NO_BREAK_SPACE}${notes}${NARROW_NO_BREAK_SPACE}`,
     trailing: NO_BREAK_SPACE,
   };
 }
@@ -148,17 +151,22 @@ export function paneSplit(
 
 /**
  * Where a verse's number starts in its block's text, as drawn from
- * blockSegments and numberSpan: the offset of its fill, after the
- * separator. None if the block doesn't number the verse.
+ * blockSegments and numberSpan (with each verse's notes badge, if any):
+ * the offset of its fill, after the separator. None if the block doesn't
+ * number the verse.
  */
-export function numberOffset(runs: readonly Run[], verse: number): number | undefined {
+export function numberOffset(
+  runs: readonly Run[],
+  verse: number,
+  badges?: ReadonlyMap<number, string>,
+): number | undefined {
   let offset = 0;
   for (const segment of blockSegments(runs)) {
     if (segment.kind === 'space') offset += 1;
     else if (segment.kind === 'number') {
-      const span = numberSpan(segment.label, segment.separated);
+      const span = numberSpan(segment.label, segment.separated, badges?.get(segment.verse));
       if (segment.verse === verse) return offset + span.separator.length;
-      offset += [span.separator, span.pad, span.label, span.pad, span.trailing].join('').length;
+      offset += [span.separator, span.pad, span.label, span.pad, span.badge, span.trailing].join('').length;
     } else offset += segment.text.length;
   }
   return undefined;

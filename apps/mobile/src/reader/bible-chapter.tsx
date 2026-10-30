@@ -37,6 +37,16 @@ import { highlightSpokenNames } from '@/design/tokens';
 import { useTopAppBarFill } from '@/design/use-top-app-bar-fill';
 import { reader } from '@/ffi/core';
 import { load } from '@/library/load';
+import { addNoteAt, snippetOf } from '@/notes/data';
+import { noteTitle, shortDate } from '@/notes/note-list';
+import { openNote } from '@/notes/routes';
+import {
+  addNoteLabel,
+  mergeMarkers,
+  noteMarkerMode,
+  showNotesLabel,
+  verseNotesSubject,
+} from '@/notes/verse-notes';
 import {
   type ChapterLocation,
   chapterHeading,
@@ -50,7 +60,7 @@ import {
 import { BiblePicker } from '@/reader/bible-picker';
 import { copiedVerse, copyConfirmation, verseText } from '@/reader/copy-verse';
 import { HighlightSheet } from '@/reader/highlight-sheet';
-import { highlightActionLabel, segmentHighlight, verseSubject } from '@/reader/highlights';
+import { highlightActionLabel, segmentHighlight } from '@/reader/highlights';
 import { type LandedVerse, landedLabel, landedVerse } from '@/reader/landed-verse';
 import {
   type Run,
@@ -66,6 +76,7 @@ import {
   withoutBookTitle,
 } from '@/reader/chapter-blocks';
 import {
+  LARGE_TEXT_SCALE,
   MAX_HEIGHT,
   MIN_HEIGHT,
   openFit,
@@ -79,8 +90,10 @@ import {
   rememberVerse,
   restoredPane,
 } from '@/reader/session';
-import { StudyPane, moveAccessibilityFocus } from '@/reader/study-pane';
+import { MARKER_GUTTER, NoteMarker } from '@/reader/note-marker';
+import { type PaneNote, StudyPane, moveAccessibilityFocus } from '@/reader/study-pane';
 import { useChapterHighlights } from '@/reader/use-chapter-highlights';
+import { useChapterNotes } from '@/reader/use-chapter-notes';
 import { markersByVerse, paneStudy, studyActionLabel } from '@/reader/verse-study';
 
 // Study guide installation isn't modelled yet, so the guide is treated as
@@ -92,6 +105,12 @@ const GUIDE_INSTALLED = false;
 const VERSE_ACTION = 'verse-';
 const HIGHLIGHT_ACTION = 'highlight-';
 const COPY_ACTION = 'copy-';
+// And, per verse: Show notes (with notes) and Add note.
+const NOTES_ACTION = 'notes-';
+const ADD_NOTE_ACTION = 'addnote-';
+
+type LineBox = { y: number; height: number; text: string };
+type BlockBox = { top?: number; lines?: readonly LineBox[] };
 
 type Selection = {
   chapterKey: string;
@@ -101,6 +120,10 @@ type Selection = {
   fraction?: number;
   /** The pane is collapsing; it unmounts when its animation finishes. */
   closing: boolean;
+  /** Opened at My notes (a margin marker, Show notes), focus on the first note. */
+  atNotes?: boolean;
+  /** Bumped to show My notes again in the open pane. */
+  notesAsk?: number;
 };
 
 export function BibleChapterView({
@@ -125,7 +148,7 @@ export function BibleChapterView({
   const fill = useTopAppBarFill();
   const columnTop = useColumnPaddingTop(true);
   const contentInsets = useContentInsets();
-  const { height: windowHeight } = useWindowDimensions();
+  const { height: windowHeight, width: windowWidth, fontScale } = useWindowDimensions();
   // A synchronous FFI call on the JS thread; agreed for now.
   const loaded = useMemo(
     () => load(() => reader().bibleChapter(pubKey, book, chapter)),
@@ -192,6 +215,19 @@ export function BibleChapterView({
     [chapterContent],
   );
   const highlights = useChapterHighlights(pubKey, book, chapter, verses);
+  // The chapter's notes by verse (guide §7.2): margin markers where the
+  // reader has a margin, else a count badge on the verse number.
+  const chapterNotes = useChapterNotes(pubKey, book, chapter);
+  const noteMode = noteMarkerMode(windowWidth, fontScale, LARGE_TEXT_SCALE);
+  const notesOn = (verse: number) => chapterNotes.get(verse)?.length ?? 0;
+  const badges = useMemo(
+    () =>
+      noteMode === 'badge'
+        ? new Map([...chapterNotes].map(([verse, list]) => [verse, String(list.length)]))
+        : undefined,
+    [noteMode, chapterNotes],
+  );
+  const addNote = (verse: number) => addNoteAt({ pubKey, book, chapter, verse });
   const spokenHighlight = (verse: number) => {
     const color = highlights.byVerse.get(verse)?.color;
     return color === undefined ? undefined : highlightSpokenNames[color];
@@ -257,6 +293,27 @@ export function BibleChapterView({
   // open auto-scroll.
   const blockTops = useRef(new Map<number, number>());
   const blockLines = useRef(new Map<number, TextLayoutEvent['nativeEvent']['lines']>());
+  // Margin layouts: every drawn block's top and lines, continuations
+  // included, by its key, for the note markers. Collected as blocks lay
+  // out and handed to render once a frame.
+  const markerBoxesRef = useRef(new Map<string, BlockBox>());
+  const [markerBoxes, setMarkerBoxes] = useState<ReadonlyMap<string, BlockBox>>(new Map());
+  const markerFrame = useRef<number | undefined>(undefined);
+  const recordBox = (key: string, part: BlockBox) => {
+    if (noteMode !== 'margin') return;
+    markerBoxesRef.current.set(key, { ...markerBoxesRef.current.get(key), ...part });
+    if (markerFrame.current !== undefined) return;
+    markerFrame.current = requestAnimationFrame(() => {
+      markerFrame.current = undefined;
+      setMarkerBoxes(new Map(markerBoxesRef.current));
+    });
+  };
+  useEffect(
+    () => () => {
+      if (markerFrame.current !== undefined) cancelAnimationFrame(markerFrame.current);
+    },
+    [],
+  );
   // A verse the chapter opened at, until it has been scrolled to.
   const pendingVerse = useRef<number | undefined>(undefined);
   // The verse a search hit opened the chapter at, marked like the selected
@@ -295,6 +352,7 @@ export function BibleChapterView({
   useLayoutEffect(() => {
     blockTops.current.clear();
     blockLines.current.clear();
+    markerBoxesRef.current.clear();
     pendingVerse.current = undefined;
   }, [chapterKey]);
 
@@ -337,10 +395,22 @@ export function BibleChapterView({
     requestAnimationFrame(() => moveAccessibilityFocus(target));
   }, [chapterKey, selected, closing, chapterContent]);
 
-  const openVerse = (verse: number) => {
+  const openVerse = (verse: number, atNotes = false) => {
     rememberVerse(chapterKey, verse);
-    setSelection({ chapterKey, verse, restored: false, closing: false });
+    setSelection({ chapterKey, verse, restored: false, closing: false, atNotes });
     void Haptics.selectionAsync().catch(() => {});
+  };
+
+  // A margin marker or Show notes: the verse's pane at My notes, no tab
+  // selected, focus on its first note. An open pane on the verse switches
+  // to My notes in place.
+  const showNotes = (verse: number) => {
+    setLanded((prev) => landedVerse(prev, { kind: 'press', verse }));
+    if (current?.verse === verse) {
+      setSelection({ ...current, closing: false, atNotes: true, notesAsk: (current.notesAsk ?? 0) + 1 });
+    } else {
+      openVerse(verse, true);
+    }
   };
 
   const onPaneLayout = (e: LayoutChangeEvent) => {
@@ -356,7 +426,7 @@ export function BibleChapterView({
     const top = blockTops.current.get(index);
     if (block?.kind !== 'paragraph' || top === undefined) return undefined;
     const lines = blockLines.current.get(index) ?? [];
-    const offset = numberOffset(block.runs, verse);
+    const offset = numberOffset(block.runs, verse, badges);
     const line = offset === undefined ? undefined : lines[lineAt(lines, offset)];
     return top + (line?.y ?? 0);
   };
@@ -563,8 +633,10 @@ export function BibleChapterView({
   // RN Text has no first-line indent yet, so a continuation block (the rest
   // of a paragraph after the pane) has the same style as its first block;
   // once paragraphs carry an indent, the continuation leaves it off.
+  const drawnBlocks: { key: string; runs: readonly Run[] }[] = [];
   const renderBlock = (key: string, runs: readonly Run[], blockIndex?: number) => {
     const segments = blockSegments(runs);
+    drawnBlocks.push({ key, runs });
     return (
       <Text
         key={key}
@@ -576,22 +648,18 @@ export function BibleChapterView({
                 else blockRefs.current.delete(blockIndex);
               }
         }
-        onLayout={
-          blockIndex === undefined
-            ? undefined
-            : (e) => {
-                blockTops.current.set(blockIndex, e.nativeEvent.layout.y);
-                scrollToPending();
-              }
-        }
-        onTextLayout={
-          blockIndex === undefined
-            ? undefined
-            : (e) => {
-                blockLines.current.set(blockIndex, e.nativeEvent.lines);
-                scrollToPending();
-              }
-        }
+        onLayout={(e) => {
+          recordBox(key, { top: e.nativeEvent.layout.y });
+          if (blockIndex === undefined) return;
+          blockTops.current.set(blockIndex, e.nativeEvent.layout.y);
+          scrollToPending();
+        }}
+        onTextLayout={(e) => {
+          recordBox(key, { lines: e.nativeEvent.lines });
+          if (blockIndex === undefined) return;
+          blockLines.current.set(blockIndex, e.nativeEvent.lines);
+          scrollToPending();
+        }}
         style={[type.reading.scripture, { color: colors.text }]}
         accessibilityActions={numberedVerses(runs).flatMap((verse) => [
           {
@@ -601,16 +669,18 @@ export function BibleChapterView({
                 verse,
                 markers.get(verse),
                 verse === open,
-                verseSubject(verse, spokenHighlight(verse)),
+                verseNotesSubject(verse, notesOn(verse), spokenHighlight(verse)),
               ),
               verse === landedHere,
             ),
           },
+          ...(notesOn(verse) > 0 ? [{ name: `${NOTES_ACTION}${verse}`, label: showNotesLabel(verse) }] : []),
           {
             name: `${HIGHLIGHT_ACTION}${verse}`,
             label: highlightActionLabel(verse, spokenHighlight(verse)),
           },
           { name: `${COPY_ACTION}${verse}`, label: `Copy verse ${verse}` },
+          { name: `${ADD_NOTE_ACTION}${verse}`, label: addNoteLabel(verse) },
         ])}
         onAccessibilityAction={(e) => {
           const { actionName } = e.nativeEvent;
@@ -627,6 +697,12 @@ export function BibleChapterView({
           } else if (actionName.startsWith(COPY_ACTION)) {
             const verse = numbered(COPY_ACTION);
             if (verse !== undefined) copyVerse(verse);
+          } else if (actionName.startsWith(NOTES_ACTION)) {
+            const verse = numbered(NOTES_ACTION);
+            if (verse !== undefined) showNotes(verse);
+          } else if (actionName.startsWith(ADD_NOTE_ACTION)) {
+            const verse = numbered(ADD_NOTE_ACTION);
+            if (verse !== undefined) addNote(verse);
           }
         }}
       >
@@ -645,8 +721,10 @@ export function BibleChapterView({
             }
             // The design gives the closed state's study marker no style yet,
             // so the markers' counts are only in the verse's action label.
+            // On compact layouts a verse with notes carries their count
+            // after its number, inside the number's target.
             case 'number': {
-              const span = numberSpan(segment.label, segment.separated);
+              const span = numberSpan(segment.label, segment.separated, badges?.get(segment.verse));
               return (
                 <Text key={index} onPress={() => toggle(segment.verse)}>
                   {span.separator}
@@ -662,6 +740,16 @@ export function BibleChapterView({
                     {span.label}
                     {span.pad}
                   </Text>
+                  {span.badge !== '' && (
+                    <Text
+                      style={[
+                        type.verseNumber,
+                        { color: m3.onSecondaryContainer, backgroundColor: m3.secondaryContainer },
+                      ]}
+                    >
+                      {span.badge}
+                    </Text>
+                  )}
                   {span.trailing}
                 </Text>
               );
@@ -698,6 +786,12 @@ export function BibleChapterView({
   // The study pane goes after the selected verse's last part, so the whole
   // verse is above it, even when it runs on over lines of poetry.
   const split = paneSplit(chapterContent, selected);
+  const paneNotes: PaneNote[] = (selected === undefined ? [] : (chapterNotes.get(selected) ?? [])).map((n) => ({
+    id: n.id,
+    title: noteTitle(n),
+    date: shortDate(n.modified),
+    snippet: snippetOf(n),
+  }));
 
   // Each paragraph is one block; a heading is its own block. The paragraph
   // ending the selected verse splits after it: the runs up to it, the study
@@ -735,9 +829,51 @@ export function BibleChapterView({
         onResize={(fraction) => rememberPaneFraction(chapterKey, fraction)}
         onLayout={onPaneLayout}
         fitOpen={fitOpen}
+        notes={paneNotes}
+        atNotes={current?.atNotes ?? false}
+        focusNotes={current?.atNotes ?? false}
+        notesAsk={current?.notesAsk ?? 0}
+        onNewNote={() => selected !== undefined && addNote(selected)}
+        onOpenNote={openNote}
       />,
       after.length > 0 && renderBlock(`b${index}-continued`, after),
     ];
+  });
+
+  // Margin markers beside each noted verse's first line, one per line
+  // (verses starting on the same line merge), from the drawn blocks' last
+  // layout. They sit in the gutter, outside the text flow.
+  const markerLines = new Map<string, LineBox & { top: number }>();
+  const markerEntries =
+    noteMode !== 'margin'
+      ? []
+      : drawnBlocks.flatMap(({ key, runs }) => {
+          const box = markerBoxes.get(key);
+          if (box?.top === undefined || box.lines === undefined || box.lines.length === 0) return [];
+          const { top, lines } = box;
+          return numberedVerses(runs).flatMap((verse) => {
+            const count = notesOn(verse);
+            const offset = count > 0 ? numberOffset(runs, verse) : undefined;
+            if (offset === undefined) return [];
+            const index = lineAt(lines, offset);
+            const line = `${key}:${index}`;
+            markerLines.set(line, { ...lines[index], top: top + lines[index].y });
+            return [{ verse, line, count }];
+          });
+        });
+  const noteMarkers = mergeMarkers(markerEntries).map((group) => {
+    const line = markerLines.get(group.line)!;
+    return (
+      <NoteMarker
+        key={group.line}
+        heading={heading}
+        verses={group.verses}
+        count={group.count}
+        lineTop={line.top}
+        lineHeight={line.height}
+        onPress={() => showNotes(group.verses[0])}
+      />
+    );
   });
 
   return (
@@ -745,6 +881,7 @@ export function BibleChapterView({
       {screenOptions}
       <ReadingColumn
         tabRoot
+        leadingGutter={noteMode === 'margin' ? MARKER_GUTTER : 0}
         ref={scrollRef}
         scrollEventThrottle={16}
         onScrollGesture={(gesture) =>
@@ -791,7 +928,10 @@ export function BibleChapterView({
             paragraph keeps its Fabric shadow family and the pills keep
             their tags, and Android drew the pills at stale positions over
             the new text. */}
-        <Fragment key={chapterKey}>{blocks}</Fragment>
+        <Fragment key={chapterKey}>
+          {blocks}
+          {noteMarkers}
+        </Fragment>
         <View style={styles.navRow}>
           {previous}
           <View style={styles.navSpacer} />
@@ -812,6 +952,14 @@ export function BibleChapterView({
           }
           onRemove={() => settle(actionsHere.verse, highlights.remove(actionsHere.verse))}
           onCopy={() => copyVerse(actionsHere.verse)}
+          onAddNote={() => {
+            const verse = actionsHere.verse;
+            closeActions();
+            // iOS can't present the editor while the sheet's Modal is still
+            // dismissing; it waits out the sheet's fade there.
+            if (Platform.OS === 'ios') setTimeout(() => addNote(verse), 350);
+            else addNote(verse);
+          }}
           onClose={closeActions}
         />
       )}

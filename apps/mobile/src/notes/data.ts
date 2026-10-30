@@ -11,7 +11,7 @@ import {
 } from 'berean-ffi-rn';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Linking } from 'react-native';
+import { Alert, Linking } from 'react-native';
 
 import { library, reader, userdata } from '@/ffi/core';
 import { coreErrorMessage } from '@/ffi/errors';
@@ -21,6 +21,7 @@ import { spanReference } from '@/reader/bible-nav';
 import { chapterBlocks } from '@/reader/chapter-blocks';
 import { verseText } from '@/reader/copy-verse';
 import { notesChanged, onNotesChanged } from '@/notes/changes';
+import { openVerseEditor } from '@/notes/routes';
 import { noteSnippet, spanStart, spanVerses, type NoteSpan } from '@/notes/note-text';
 
 /**
@@ -162,4 +163,17 @@ export function openPublication(location: Location) {
 
 export function openExternal(url: string) {
   Linking.openURL(url).catch(() => {});
+}
+
+/**
+ * New note at a verse (the study pane's New note, the verse's Add note):
+ * an empty note there, unfiled and on no highlight, opened in the editor.
+ */
+export function addNoteAt(location: Location) {
+  let made: Note | undefined;
+  const error = changeNotes(() => {
+    made = userdata().addNote('', '', location, undefined, undefined);
+  });
+  if (error !== undefined) Alert.alert('Couldn’t make a note', error);
+  else if (made !== undefined) openVerseEditor(made.id);
 }

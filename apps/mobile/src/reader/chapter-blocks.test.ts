@@ -153,9 +153,12 @@ describe('block segments', () => {
       separator: ' ',
       pad: String.fromCharCode(0x202f),
       label: '12',
+      badge: '',
       trailing: String.fromCharCode(0xa0),
     });
     assert.equal(numberSpan('1', false).separator, '');
+    const nnbsp = String.fromCharCode(0x202f);
+    assert.equal(numberSpan('4', true, '2').badge, `${nnbsp}2${nnbsp}`);
   });
 });
 
@@ -265,6 +268,23 @@ describe("where a verse's number is in its block", () => {
       assert.equal(drawn.slice(offset, offset + pad.length + label.length), pad + label);
       assert.equal(drawn[offset - 1], ' ');
     }
+  });
+
+  test('a notes badge moves the offsets after it', () => {
+    const badges = new Map([[1, '2']]);
+    const badged = blockSegments(runs)
+      .map((segment) => {
+        if (segment.kind === 'space') return ' ';
+        if (segment.kind !== 'number') return segment.text;
+        const span = numberSpan(segment.label, segment.separated, badges.get(segment.verse));
+        return span.separator + span.pad + span.label + span.pad + span.badge + span.trailing;
+      })
+      .join('');
+    assert.equal(numberOffset(runs, 1, badges), 0);
+    const offset = numberOffset(runs, 3, badges);
+    assert.ok(offset !== undefined);
+    assert.equal(badged.slice(offset, offset + pad.length + 2), `${pad}10`);
+    assert.equal(offset, (numberOffset(runs, 3) ?? 0) + 3);
   });
 
   test('none for a verse the block does not number', () => {

@@ -31,6 +31,8 @@ type HighlightSheetProps = {
   onChoose: (color: HighlightName) => void;
   onRemove: () => void;
   onCopy: () => void;
+  /** Add note: a new note at the verse, opened in the editor. */
+  onAddNote: () => void;
   onClose: () => void;
 };
 
@@ -54,6 +56,7 @@ export function HighlightSheet({
   onChoose,
   onRemove,
   onCopy,
+  onAddNote,
   onClose,
 }: HighlightSheetProps) {
   const { look, scheme, colors, m3, highlights, type } = useBerean();
@@ -196,6 +199,31 @@ export function HighlightSheet({
             )}
             <UIText style={{ color: material ? m3.onSurface : colors.accent }}>Copy verse</UIText>
           </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add note"
+            onPress={onAddNote}
+            onFocus={followRing}
+            style={({ pressed }) => [
+              material ? styles.materialItem : styles.iosRow,
+              !material && { borderTopColor: colors.separator },
+              material && styles.materialItemNext,
+              !material && styles.iosRowNext,
+              { opacity: pressed ? 0.6 : 1 },
+            ]}
+          >
+            {material && (
+              <ScaledSymbol
+                name={{ ios: 'square.and.pencil', android: 'note_add' }}
+                size={24}
+                tintColor={m3.onSurfaceVariant}
+                accessible={false}
+                importantForAccessibility="no-hide-descendants"
+                accessibilityElementsHidden
+              />
+            )}
+            <UIText style={{ color: material ? m3.onSurface : colors.accent }}>Add note</UIText>
+          </Pressable>
         </View>
       </View>
     </Modal>
@@ -251,6 +279,9 @@ const styles = StyleSheet.create({
   },
   // M3 one-line list item with a leading icon: 56dp, the icon 16dp from
   // the label. The sheet's padding is the item's.
+  // Rows after Copy verse sit right under it.
+  iosRowNext: { marginTop: 0 },
+  materialItemNext: { marginTop: 0 },
   materialItem: {
     minHeight: 56,
     flexDirection: 'row',

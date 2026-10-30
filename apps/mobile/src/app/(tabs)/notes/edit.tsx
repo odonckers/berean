@@ -18,8 +18,10 @@ import { openNote } from '@/notes/routes';
  * reading serif. Save hands both to the core, which re-syncs inline #tags.
  */
 export default function EditNoteScreen() {
-  const { id = '', fresh } = useLocalSearchParams<{ id: string; fresh?: string }>();
+  const { id = '', fresh, stay } = useLocalSearchParams<{ id: string; fresh?: string; stay?: string }>();
   const isFresh = fresh === '1';
+  // Started in the reader: Save goes back to the verse, not to the note.
+  const staysPut = stay === '1';
   const { colors, type } = useBerean();
   const insets = useContentInsets();
   const keyboard = useKeyboardHeight();
@@ -41,7 +43,7 @@ export default function EditNoteScreen() {
       Alert.alert('Couldn’t save the note', error);
       return;
     }
-    if (isFresh) {
+    if (isFresh && !staysPut) {
       router.back();
       openNote(id);
     } else {

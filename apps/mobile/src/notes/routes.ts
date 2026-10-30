@@ -23,3 +23,8 @@ export function bigintParam(value: string | undefined): bigint | undefined {
   if (value === undefined || !/^-?\d+$/.test(value)) return undefined;
   return BigInt(value);
 }
+
+/** The editor over the tabs, for a note just made at a verse: Save and Cancel return to the reader. */
+export function openVerseEditor(id: string) {
+  router.push({ pathname: '/note-editor', params: { id, fresh: '1', stay: '1' } });
+}

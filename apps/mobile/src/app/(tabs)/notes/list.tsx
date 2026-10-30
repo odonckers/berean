@@ -1,7 +1,7 @@
 import { FolderScope, type Folder, type Note, type NoteFilter, type Tag } from 'berean-ffi-rn';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { type ReactElement, useState } from 'react';
-import { Alert, FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, FlatList, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 
 import { FilterChip } from '@/components/filter-chip';
 import { ScaledSymbol } from '@/components/scaled-symbol';
@@ -24,6 +24,8 @@ import {
   folderCounts,
 } from '@/notes/folders';
 import { ListRow, ListSection, SwipeRow } from '@/notes/list-rows';
+import { NoteReader } from '@/notes/note-reader';
+import { notesColumns } from '@/notes/verse-notes';
 import {
   byModified,
   chipTags,
@@ -125,6 +127,12 @@ export default function NoteListScreen() {
   const fill = useTopAppBarFill();
   const undo = useUndo();
   const [selected, setSelected] = useState<bigint[]>([]);
+  // List-detail from 640 wide (guide §7.1 columns): the note opens beside
+  // the list. The three-column layout's folders column isn't drawn yet, so
+  // 1000 and wider is two columns too.
+  const { width } = useWindowDimensions();
+  const twoPane = notesColumns(width) >= 2;
+  const [openId, setOpenId] = useState<string>();
 
   const key = `${scope}/${params.id ?? ''}/${selected.join(',')}`;
   const data = useNotesRead(key, () => readList(scope, id, selected));
@@ -148,6 +156,10 @@ export default function NoteListScreen() {
   const chips = value ? chipTags(value.tags, value.base, selected, scope === 'tag' ? id : undefined) : [];
   const filtered = selected.length > 0;
   const title = listTitle(scope, id, value);
+  // The open note beside the list: the one chosen, while it's listed, else the first.
+  const detailId = twoPane
+    ? (value?.shown.find((n) => n.id === openId) ?? value?.shown[0])?.id
+    : undefined;
 
   const header = (
     <View>
@@ -225,7 +237,8 @@ export default function NoteListScreen() {
           accessibilityHint="Opens the note. Long press for actions"
           accessibilityActions={NOTE_ACTIONS}
           onAccessibilityAction={(e) => noteActions.run(item, e.nativeEvent.actionName as NoteAction)}
-          onPress={() => openNote(item.id)}
+          selected={item.id === detailId}
+          onPress={() => (twoPane ? setOpenId(item.id) : openNote(item.id))}
           onLongPress={() => noteActions.openMenu(item)}
           onMenu={material ? (anchor) => noteActions.openMenu(item, anchor) : undefined}
         >
@@ -281,51 +294,66 @@ export default function NoteListScreen() {
               : undefined,
         }}
       />
-      {!data.ok ? (
-        <UIText style={[styles.message, { color: colors.accent }]}>{data.message}</UIText>
-      ) : (
-        <FlatList
-          style={{ backgroundColor: colors.surface }}
-          contentInsetAdjustmentBehavior="automatic"
-          contentContainerStyle={{
-            paddingTop: insets.top,
-            // Room for the FAB and Undo over the last row.
-            paddingBottom: insets.bottom + (canAdd && material ? 96 : spacing.xxl) + undo.height,
-            paddingLeft: insets.left,
-            paddingRight: insets.right,
-          }}
-          scrollEventThrottle={16}
-          {...fill}
-          data={data.value.shown}
-          keyExtractor={(note) => note.id}
-          ListHeaderComponent={header}
-          ListEmptyComponent={
-            <View style={styles.message}>
-              <UIText secondary>{emptyCopy(scope, filtered)}</UIText>
-            </View>
-          }
-          renderItem={(info) => rowsGroup(renderNote(info), info.index, data.value.shown.length)}
-        />
-      )}
-      {canAdd && material && (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="New note"
-          onPress={newNote}
-          android_ripple={{ color: m3.outline, borderless: false }}
-          style={({ pressed }) => [
-            styles.fab,
-            {
-              bottom: insets.bottom + spacing.lg + undo.height,
-              right: insets.right + spacing.lg,
-              backgroundColor: m3.secondaryContainer,
-              opacity: pressed ? 0.9 : 1,
-            },
-          ]}
-        >
-          <ScaledSymbol name={{ ios: 'square.and.pencil', android: 'edit' }} size={24} tintColor={m3.onSecondaryContainer} />
-        </Pressable>
-      )}
+      <View style={twoPane ? styles.panes : styles.single}>
+        <View style={twoPane ? [styles.listPane, { width: width >= 1000 ? 400 : 360, borderEndColor: colors.separator }] : styles.single}>
+          {!data.ok ? (
+            <UIText style={[styles.message, { color: colors.accent }]}>{data.message}</UIText>
+          ) : (
+            <FlatList
+              style={{ backgroundColor: colors.surface }}
+              contentInsetAdjustmentBehavior="automatic"
+              contentContainerStyle={{
+                paddingTop: insets.top,
+                // Room for the FAB and Undo over the last row.
+                paddingBottom: insets.bottom + (canAdd && material ? 96 : spacing.xxl) + undo.height,
+                paddingLeft: insets.left,
+                paddingRight: twoPane ? 0 : insets.right,
+              }}
+              scrollEventThrottle={16}
+              {...fill}
+              data={data.value.shown}
+              keyExtractor={(note) => note.id}
+              ListHeaderComponent={header}
+              ListEmptyComponent={
+                <View style={styles.message}>
+                  <UIText secondary>{emptyCopy(scope, filtered)}</UIText>
+                </View>
+              }
+              renderItem={(info) => rowsGroup(renderNote(info), info.index, data.value.shown.length)}
+            />
+          )}
+          {canAdd && material && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="New note"
+              onPress={newNote}
+              android_ripple={{ color: m3.outline, borderless: false }}
+              style={({ pressed }) => [
+                styles.fab,
+                {
+                  bottom: insets.bottom + spacing.lg + undo.height,
+                  right: (twoPane ? 0 : insets.right) + spacing.lg,
+                  backgroundColor: m3.secondaryContainer,
+                  opacity: pressed ? 0.9 : 1,
+                },
+              ]}
+            >
+              <ScaledSymbol name={{ ios: 'square.and.pencil', android: 'edit' }} size={24} tintColor={m3.onSecondaryContainer} />
+            </Pressable>
+          )}
+        </View>
+        {twoPane && (
+          <View style={styles.detailPane}>
+            {detailId !== undefined ? (
+              <NoteReader key={detailId} id={detailId} embedded onDeleted={() => setOpenId(undefined)} />
+            ) : (
+              <UIText secondary style={styles.message}>
+                No note selected.
+              </UIText>
+            )}
+          </View>
+        )}
+      </View>
       {folderActions.sheets}
       {noteActions.sheets}
     </>
@@ -334,6 +362,10 @@ export default function NoteListScreen() {
 
 const styles = StyleSheet.create({
   chips: { gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
+  single: { flex: 1 },
+  panes: { flex: 1, flexDirection: 'row' },
+  listPane: { borderEndWidth: StyleSheet.hairlineWidth },
+  detailPane: { flex: 1 },
   count: { paddingHorizontal: spacing.lg + spacing.xs, paddingTop: spacing.xs },
   gap: { height: spacing.lg },
   snippet: { fontSize: 15 },
