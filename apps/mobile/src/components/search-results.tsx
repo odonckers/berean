@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -30,10 +30,13 @@ import {
 const EMPTY_HINT =
   'Search the Bible and your installed publications by word. Put a phrase in quotes to match it exactly.';
 
-/** The rows a scope shows, grouped, in order. */
-export function useVisibleGroups(): Group<ResultRow>[] {
-  const { groups, scope } = useSearch();
-  return visibleGroups(groups, scope);
+/**
+ * The rows a scope shows, grouped, in order: the shared scope's, or `scope`
+ * where a view shows its own (the Material palette always shows All).
+ */
+export function useVisibleGroups(scope?: Scope): Group<ResultRow>[] {
+  const search = useSearch();
+  return visibleGroups(search.groups, scope ?? search.scope);
 }
 
 /** "All 54", "Verses 42", "Publications 6": the scope chips, with counts. */
@@ -183,8 +186,8 @@ function StatusLine() {
 }
 
 type SearchResultsProps = {
-  /** Above the results, e.g. the scope chips; shown once there are results. */
-  header?: ReactElement;
+  /** The scope shown, where it isn't the shared one. */
+  scope?: Scope;
   /** Runs after the hit opens, e.g. to close the palette. */
   onOpened?: () => void;
   /**
@@ -199,13 +202,13 @@ type SearchResultsProps = {
 
 /** The grouped results on a solid surface, or the state in their place. */
 export function SearchResults({
-  header,
+  scope,
   onOpened,
   selectedKey,
   ...listProps
 }: SearchResultsProps) {
   const { state, total, open } = useSearch();
-  const groups = useVisibleGroups();
+  const groups = useVisibleGroups(scope);
   // One for the list: its scrolling cancels the press of whichever row.
   const [guard] = useState(createPressGuard);
   const onOpen = (row: ResultRow) => {
@@ -240,7 +243,6 @@ export function SearchResults({
       onTouchEnd={guard.end}
       onTouchCancel={guard.end}
       renderSectionHeader={({ section }) => <GroupHeader group={section} />}
-      ListHeaderComponent={total > 0 ? header : undefined}
       ListEmptyComponent={<StatusLine />}
       stickySectionHeadersEnabled={false}
       keyboardShouldPersistTaps="handled"

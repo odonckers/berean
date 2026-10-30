@@ -32,10 +32,15 @@ type SearchPaletteProps = {
 // margin clear of the system bars and the keyboard; the results scroll
 // within it. On a hardware keyboard Up and Down move a selection through
 // the results, starting on the first, and Enter opens the selected one.
+// The Material palette has no scope chips and shows every group (scoping
+// lives in the search view); the iOS look pins the chips under the field.
 export function SearchPalette({ visible, onClose }: SearchPaletteProps) {
-  const { m3, radii, spacing } = useBerean();
-  const { text, scope, total, truncated, open } = useSearch();
-  const groups = useVisibleGroups();
+  const { look, m3, radii, spacing } = useBerean();
+  const search = useSearch();
+  const { text, total, truncated, open } = search;
+  const chips = look === 'ios';
+  const scope = chips ? search.scope : 'all';
+  const groups = useVisibleGroups(scope);
   const insets = useSafeAreaInsets();
   const keyboardHeight = useKeyboardHeight();
   // The modal's own height once laid out; the window's until then.
@@ -113,8 +118,9 @@ export function SearchPalette({ visible, onClose }: SearchPaletteProps) {
             submitBehavior="submit"
             style={{ marginHorizontal: spacing.xl }}
           />
+          {chips && total > 0 && <SearchScopeChips style={{ paddingHorizontal: spacing.xl }} />}
           <SearchResults
-            header={<SearchScopeChips style={{ paddingBottom: spacing.xs }} />}
+            scope={scope}
             onOpened={onClose}
             selectedKey={selected?.key}
             style={styles.results}
@@ -133,7 +139,7 @@ export function SearchPalette({ visible, onClose }: SearchPaletteProps) {
               ]}
             >
               <UIText variant="caption" secondary>
-                {resultsLabel(total, truncated)}
+                {resultsLabel(rows.length, truncated)}
               </UIText>
               <UIText variant="caption" secondary>
                 Enter to open

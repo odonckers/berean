@@ -111,11 +111,15 @@ type IosSearchViewProps = {
   insets: { top: number; bottom: number; left: number; right: number };
 };
 
-// iOS look: scope chips with counts and results filling the screen, with
+// iOS look: scope chips with counts, pinned under the title (atop the
+// content under the native header), and results filling the screen, with
 // the field at the bottom within thumb reach.
 export function IosSearchView({ nativeField, inlineTitle, insets }: IosSearchViewProps) {
   const { colors, spacing } = useBerean();
+  const { total } = useSearch();
   const horizontal = { paddingStart: insets.left + spacing.lg, paddingEnd: insets.right + spacing.lg };
+  const top = inlineTitle ? spacing.sm : insets.top + spacing.lg;
+  const chips = total > 0;
   return (
     <KeyboardAvoidingView
       behavior="padding"
@@ -126,13 +130,15 @@ export function IosSearchView({ nativeField, inlineTitle, insets }: IosSearchVie
           Search
         </UIText>
       )}
+      {chips && (
+        <SearchScopeChips style={[horizontal, { paddingTop: top, paddingBottom: spacing.xs }]} />
+      )}
       <SearchResults
         style={styles.root}
         contentInsetAdjustmentBehavior="automatic"
-        header={<SearchScopeChips style={{ paddingBottom: spacing.xs }} />}
         contentContainerStyle={[
           horizontal,
-          { paddingTop: inlineTitle ? spacing.sm : insets.top + spacing.lg, paddingBottom: spacing.lg },
+          { paddingTop: chips ? 0 : top, paddingBottom: spacing.lg },
         ]}
       />
       {!nativeField && (
