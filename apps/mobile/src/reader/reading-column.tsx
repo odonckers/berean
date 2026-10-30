@@ -59,18 +59,22 @@ export function ReadingColumn({
   );
   if (!tabRoot || look !== 'ios') return scroll;
   // The iOS look's tab root hides the native header, so scrolled text would
-  // sit under the status bar: a fade over its inset, a sibling over the
-  // scroll so the content's layout is untouched. On real iOS this becomes
-  // the system scroll-edge effect; this fade is for the preview look, where
-  // nothing covers the status bar. Wrapped whenever the look is iOS, so an
-  // inset change (rotation) doesn't remount the scroll.
+  // sit under the status bar: the surface, solid over its inset and fading
+  // out over the 8 below, a sibling over the scroll so the content's layout
+  // is untouched. On real iOS this becomes the system scroll-edge effect;
+  // this fade is for the preview look, where nothing covers the status bar.
+  // Wrapped whenever the look is iOS, so an inset change (rotation) doesn't
+  // remount the scroll.
   return (
     <View style={styles.fill}>
       {scroll}
       {insets.top > 0 && (
         <View
           pointerEvents="none"
-          style={[styles.edge, { height: insets.top + 8, backgroundImage: edgeFade(colors.surface) }]}
+          style={[
+            styles.edge,
+            { height: insets.top + 8, backgroundImage: edgeFade(colors.surface, insets.top) },
+          ]}
         />
       )}
     </View>
