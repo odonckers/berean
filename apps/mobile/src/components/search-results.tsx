@@ -1,4 +1,5 @@
 import * as Haptics from 'expo-haptics';
+import type { SymbolViewProps } from 'expo-symbols';
 import { useEffect, useRef, useState } from 'react';
 import {
   Pressable,
@@ -6,6 +7,7 @@ import {
   SectionList,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
   type SectionListProps,
   type StyleProp,
@@ -13,6 +15,7 @@ import {
 } from 'react-native';
 
 import { FilterChip } from '@/components/filter-chip';
+import { ScaledSymbol } from '@/components/scaled-symbol';
 import { UIText } from '@/components/text';
 import { useBerean } from '@/design/theme';
 import { createPressGuard, type PressGuard } from '@/search/press-guard';
@@ -21,11 +24,19 @@ import {
   formatCount,
   GROUP_LABELS,
   GROUP_ORDER,
+  groupKey,
   resultsLabel,
   visibleGroups,
   type Group,
+  type GroupKey,
   type Scope,
 } from '@/search/results';
+
+// The tab bar's Read and Library glyphs.
+const ROW_GLYPHS: Record<GroupKey, SymbolViewProps['name']> = {
+  verses: { ios: 'book', android: 'menu_book' },
+  publications: { ios: 'books.vertical', android: 'library_books' },
+};
 
 const EMPTY_HINT =
   'Search the Bible and your installed publications by word. Put a phrase in quotes to match it exactly.';
@@ -81,9 +92,11 @@ export function SearchScopeChips({ style }: { style?: StyleProp<ViewStyle> }) {
 }
 
 function GroupHeader({ group }: { group: Group<ResultRow> }) {
-  const { spacing } = useBerean();
+  const { look, colors, spacing } = useBerean();
   const { truncated } = useSearch();
   const label = GROUP_LABELS[group.key];
+  // The Material mocks draw the label (not the count) in the accent.
+  const labelInk = look === 'material' && { color: colors.accent };
   return (
     <View
       accessible
@@ -91,7 +104,7 @@ function GroupHeader({ group }: { group: Group<ResultRow> }) {
       accessibilityLabel={`${label}, ${resultsLabel(group.hits.length, truncated)}`}
       style={[styles.groupHeader, { paddingTop: spacing.lg, paddingBottom: spacing.xs }]}
     >
-      <UIText variant="caption" secondary style={styles.groupLabel}>
+      <UIText variant="caption" secondary style={[styles.groupLabel, labelInk]}>
         {label}
       </UIText>
       <UIText variant="caption" secondary>
@@ -112,6 +125,7 @@ type ResultRowViewProps = {
 
 function ResultRowView({ row, onOpen, guard, selected }: ResultRowViewProps) {
   const { look, m3, colors, type, spacing, radii } = useBerean();
+  const { fontScale } = useWindowDimensions();
   const selectable = selected !== undefined;
   // The guide's tinted row. The fill reaches a little past the text, which
   // stays where an unselectable row puts it.
@@ -131,7 +145,8 @@ function ResultRowView({ row, onOpen, guard, selected }: ResultRowViewProps) {
         if (guard.shouldOpen(e.nativeEvent.pageX, e.nativeEvent.pageY)) onOpen(row);
       }}
       style={({ pressed }) => [
-        { paddingVertical: spacing.sm, opacity: pressed ? 0.6 : 1 },
+        styles.row,
+        { gap: spacing.md, paddingVertical: spacing.sm, opacity: pressed ? 0.6 : 1 },
         selectable && {
           marginHorizontal: -spacing.md,
           paddingHorizontal: spacing.md,
@@ -140,20 +155,35 @@ function ResultRowView({ row, onOpen, guard, selected }: ResultRowViewProps) {
         selected && { backgroundColor: fill },
       ]}
     >
-      <UIText numberOfLines={1} style={[styles.title, ink !== undefined && { color: ink }]}>
-        {row.title}
-      </UIText>
-      <Text numberOfLines={2} style={[type.ui.caption, { color: ink ?? colors.textSecondary }]}>
-        {row.runs.map((run, i) =>
-          run.marked ? (
-            <Text key={i} style={[styles.marked, { color: ink ?? colors.text }]}>
-              {run.text}
-            </Text>
-          ) : (
-            run.text
-          ),
-        )}
-      </Text>
+      {/* The type glyph, centered on the title line. Decorative: the row's label names the hit. */}
+      <View
+        style={[styles.glyph, { minHeight: (type.ui.body.lineHeight ?? 0) * fontScale }]}
+        accessible={false}
+        importantForAccessibility="no-hide-descendants"
+        accessibilityElementsHidden
+      >
+        <ScaledSymbol
+          name={ROW_GLYPHS[groupKey(row.hit)]}
+          size={22}
+          tintColor={ink ?? colors.textSecondary}
+        />
+      </View>
+      <View style={styles.rowText}>
+        <UIText numberOfLines={1} style={[styles.title, ink !== undefined && { color: ink }]}>
+          {row.title}
+        </UIText>
+        <Text numberOfLines={2} style={[type.ui.caption, { color: ink ?? colors.textSecondary }]}>
+          {row.runs.map((run, i) =>
+            run.marked ? (
+              <Text key={i} style={[styles.marked, { color: ink ?? colors.text }]}>
+                {run.text}
+              </Text>
+            ) : (
+              run.text
+            ),
+          )}
+        </Text>
+      </View>
     </Pressable>
   );
 }
@@ -306,6 +336,9 @@ const styles = StyleSheet.create({
   chipScroll: { flexGrow: 0 },
   groupHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
   groupLabel: { fontWeight: '600' },
+  row: { flexDirection: 'row', alignItems: 'flex-start' },
+  glyph: { justifyContent: 'center' },
+  rowText: { flex: 1 },
   title: { fontWeight: '600' },
   marked: { fontWeight: '700' },
   stale: { opacity: 0.6 },

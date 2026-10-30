@@ -1,9 +1,18 @@
 import { useState } from 'react';
-import { Modal, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import {
+  Modal,
+  Pressable,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+  type StyleProp,
+  type TextStyle,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { paletteFrame } from '@/components/palette-frame';
 import { SearchField } from '@/components/search-field';
+import { SearchIcon } from '@/components/search-icon';
 import { SearchResults, SearchScopeChips, useVisibleGroups } from '@/components/search-results';
 import { UIText } from '@/components/text';
 import { useBerean } from '@/design/theme';
@@ -78,6 +87,17 @@ export function SearchPalette({ visible, onClose }: SearchPaletteProps) {
     open(selected.hit);
   };
 
+  const field = (style: StyleProp<TextStyle>) => (
+    <SearchField
+      autoFocus
+      onSubmitEditing={openSelected}
+      onFocus={(e) => listKeys.capture(e.nativeEvent.target)}
+      onBlur={(e) => listKeys.release(e.nativeEvent.target)}
+      submitBehavior="submit"
+      style={style}
+    />
+  );
+
   return (
     <Modal
       visible={visible}
@@ -95,7 +115,10 @@ export function SearchPalette({ visible, onClose }: SearchPaletteProps) {
           accessibilityRole="button"
           accessibilityLabel="Close search"
           onPress={onClose}
-          style={[StyleSheet.absoluteFill, { backgroundColor: m3.scrim }]}
+          style={[
+            StyleSheet.absoluteFill,
+            { backgroundColor: look === 'ios' ? m3.scrimWarm : m3.scrim },
+          ]}
         />
         <View
           accessibilityViewIsModal
@@ -110,14 +133,43 @@ export function SearchPalette({ visible, onClose }: SearchPaletteProps) {
             },
           ]}
         >
-          <SearchField
-            autoFocus
-            onSubmitEditing={openSelected}
-            onFocus={(e) => listKeys.capture(e.nativeEvent.target)}
-            onBlur={(e) => listKeys.release(e.nativeEvent.target)}
-            submitBehavior="submit"
-            style={{ marginHorizontal: spacing.xl }}
-          />
+          {look === 'material' ? (
+            // The tablet mock's flat field row: icon, query, Ctrl K keycap,
+            // and a divider above the results.
+            <View
+              style={[
+                styles.fieldRow,
+                {
+                  borderBottomColor: m3.outlineVariant,
+                  paddingHorizontal: spacing.xl,
+                  paddingBottom: spacing.sm,
+                  gap: spacing.md,
+                },
+              ]}
+            >
+              <SearchIcon color={m3.onSurfaceVariant} />
+              {field(styles.flatField)}
+              <View
+                accessible={false}
+                importantForAccessibility="no-hide-descendants"
+                accessibilityElementsHidden
+                style={[
+                  styles.keycap,
+                  {
+                    borderColor: m3.outline,
+                    borderRadius: radii.chip,
+                    paddingHorizontal: spacing.sm,
+                  },
+                ]}
+              >
+                <UIText variant="label" secondary>
+                  Ctrl K
+                </UIText>
+              </View>
+            </View>
+          ) : (
+            field({ marginHorizontal: spacing.xl })
+          )}
           {chips && total > 0 && <SearchScopeChips style={{ paddingHorizontal: spacing.xl }} />}
           <SearchResults
             scope={scope}
@@ -155,6 +207,15 @@ export function SearchPalette({ visible, onClose }: SearchPaletteProps) {
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   dialog: { width: '100%', maxWidth: 660, overflow: 'hidden' },
+  fieldRow: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: hairline },
+  // Flat: no fill or pill; the row pads it.
+  flatField: {
+    flex: 1,
+    backgroundColor: 'transparent',
+    borderRadius: 0,
+    paddingHorizontal: 0,
+  },
+  keycap: { borderWidth: 1, paddingVertical: 2 },
   results: { flexGrow: 0, flexShrink: 1 },
   footer: {
     flexDirection: 'row',

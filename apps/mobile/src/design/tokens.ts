@@ -128,6 +128,8 @@ export type M3Roles = {
   outline: string;
   outlineVariant: string;
   scrim: string;
+  /** The iOS look's palette scrim (guide v3 §05): warm ink at 45%, no blur. */
+  scrimWarm: string;
 };
 
 export const m3Roles: Record<'light' | 'dark', M3Roles> = {
@@ -149,6 +151,7 @@ export const m3Roles: Record<'light' | 'dark', M3Roles> = {
     // against surface).
     outlineVariant: '#D2C5AA',
     scrim: 'rgba(0,0,0,0.32)',
+    scrimWarm: 'rgba(31,26,20,0.45)', // text #1F1A14
   },
   dark: {
     primary: colorSets.dark.accent,
@@ -168,6 +171,8 @@ export const m3Roles: Record<'light' | 'dark', M3Roles> = {
     // against surface).
     outlineVariant: '#4E443B',
     scrim: 'rgba(0,0,0,0.32)',
+    // The light theme's ink: dark's own text is cream and would lighten the page.
+    scrimWarm: 'rgba(31,26,20,0.45)',
   },
 };
 
