@@ -1,0 +1,37 @@
+WINDOW type=3 title=Navigation bar
+                android.widget.ImageView desc="Back" clickable
+                android.widget.ImageView desc="Overview" clickable
+              android.widget.ImageView desc="Home" clickable
+WINDOW type=3 title=null
+              android.widget.TextView text="5:05" desc="5:05 PM"
+                    android.widget.ImageView desc="Android System notification: Serial console enabled"
+                android.widget.FrameLayout desc="Wifi signal full."
+                android.widget.FrameLayout desc="Phone signal full."
+              android.widget.LinearLayout desc="Battery charging, 100 percent."
+WINDOW type=1 title=null
+              android.widget.Button desc="Close" clickable
+              android.view.View text="Genesis 1:1"
+              android.widget.TextView text="Highlight"
+              android.widget.Button desc="Yellow" clickable
+                android.widget.TextView text="Aa"
+                android.widget.TextView text="Yellow"
+              android.widget.Button desc="Green" clickable selected=true
+                android.widget.TextView text="Aa"
+                android.widget.TextView text="Green"
+              android.widget.Button desc="Blue" clickable
+                android.widget.TextView text="Aa"
+                android.widget.TextView text="Blue"
+              android.widget.Button desc="Purple" clickable
+                android.widget.TextView text="Aa"
+                android.widget.TextView text="Purple"
+              android.widget.Button desc="Pink" clickable
+                android.widget.TextView text="Aa"
+                android.widget.TextView text="Pink"
+              android.widget.Button desc="Orange" clickable
+                android.widget.TextView text="Aa"
+                android.widget.TextView text="Orange"
+              android.widget.Button desc="Remove highlight" clickable
+                android.widget.TextView text="Remove highlight"
+              android.widget.Button desc="Copy verse" clickable
+                  android.widget.TextView text=""
+                android.widget.TextView text="Copy verse"
