@@ -300,8 +300,9 @@ export function BibleChapterView({
     });
     viewport.current.offset = y;
     scrollRef.current?.scrollTo({ y, animated: false });
-    const target = blockRefs.current.get(index);
-    requestAnimationFrame(() => moveAccessibilityFocus(target));
+    // The block is looked up in the frame, not before it: by then a render
+    // may have unmounted the node it had (its ref is gone with it).
+    requestAnimationFrame(() => moveAccessibilityFocus(blockRefs.current.get(index)));
   };
 
   // Each arrival with a verse (the route's verse param) asks once. The
