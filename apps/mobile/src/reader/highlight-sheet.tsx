@@ -13,11 +13,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { UIText } from '@/components/text';
 import { TextButton } from '@/components/text-button';
-import { useBerean } from '@/design/theme';
+import { systemBarStyle, useBerean } from '@/design/theme';
 import { type HighlightName, hairline, radii, spacing } from '@/design/tokens';
 import { HIGHLIGHT_ORDER, highlightLabel } from '@/reader/highlights';
 import { moveAccessibilityFocus } from '@/reader/study-pane';
 import { followFocusRingIn } from '../../modules/berean-shortcuts';
+import { ModalNavigationBarStyle } from '../../modules/berean-system-bars';
 
 type HighlightSheetProps = {
   visible: boolean;
@@ -55,7 +56,7 @@ export function HighlightSheet({
   onCopy,
   onClose,
 }: HighlightSheetProps) {
-  const { look, colors, m3, highlights, type } = useBerean();
+  const { look, scheme, colors, m3, highlights, type } = useBerean();
   const material = look === 'material';
   const insets = useSafeAreaInsets();
   const target = material ? 48 : 44;
@@ -116,6 +117,7 @@ export function HighlightSheet({
       navigationBarTranslucent
       onRequestClose={onClose}
     >
+      <ModalNavigationBarStyle barStyle={systemBarStyle(scheme)} />
       <View style={styles.root}>
         <Pressable
           accessibilityRole="button"

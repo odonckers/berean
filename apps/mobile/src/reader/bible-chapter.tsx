@@ -48,7 +48,7 @@ import {
   verseReference,
 } from '@/reader/bible-nav';
 import { BiblePicker } from '@/reader/bible-picker';
-import { copiedVerse, verseText } from '@/reader/copy-verse';
+import { copiedVerse, copyConfirmation, verseText } from '@/reader/copy-verse';
 import { HighlightSheet } from '@/reader/highlight-sheet';
 import { highlightActionLabel, segmentHighlight, verseSubject } from '@/reader/highlights';
 import { type LandedVerse, landedLabel, landedVerse } from '@/reader/landed-verse';
@@ -222,17 +222,22 @@ export function BibleChapterView({
     AccessibilityInfo.announceForAccessibility(error);
   };
   // Copy verse: the reference as the sheet titles it, then the verse's text
-  // from the chapter's runs. The material look confirms with a toast where
-  // Android has one; otherwise the confirmation is announced.
+  // from the chapter's runs, confirmed as copyConfirmation says (Android 13
+  // and later confirm it themselves).
   const copyVerse = (verse: number) => {
     closeActions();
     const copied = copiedVerse(verseReference(heading, verse), verseText(chapterContent, verse));
     Clipboard.setStringAsync(copied).then(
       () => {
-        if (material && Platform.OS === 'android') {
-          ToastAndroid.show('Verse copied', ToastAndroid.SHORT);
-        } else {
-          AccessibilityInfo.announceForAccessibility('Verse copied');
+        switch (copyConfirmation(Platform.OS, Platform.Version, material)) {
+          case 'toast':
+            ToastAndroid.show('Verse copied', ToastAndroid.SHORT);
+            break;
+          case 'announce':
+            AccessibilityInfo.announceForAccessibility('Verse copied');
+            break;
+          case 'none':
+            break;
         }
       },
       () => AccessibilityInfo.announceForAccessibility("Couldn't copy the verse"),

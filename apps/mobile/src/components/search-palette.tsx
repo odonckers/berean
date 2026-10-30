@@ -16,7 +16,7 @@ import { SearchField } from '@/components/search-field';
 import { SearchIcon } from '@/components/search-icon';
 import { SearchResults, SearchScopeChips, useVisibleGroups } from '@/components/search-results';
 import { UIText } from '@/components/text';
-import { useBerean } from '@/design/theme';
+import { systemBarStyle, useBerean } from '@/design/theme';
 import { hairline } from '@/design/tokens';
 import { useKeyboardHeight } from '@/design/use-keyboard-height';
 import {
@@ -29,6 +29,7 @@ import {
 import { resultsLabel } from '@/search/results';
 import { useSearch } from '@/search/search-context';
 import { followFocusRingIn, useListKeys } from '../../modules/berean-shortcuts';
+import { ModalNavigationBarStyle } from '../../modules/berean-system-bars';
 
 type SearchPaletteProps = {
   visible: boolean;
@@ -45,7 +46,7 @@ type SearchPaletteProps = {
 // The Material palette has no scope chips and shows every group (scoping
 // lives in the search view); the iOS look pins the chips under the field.
 export function SearchPalette({ visible, onClose }: SearchPaletteProps) {
-  const { look, m3, radii, spacing } = useBerean();
+  const { look, scheme, m3, radii, spacing } = useBerean();
   const search = useSearch();
   const { text, total, truncated, open } = search;
   const chips = look === 'ios';
@@ -113,6 +114,7 @@ export function SearchPalette({ visible, onClose }: SearchPaletteProps) {
       navigationBarTranslucent
       onRequestClose={onClose}
     >
+      <ModalNavigationBarStyle barStyle={systemBarStyle(scheme)} />
       <View
         onLayout={(e) => setMeasured(e.nativeEvent.layout.height)}
         style={[styles.center, padding]}

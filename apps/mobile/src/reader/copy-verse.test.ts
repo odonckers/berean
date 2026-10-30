@@ -4,7 +4,7 @@ import { describe, test } from 'node:test';
 import type { ParagraphStyle } from 'berean-ffi-rn';
 
 import type { Block } from './chapter-blocks.ts';
-import { copiedVerse, verseText } from './copy-verse.ts';
+import { copiedVerse, copyConfirmation, verseText } from './copy-verse.ts';
 
 // The core enum's prose value; Copy verse never reads the style.
 const PROSE = 0 as ParagraphStyle;
@@ -57,5 +57,26 @@ describe('copied verse', () => {
 
   test('a verse with no text copies its reference', () => {
     assert.equal(copiedVerse('John 1:9', ''), 'John 1:9');
+  });
+});
+
+describe('copy confirmation', () => {
+  test('Android 12 and 12L: a toast in the material look, announced in the iOS look', () => {
+    for (const api of [31, 32]) {
+      assert.equal(copyConfirmation('android', api, true), 'toast');
+      assert.equal(copyConfirmation('android', api, false), 'announce');
+    }
+  });
+
+  test('Android 13 and later confirm the copy themselves, in either look', () => {
+    for (const api of [33, 34]) {
+      assert.equal(copyConfirmation('android', api, true), 'none');
+      assert.equal(copyConfirmation('android', api, false), 'none');
+    }
+  });
+
+  test('iOS announces, in either look', () => {
+    assert.equal(copyConfirmation('ios', '18.0', false), 'announce');
+    assert.equal(copyConfirmation('ios', '18.0', true), 'announce');
   });
 });
