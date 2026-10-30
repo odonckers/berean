@@ -5,7 +5,9 @@ import { useContentInsets } from '@/design/tab-chrome';
 import { useBerean } from '@/design/theme';
 
 // The full-screen search pushed by the M3 search bar (material look) and by
-// the iOS look's toolbar field on wide Android windows.
+// the iOS look's toolbar field on wide Android windows. Not /search: expo-router
+// resolves that path to the iOS look's tab, (tabs)/search/index, which is
+// hidden in the material look, so the push landed on the first tab.
 export default function SearchScreen() {
   const { look } = useBerean();
   const insets = useContentInsets();

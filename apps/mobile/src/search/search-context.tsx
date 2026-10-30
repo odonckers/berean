@@ -124,10 +124,10 @@ export function SearchProvider({ children }: { children: ReactNode }) {
   const [text, setTextState] = useState('');
   const [state, setState] = useState<SearchState<Hit>>({ status: 'empty' });
   const [scope, setScope] = useState<Scope>('all');
-  // The root search route (the M3 search view) is ['search']; the iOS look's
-  // tab, also at /search, is ['(tabs)', 'search'].
+  // The full-screen search view is the root route ['search-view']; the iOS
+  // look's tab is ['(tabs)', 'search'].
   const segments = useSegments();
-  const inSearchView = segments[0] === 'search';
+  const inSearchView = segments[0] === 'search-view';
 
   const session = useMemo(
     () =>

@@ -97,7 +97,7 @@ function ToolbarSearchField() {
     <Pressable
       accessibilityRole="search"
       accessibilityLabel="Search Berean"
-      onPress={() => router.push('/search')}
+      onPress={() => router.push('/search-view')}
       style={[
         styles.search,
         {

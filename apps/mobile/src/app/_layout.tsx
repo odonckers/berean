@@ -19,7 +19,7 @@ function RootStack() {
       <Stack screenOptions={{ contentStyle: { backgroundColor: colors.surface } }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen
-          name="search"
+          name="search-view"
           options={{ presentation: 'modal', title: 'Search', headerShown: true }}
         />
       </Stack>
