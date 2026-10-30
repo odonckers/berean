@@ -15,6 +15,7 @@ import {
 import { FilterChip } from '@/components/filter-chip';
 import { UIText } from '@/components/text';
 import { useBerean } from '@/design/theme';
+import { createPressGuard, type PressGuard } from '@/search/press-guard';
 import { type ResultRow, useSearch } from '@/search/search-context';
 import {
   formatCount,
@@ -100,11 +101,13 @@ function GroupHeader({ group }: { group: Group<ResultRow> }) {
 type ResultRowViewProps = {
   row: ResultRow;
   onOpen: (row: ResultRow) => void;
+  /** The list's guard: a press opens only if it was a tap. */
+  guard: PressGuard;
   /** Set only where rows can be selected (the palette): the keyboard's row. */
   selected?: boolean;
 };
 
-function ResultRowView({ row, onOpen, selected }: ResultRowViewProps) {
+function ResultRowView({ row, onOpen, guard, selected }: ResultRowViewProps) {
   const { look, m3, colors, type, spacing, radii } = useBerean();
   const selectable = selected !== undefined;
   // The guide's tinted row. The fill reaches a little past the text, which
@@ -116,7 +119,14 @@ function ResultRowView({ row, onOpen, selected }: ResultRowViewProps) {
       accessibilityRole="button"
       accessibilityLabel={row.accessibilityLabel}
       accessibilityState={selectable ? { selected } : undefined}
-      onPress={() => onOpen(row)}
+      onPressIn={(e) => guard.pressIn(e.nativeEvent.pageX, e.nativeEvent.pageY)}
+      // Pressable alone can take a drag for a tap on Android: Pressability
+      // ignores moves until the row's rect is measured (async after press-in),
+      // so with a busy JS thread a whole down/move/up batch lands before it
+      // and the release counts as a press. The guard checks scroll and slop.
+      onPress={(e) => {
+        if (guard.shouldOpen(e.nativeEvent.pageX, e.nativeEvent.pageY)) onOpen(row);
+      }}
       style={({ pressed }) => [
         { paddingVertical: spacing.sm, opacity: pressed ? 0.6 : 1 },
         selectable && {
@@ -196,6 +206,8 @@ export function SearchResults({
 }: SearchResultsProps) {
   const { state, total, open } = useSearch();
   const groups = useVisibleGroups();
+  // One for the list: its scrolling cancels the press of whichever row.
+  const [guard] = useState(createPressGuard);
   const onOpen = (row: ResultRow) => {
     onOpened?.();
     open(row.hit);
@@ -214,6 +226,7 @@ export function SearchResults({
         <ResultRowView
           row={item}
           onOpen={onOpen}
+          guard={guard}
           selected={selectedKey === undefined ? undefined : item.key === selectedKey}
         />
       )}
@@ -221,6 +234,11 @@ export function SearchResults({
       onViewableItemsChanged={onViewableItemsChanged}
       // A row not laid out yet; rows are a step apart, so the next lands.
       onScrollToIndexFailed={() => {}}
+      onScrollBeginDrag={guard.scrolled}
+      onMomentumScrollBegin={guard.scrolled}
+      // A row's onPress fires before the list's onTouchEnd, so this only forgets presses that never reached it.
+      onTouchEnd={guard.end}
+      onTouchCancel={guard.end}
       renderSectionHeader={({ section }) => <GroupHeader group={section} />}
       ListHeaderComponent={total > 0 ? header : undefined}
       ListEmptyComponent={<StatusLine />}
