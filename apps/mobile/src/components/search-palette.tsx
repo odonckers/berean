@@ -1,16 +1,14 @@
-import {
-  KeyboardAvoidingView,
-  Modal,
-  Pressable,
-  StyleSheet,
-  View,
-} from 'react-native';
+import { useState } from 'react';
+import { Modal, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { paletteFrame } from '@/components/palette-frame';
 import { SearchField } from '@/components/search-field';
 import { SearchResults, SearchScopeChips, useVisibleGroups } from '@/components/search-results';
 import { UIText } from '@/components/text';
 import { useBerean } from '@/design/theme';
 import { hairline } from '@/design/tokens';
+import { useKeyboardHeight } from '@/design/use-keyboard-height';
 import { resultsLabel } from '@/search/results';
 import { useSearch } from '@/search/search-context';
 
@@ -22,11 +20,24 @@ type SearchPaletteProps = {
 // Ctrl+K / Cmd+K: the same search, centered in a Material dialog shape over
 // the scrim, with the query, results and counts of every other entry. Back
 // and Escape (Android maps Escape to back) close it through onRequestClose;
-// tapping the scrim closes it too.
+// tapping the scrim closes it too. The dialog, footer included, stays a
+// margin clear of the system bars and the keyboard; the results scroll
+// within it.
 export function SearchPalette({ visible, onClose }: SearchPaletteProps) {
   const { m3, radii, spacing } = useBerean();
   const { total, truncated, open } = useSearch();
   const groups = useVisibleGroups();
+  const insets = useSafeAreaInsets();
+  const keyboardHeight = useKeyboardHeight();
+  // The modal's own height once laid out; the window's until then.
+  const windowHeight = useWindowDimensions().height;
+  const [measured, setMeasured] = useState<number>();
+  const { maxHeight, ...padding } = paletteFrame(
+    measured ?? windowHeight,
+    insets,
+    keyboardHeight,
+    spacing.xl,
+  );
 
   // Enter opens the top result.
   const openFirst = () => {
@@ -45,7 +56,10 @@ export function SearchPalette({ visible, onClose }: SearchPaletteProps) {
       navigationBarTranslucent
       onRequestClose={onClose}
     >
-      <KeyboardAvoidingView behavior="padding" style={[styles.center, { padding: spacing.xl }]}>
+      <View
+        onLayout={(e) => setMeasured(e.nativeEvent.layout.height)}
+        style={[styles.center, padding]}
+      >
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Close search"
@@ -59,6 +73,7 @@ export function SearchPalette({ visible, onClose }: SearchPaletteProps) {
             {
               backgroundColor: m3.surfaceContainerHigh,
               borderRadius: radii.sheet,
+              maxHeight,
               paddingTop: spacing.xl,
               gap: spacing.md,
             },
@@ -97,14 +112,14 @@ export function SearchPalette({ visible, onClose }: SearchPaletteProps) {
             </View>
           )}
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  dialog: { width: '100%', maxWidth: 660, maxHeight: '100%', overflow: 'hidden' },
+  dialog: { width: '100%', maxWidth: 660, overflow: 'hidden' },
   results: { flexGrow: 0, flexShrink: 1 },
   footer: {
     flexDirection: 'row',
