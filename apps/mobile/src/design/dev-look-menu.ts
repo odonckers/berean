@@ -1,6 +1,9 @@
 import { registerDevMenuItems } from 'expo-dev-menu';
+import { Alert } from 'react-native';
 
 import type { Look } from '@/design/look';
+import { coreErrorMessage } from '@/ffi/errors';
+import { seedSampleNotes } from '@/notes/dev-seed';
 import { setSimulatingCoreFailure, simulatingCoreFailure } from '@/search/dev-fault';
 
 // Dev-only. Imported solely from inside `if (__DEV__)` in look.tsx, so it and
@@ -25,6 +28,19 @@ export function registerLookMenu(current: Look, setLook: (look: Look) => void) {
       callback: () => {
         setSimulatingCoreFailure(!simulatingCoreFailure());
         registerLookMenu(current, setLook);
+      },
+      shouldCollapse: true,
+    },
+    {
+      name: 'Notes: seed sample notes',
+      callback: () => {
+        let message: string;
+        try {
+          message = seedSampleNotes();
+        } catch (e) {
+          message = coreErrorMessage(e);
+        }
+        Alert.alert('Sample notes', message);
       },
       shouldCollapse: true,
     },
