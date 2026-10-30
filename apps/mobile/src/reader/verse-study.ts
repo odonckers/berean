@@ -2,18 +2,25 @@
 // so Node can test it. The shapes are structural: the generated VerseStudy
 // and VerseStudyCounts are assignable to them.
 
+import type { StudyAvailability } from 'berean-ffi-rn';
+
 export type PaneTab = 'studyNotes' | 'crossRefs' | 'research' | 'footnotes';
 
 type CoreSpan = {
   start: { book?: number; chapter?: number; verse?: number };
   end: { book?: number; chapter?: number; verse?: number };
 };
-// The generated StudyAvailability's cases. A new case in the core stops the
-// generated type being assignable here, so the call site fails to compile
-// until it is added below and to the switch in paneStudy.
-type CoreAvailability =
-  | { tag: 'Installed' }
-  | { tag: 'NotInstalled'; inner: Readonly<{ pubKey: string }> };
+// The generated StudyAvailability's cases, derived from the binding so they
+// can't drift from the core: each case as a plain { tag, inner? } with the
+// tag as its string, which object literals (the tests) can build. A new
+// case in the core lands here and fails the exhaustive switch in paneStudy
+// until it is handled there.
+type Structural<A> = A extends { tag: infer Tag }
+  ? A extends { inner: infer Inner }
+    ? { tag: `${Tag & string}`; inner: Inner }
+    : { tag: `${Tag & string}` }
+  : never;
+export type CoreAvailability = Structural<StudyAvailability>;
 export type CoreVerseStudy = {
   studyNotes: readonly { label: string; text: string }[];
   crossRefs: readonly { label: string; target: CoreSpan; snippet?: string }[];
@@ -44,18 +51,16 @@ export type PaneStudy = {
 export const NO_STUDY: PaneStudy = { tabs: [], studyNotes: [], crossRefs: [], footnotes: [] };
 
 /**
- * The pane's content for a verse's study. None (the core had no study for
- * the verse: no Study Edition, no catalog, an error) is the Empty state.
- * `reference` names a cross reference's target, or none.
+ * The pane's content for a verse's study. None (the core's verseStudy threw:
+ * a Bible, chapter or verse it can't find, or another error) is the Empty
+ * state. `reference` names a cross reference's target, or none.
  */
 export function paneStudy(
   study: CoreVerseStudy | undefined,
   reference: (span: CoreSpan) => string | undefined,
 ): PaneStudy {
   if (study === undefined) return NO_STUDY;
-  // The one place availability is read. A later core adds an Unavailable
-  // case (no notes for this language, footnotes and cross refs still
-  // filled): it hides the notes like NotInstalled, with no download offer.
+  // The one place availability is read.
   let studyNotes: PaneStudy['studyNotes'];
   switch (study.availability.tag) {
     case 'Installed':
@@ -64,6 +69,12 @@ export function paneStudy(
     case 'NotInstalled':
       // The notes are in a Study Edition that isn't installed. The pane
       // has no Not downloaded row yet, so they are hidden.
+      studyNotes = [];
+      break;
+    case 'Unavailable':
+      // No Study Edition to install: no catalog, or none for the Bible's
+      // language. The notes section is hidden and nothing offers a
+      // download; the Bible's own footnotes and cross refs still show.
       studyNotes = [];
       break;
     default: {

@@ -143,8 +143,10 @@ export function BibleChapterView({
   }, [loaded, books, book, chapter]);
 
   // The study content of the verse under the pane, read (synchronously)
-  // only while a pane is mounted. Any error, NotFound included (no Study
-  // Edition for the Bible's language, no catalog), is the Empty state.
+  // only while a pane is mounted. No Study Edition (NotInstalled or
+  // Unavailable) still gives the verse's footnotes and cross refs; an
+  // error (NotFound for a missing Bible, chapter or verse) is the Empty
+  // state.
   const study = useMemo(() => {
     if (selected === undefined) return undefined;
     const read = load(() => reader().verseStudy({ pubKey, book, chapter, verse: selected }));

@@ -56,6 +56,28 @@ describe('pane study', () => {
     assert.deepEqual(shown.studyNotes, []);
   });
 
+  test('no study edition to install (Unavailable): notes hidden, footnotes and cross refs kept', () => {
+    const shown = paneStudy(study({ availability: { tag: 'Unavailable' } }), reference);
+    assert.deepEqual(shown.tabs, ['crossRefs', 'footnotes']);
+    assert.deepEqual(shown.studyNotes, []);
+    assert.deepEqual(shown.crossRefs, [{ label: 'a', reference: 'ref 4', snippet: 'A snippet' }, { label: 'b' }]);
+    assert.deepEqual(shown.footnotes, [{ marker: '*', text: 'Or "a word."' }]);
+  });
+
+  test('Unavailable ignores any notes the core sends', () => {
+    const shown = paneStudy(study({ availability: { tag: 'Unavailable' }, footnotes: [] }), reference);
+    assert.deepEqual(shown.tabs, ['crossRefs']);
+    assert.deepEqual(shown.studyNotes, []);
+  });
+
+  test('Unavailable with no footnotes or cross refs is the Empty state', () => {
+    const shown = paneStudy(
+      study({ availability: { tag: 'Unavailable' }, studyNotes: [], crossRefs: [], footnotes: [] }),
+      reference,
+    );
+    assert.deepEqual(shown, NO_STUDY);
+  });
+
   test('no study (not found, or an error) is the Empty state', () => {
     assert.deepEqual(paneStudy(undefined, reference), NO_STUDY);
     assert.deepEqual(NO_STUDY.tabs, []);
