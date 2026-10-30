@@ -6,6 +6,7 @@ import {
   NO_STUDY,
   markersByVerse,
   paneStudy,
+  shownTabs,
   studyActionLabel,
 } from './verse-study.ts';
 
@@ -73,6 +74,40 @@ describe('pane study', () => {
     assert.deepEqual(shown.studyNotes, [{ label: ' l ', text }]);
     assert.deepEqual(shown.crossRefs, [{ label: ' c ', reference: 'ref 1', snippet: text }]);
     assert.deepEqual(shown.footnotes, [{ marker: ' m ', text }]);
+  });
+});
+
+describe('shown tabs', () => {
+  test('Research goes before Footnotes while the guide is not installed', () => {
+    assert.deepEqual(shownTabs(['studyNotes', 'crossRefs', 'footnotes'], false), [
+      'studyNotes',
+      'crossRefs',
+      'research',
+      'footnotes',
+    ]);
+    assert.deepEqual(shownTabs(['crossRefs', 'footnotes'], false), [
+      'crossRefs',
+      'research',
+      'footnotes',
+    ]);
+    assert.deepEqual(shownTabs(['footnotes'], false), ['research', 'footnotes']);
+  });
+
+  test('with no Footnotes tab, Research comes last', () => {
+    assert.deepEqual(shownTabs(['studyNotes', 'crossRefs'], false), [
+      'studyNotes',
+      'crossRefs',
+      'research',
+    ]);
+  });
+
+  test('installed, only the tabs with content; Research alone is no content', () => {
+    assert.deepEqual(shownTabs(['crossRefs', 'research', 'footnotes'], true), [
+      'crossRefs',
+      'footnotes',
+    ]);
+    assert.deepEqual(shownTabs([], false), []);
+    assert.deepEqual(shownTabs(['research'], false), []);
   });
 });
 

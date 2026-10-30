@@ -41,12 +41,13 @@ import {
   MIN_HEIGHT,
   cappedDetents,
   dragFraction,
+  emptyDetents,
   openFraction,
   paneDetents,
   releaseTarget,
 } from '@/reader/pane-snap';
 import { rememberTab, rememberedTab } from '@/reader/session';
-import type { PaneStudy, PaneTab } from '@/reader/verse-study';
+import { type PaneStudy, type PaneTab, shownTabs } from '@/reader/verse-study';
 
 export type { PaneTab };
 
@@ -127,6 +128,13 @@ type StudyPaneProps = {
   onResize?: (fraction: number) => void;
   /** The pane container's layout in the reading column. */
   onLayout?: (e: LayoutChangeEvent) => void;
+  /**
+   * Fits an opening pane once it is laid out (not a restored one): given
+   * the height it would open at and the lowest it may, as window
+   * fractions, the owner scrolls as the open needs and returns the height
+   * to open at. Without it, the pane opens at the height it would.
+   */
+  fitOpen?: (wanted: number, lowest: number) => number;
 };
 
 /**
@@ -151,6 +159,7 @@ export function StudyPane({
   onClosed,
   onResize,
   onLayout,
+  fitOpen,
 }: StudyPaneProps) {
   const { look, scheme, colors, m3, studyPane } = useBerean();
   const reducedMotion = useReducedMotion();
@@ -160,8 +169,7 @@ export function StudyPane({
   // The tab row is built from the data. With no content there is no tab
   // row at all, and Research alone never counts as content.
   const content: PaneTab[] = study.tabs.filter((key) => key !== 'research');
-  const shown: PaneTab[] =
-    content.length === 0 || guideInstalled ? content : [...content, 'research'];
+  const shown = shownTabs(study.tabs, guideInstalled);
   const [openedOn] = useState<PaneTab | undefined>(() => {
     const remembered = rememberedTab(pubKey);
     return shown.find((key) => key === remembered) ?? shown[0];
@@ -185,9 +193,16 @@ export function StudyPane({
     return () => cancelAnimationFrame(frame);
   }, [reference, restored, openedOn]);
 
-  const detents = paneDetents(fontScale);
+  // Spec §4, Empty: the pane stays short, sized to its one line and My
+  // notes, measured once it lays out. It drags from there as usual, and
+  // closes from there.
+  const empty = tab === undefined;
+  const [short, setShort] = useState<number>();
+  const lowest = short === undefined ? MIN_HEIGHT : Math.min(MIN_HEIGHT, short);
+  const detents =
+    short === undefined ? paneDetents(fontScale) : emptyDetents(short, paneDetents(fontScale));
   // The height the pane opens at (40%, 60% at accessibility text sizes), or
-  // the height a restored pane had.
+  // the height a restored pane had; fitOpen may lower it.
   const [opened] = useState(() => initialFraction ?? openFraction(fontScale));
   // Mirrors the settled height for the accessibility value, the session and
   // a reopen while closing; it never feeds back into a running drag.
@@ -203,13 +218,14 @@ export function StudyPane({
   // static styles). As a layout prop it re-lays out the column every frame,
   // so the text below follows the pane, closing included. The open grows
   // from 0, except a restored pane (no animation) and Reduce Motion (a fade
-  // at the final height).
+  // at the final height). Until it opens it is invisible, and at 0 unless
+  // restored.
   // React re-renders (a tab switch and back, a prop change) don't reset it:
   // Reanimated's PropsFilter hands React only the style's first-render
   // snapshot, and on Fabric its commit hook lays the latest animated values
   // over every React commit, so the snapshot never reaches the screen.
   const growsOpen = !restored && !reducedMotion;
-  const height = useSharedValue(growsOpen ? 0 : opened);
+  const height = useSharedValue(restored ? opened : 0);
   const opacity = useSharedValue(restored ? 1 : 0);
   const dragStart = useSharedValue(opened);
   // The running drag's cap, read as it begins: the chapter can't scroll
@@ -221,15 +237,41 @@ export function StudyPane({
   }));
 
   // The open plays once per mount (the pane remounts per verse), even if
-  // Reduce Motion changes while it is open.
+  // Reduce Motion changes while it is open. It waits for the pane's first
+  // layout, so the owner can fit it below the verse, and, for an empty
+  // pane, for its parts' heights.
+  const border = material ? 1 : hairline;
+  const measured = useRef<{ laidOut: boolean; header?: number; body?: number; footer?: number }>({
+    laidOut: false,
+  });
   const openPlayed = useRef(false);
-  useEffect(() => {
+  const tryOpen = () => {
     if (openPlayed.current) return;
+    const { laidOut, header, body, footer } = measured.current;
+    if (!laidOut) return;
+    let shortHeight: number | undefined;
+    if (empty) {
+      if (header === undefined || body === undefined || footer === undefined) return;
+      shortHeight = (header + body + footer + 2 * border) / windowHeight;
+      setShort(shortHeight);
+    }
     openPlayed.current = true;
-    if (restored) return;
+    const wanted = initialFraction ?? shortHeight ?? opened;
+    if (restored) {
+      height.set(wanted);
+      setFraction(wanted);
+      return;
+    }
+    const least = shortHeight === undefined ? MIN_HEIGHT : Math.min(MIN_HEIGHT, shortHeight);
+    const start = fitOpen?.(wanted, least) ?? wanted;
+    setFraction(start);
     opacity.set(withTiming(1, FADE_OPEN));
-    if (growsOpen) height.set(withSpring(opened, OPEN_SPRING));
-  }, [restored, growsOpen, opened, height, opacity]);
+    height.set(growsOpen ? withSpring(start, OPEN_SPRING) : start);
+  };
+  const measure = (part: 'header' | 'body' | 'footer', value: number) => {
+    measured.current[part] = value;
+    tryOpen();
+  };
 
   // Settle on a detent; Reduce Motion settles with no overshoot.
   const settle = (target: number) => {
@@ -292,7 +334,7 @@ export function StudyPane({
       'worklet';
       // Grabbed while still growing open, the drag starts from the smallest
       // height rather than below it, so it can't read as a close.
-      dragStart.set(clamp(height.get(), MIN_HEIGHT, MAX_HEIGHT));
+      dragStart.set(clamp(height.get(), lowest, MAX_HEIGHT));
       dragMax.set(maxFraction?.get() ?? MAX_HEIGHT);
     },
     onUpdate: (e) => {
@@ -302,7 +344,7 @@ export function StudyPane({
           start: dragStart.get(),
           translationY: e.translationY,
           windowHeight,
-          min: MIN_HEIGHT,
+          min: lowest,
           max: dragMax.get(),
         }),
       );
@@ -315,7 +357,7 @@ export function StudyPane({
         velocityY: e.velocityY,
         windowHeight,
         detents: cappedDetents(detents, dragMax.get()),
-        min: MIN_HEIGHT,
+        min: lowest,
         dismissVelocity: DISMISS_VELOCITY,
       });
       if (release.kind === 'close') {
@@ -336,7 +378,11 @@ export function StudyPane({
 
   return (
     <Animated.View
-      onLayout={onLayout}
+      onLayout={(e) => {
+        onLayout?.(e);
+        measured.current.laidOut = true;
+        tryOpen();
+      }}
       accessibilityLabel={paneLabel}
       style={[
         styles.pane,
@@ -348,19 +394,19 @@ export function StudyPane({
           ? {
               backgroundColor: m3.surfaceContainer,
               borderRadius: radii.materialPane,
-              borderWidth: 1,
+              borderWidth: border,
               borderColor: studyPane.materialRing,
             }
           : {
               backgroundColor: colors.surfaceRaised,
               borderRadius: radii.studyPane,
-              borderWidth: hairline,
+              borderWidth: border,
               borderColor: colors.separator,
             },
       ]}
     >
       <GestureDetector gesture={resize}>
-        <View>
+        <View onLayout={(e) => measure('header', e.nativeEvent.layout.height)}>
           <View
             accessible
             accessibilityRole="adjustable"
@@ -394,7 +440,7 @@ export function StudyPane({
               >
                 {reference}
               </Text>
-              <UIText numberOfLines={1} secondary style={styles.subtitle}>
+              <UIText numberOfLines={2} secondary style={styles.subtitle}>
                 {subtitle}
               </UIText>
             </View>
@@ -514,6 +560,7 @@ export function StudyPane({
         nestedScrollEnabled
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
+        onContentSizeChange={(_, contentHeight) => measure('body', contentHeight)}
       >
         <Animated.View key={tab ?? 'empty'} entering={tabFade} style={styles.items}>
           {tab === undefined && <UIText secondary>{EMPTY_COPY}</UIText>}
@@ -526,13 +573,17 @@ export function StudyPane({
                 <Text style={styles.lead}>{note.label}</Text> {note.text}
               </ScriptureText>
             ))}
+          {/* The reader shows no markers, so a cross reference's row
+              leaves its marker letter off. */}
           {tab === 'crossRefs' &&
             study.crossRefs.map((ref, index) => (
               <ScriptureText key={index} variant="noteBody">
-                <Text style={styles.lead}>{ref.label}</Text>
-                {ref.reference !== undefined && ` ${ref.reference}`}
+                {ref.reference}
                 {ref.snippet !== undefined && (
-                  <Text style={{ color: colors.textSecondary }}> {ref.snippet}</Text>
+                  <Text style={{ color: colors.textSecondary }}>
+                    {ref.reference === undefined ? '' : ' '}
+                    {ref.snippet}
+                  </Text>
                 )}
               </ScriptureText>
             ))}
@@ -548,6 +599,7 @@ export function StudyPane({
       {/* A sibling of the body, so it stays pinned while the body scrolls.
           Not pressable yet: Add a note comes later. */}
       <View
+        onLayout={(e) => measure('footer', e.nativeEvent.layout.height)}
         style={[
           styles.myNotes,
           {
@@ -659,7 +711,7 @@ const styles = StyleSheet.create({
   body: { flex: 1 },
   bodyContent: { paddingVertical: spacing.lg },
   items: { gap: spacing.md },
-  // A study note's, cross reference's or footnote's label, leading its text.
+  // A study note's label or a footnote's marker, leading its text.
   lead: { fontWeight: '600' },
   // Full-bleed: out through the pane's horizontal padding to its edges.
   myNotes: {

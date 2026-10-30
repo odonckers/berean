@@ -6,13 +6,17 @@ import type { ParagraphStyle } from 'berean-ffi-rn';
 import {
   type Block,
   type CoreBlock,
+  type Run,
   blockSegments,
   chapterBlocks,
+  lineAt,
   numberBlock,
+  numberOffset,
   numberSpan,
   numberedVerses,
   paneSplit,
   verseLabel,
+  withoutBookTitle,
 } from './chapter-blocks.ts';
 
 // The generated ParagraphStyle is a numeric enum (Prose, PoetryLine, ...
@@ -201,5 +205,81 @@ describe('verses and the pane split', () => {
     assert.equal(numberBlock(blocks, 2), 1);
     assert.equal(numberBlock(blocks, 3), 2);
     assert.equal(numberBlock(blocks, 0), -1);
+  });
+});
+
+describe("the core's book title (temporary, until the core tags it)", () => {
+  const title: Block = { kind: 'heading', text: 'EXODUS' };
+  const verse: Block = {
+    kind: 'paragraph',
+    paragraph: 1,
+    style: PROSE,
+    runs: [{ verse: 1, label: '1', text: 'Now' }],
+  };
+
+  test('chapter 1 drops a first heading naming the book, ignoring case', () => {
+    assert.deepEqual(withoutBookTitle([title, verse], 1, 'Exodus'), [verse]);
+    assert.deepEqual(
+      withoutBookTitle([{ kind: 'heading', text: '1 samuel' }, verse], 1, '1 Samuel'),
+      [verse],
+    );
+  });
+
+  test('every other heading stays', () => {
+    const division: Block = { kind: 'heading', text: 'BOOK ONE' };
+    assert.deepEqual(withoutBookTitle([division, verse], 1, 'Psalms'), [division, verse]);
+    assert.deepEqual(withoutBookTitle([title, verse], 2, 'Exodus'), [title, verse]);
+    assert.deepEqual(withoutBookTitle([verse, title], 1, 'Exodus'), [verse, title]);
+    assert.deepEqual(withoutBookTitle([title, verse], 1, undefined), [title, verse]);
+    assert.deepEqual(withoutBookTitle([title, title, verse], 1, 'Exodus'), [title, verse]);
+    assert.deepEqual(withoutBookTitle([], 1, 'Exodus'), []);
+  });
+});
+
+describe("where a verse's number is in its block", () => {
+  const runs: Run[] = [
+    { verse: 1, label: '1', text: 'In the beginning' },
+    { verse: 0, text: 'note' },
+    { verse: 2, label: '2', text: 'Now' },
+    { verse: 3, label: '10', text: 'the earth' },
+  ];
+  // The block's text as drawn: its segments, each number with its whole span.
+  const drawn = blockSegments(runs)
+    .map((segment) => {
+      if (segment.kind === 'space') return ' ';
+      if (segment.kind !== 'number') return segment.text;
+      const span = numberSpan(segment.label, segment.separated);
+      return span.separator + span.pad + span.label + span.pad + span.trailing;
+    })
+    .join('');
+  const pad = numberSpan('1', false).pad;
+
+  test('the offset of its fill, after the separator', () => {
+    assert.equal(numberOffset(runs, 1), 0);
+    for (const [verse, label] of [
+      [2, '2'],
+      [3, '10'],
+    ] as const) {
+      const offset = numberOffset(runs, verse);
+      assert.ok(offset !== undefined);
+      assert.equal(drawn.slice(offset, offset + pad.length + label.length), pad + label);
+      assert.equal(drawn[offset - 1], ' ');
+    }
+  });
+
+  test('none for a verse the block does not number', () => {
+    assert.equal(numberOffset(runs, 0), undefined);
+    assert.equal(numberOffset([{ verse: 4, text: 'later part' }], 4), undefined);
+    assert.equal(numberOffset(runs, 9), undefined);
+  });
+
+  test('the line holding an offset', () => {
+    const lines = [{ text: 'abc ' }, { text: 'def ' }, { text: 'gh' }];
+    assert.equal(lineAt(lines, 0), 0);
+    assert.equal(lineAt(lines, 3), 0);
+    assert.equal(lineAt(lines, 4), 1);
+    assert.equal(lineAt(lines, 9), 2);
+    assert.equal(lineAt(lines, 99), 2);
+    assert.equal(lineAt([], 0), -1);
   });
 });

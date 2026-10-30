@@ -68,6 +68,65 @@ export function cappedDetents(detents: readonly number[], cap: number): number[]
   return under;
 }
 
+/**
+ * An empty pane's detents: its own short height (the one line and My
+ * notes), then the usual detents above it.
+ */
+export function emptyDetents(short: number, detents: readonly number[]): number[] {
+  'worklet';
+  return [short, ...detents.filter((detent) => detent > short)];
+}
+
+// Spec §5: opening a verse in the bottom 35% of the viewport scrolls it to
+// about 20% from the top so the pane fits.
+export const SCROLL_ZONE = 0.65;
+export const SCROLL_TARGET = 0.2;
+
+/**
+ * How an opening pane fits (spec §5): how far the reader scrolls, in the
+ * same animation, and the height the pane opens at. All in pixels from the
+ * top of the visible area (below the top inset or app bar): verseTop is the
+ * selected verse's first line, paneTop the pane's top, visibleHeight the
+ * area down to the tab bar.
+ *
+ * A verse in the bottom 35% scrolls to about 20% from the top. Otherwise
+ * the reader scrolls only as far as the pane needs to fit above the tab
+ * bar, and never past that 20%. A pane that still doesn't fit opens
+ * shorter, down to `lowest`; if not even that fits, the reader scrolls on
+ * until the verse's top reaches the top of the visible area, never above.
+ */
+export function openFit({
+  verseTop,
+  paneTop,
+  visibleHeight,
+  windowHeight,
+  wanted,
+  lowest,
+}: {
+  verseTop: number;
+  paneTop: number;
+  visibleHeight: number;
+  windowHeight: number;
+  /** The height the pane would open at, as a window fraction. */
+  wanted: number;
+  /** The lowest it may open at, as a window fraction. */
+  lowest: number;
+}): { scrollBy: number; fraction: number } {
+  if (windowHeight <= 0 || visibleHeight <= 0) return { scrollBy: 0, fraction: wanted };
+  const toTarget = Math.max(verseTop - visibleHeight * SCROLL_TARGET, 0);
+  const overflow = paneTop + wanted * windowHeight - visibleHeight;
+  let scrollBy =
+    verseTop > visibleHeight * SCROLL_ZONE ? toTarget : clampFraction(overflow, 0, toTarget);
+  let room = visibleHeight - (paneTop - scrollBy);
+  const short = lowest * windowHeight - room;
+  if (short > 0) {
+    const extra = Math.min(short, Math.max(verseTop - scrollBy, 0));
+    scrollBy += extra;
+    room += extra;
+  }
+  return { scrollBy, fraction: clampFraction(room / windowHeight, lowest, wanted) };
+}
+
 /** The live height while dragging: the start height moved with the finger, clamped. */
 export function dragFraction({
   start,

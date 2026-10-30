@@ -7,6 +7,8 @@ import {
   MIN_HEIGHT,
   cappedDetents,
   dragFraction,
+  emptyDetents,
+  openFit,
   openFraction,
   paneDetents,
   paneMaxFraction,
@@ -179,5 +181,80 @@ describe('cappedDetents', () => {
     const capped = cappedDetents(detents, 0.6);
     assert.deepEqual(release(0.4, 0.8, 0, capped), { kind: 'snap', fraction: 0.6 });
     assert.deepEqual(release(0.4, 0.45, 0, capped), { kind: 'snap', fraction: 0.4 });
+  });
+});
+
+describe('emptyDetents', () => {
+  test('its short height, then the detents above it', () => {
+    assert.deepEqual(emptyDetents(0.18, detents), [0.18, 0.25, 0.4, 0.85]);
+    assert.deepEqual(emptyDetents(0.3, largeDetents), [0.3, 0.4, 0.6, 0.85]);
+  });
+
+  test('a short height a detent matches stays once', () => {
+    assert.deepEqual(emptyDetents(0.4, detents), [0.4, 0.85]);
+  });
+});
+
+describe('openFit', () => {
+  // A 700px visible area (top inset to tab bar) in an 800px window: 20% is
+  // 140px, the bottom 35% starts at 455px.
+  const visibleHeight = 700;
+  const fit = (verseTop: number, paneTop: number, wanted: number, lowest = MIN_HEIGHT) =>
+    openFit({ verseTop, paneTop, visibleHeight, windowHeight, wanted, lowest });
+  // Where the pane's bottom lands after the fit, in the visible area.
+  const paneBottom = (paneTop: number, result: { scrollBy: number; fraction: number }) =>
+    paneTop - result.scrollBy + result.fraction * windowHeight;
+
+  test('a verse high up, with room for the pane, stays put', () => {
+    assert.deepEqual(fit(100, 160, 0.4), { scrollBy: 0, fraction: 0.4 });
+  });
+
+  test("a verse in the bottom 35% scrolls so its first line, not the pane's top, lands at 20%", () => {
+    const result = fit(500, 540, 0.4);
+    assert.equal(result.scrollBy, 360);
+    assert.equal(500 - result.scrollBy, 140);
+    assert.equal(result.fraction, 0.4);
+    assert.ok(paneBottom(540, result) <= visibleHeight);
+  });
+
+  test('at large text, a pane that would run under the tab bar scrolls just enough to fit', () => {
+    // The verse about 45% down, the pane opening at 60% below it.
+    const result = fit(315, 375, 0.6);
+    assert.equal(result.scrollBy, 155);
+    assert.equal(result.fraction, 0.6);
+    assert.equal(paneBottom(375, result), visibleHeight);
+  });
+
+  test('the fit scroll stops at 20%; past that the pane opens shorter', () => {
+    const result = fit(200, 450, 0.6);
+    assert.equal(result.scrollBy, 60);
+    assert.equal(200 - result.scrollBy, 140);
+    assert.equal(result.fraction, 310 / windowHeight);
+    assert.equal(paneBottom(450, result), visibleHeight);
+  });
+
+  test('if not even the lowest height fits, it scrolls on, never past the top', () => {
+    const result = fit(150, 600, 0.4);
+    assert.equal(result.fraction, MIN_HEIGHT);
+    assert.equal(paneBottom(600, result), visibleHeight);
+    assert.ok(150 - result.scrollBy >= 0);
+    // A verse taller than the visible area: its top stops at the top.
+    const tall = fit(120, 690, 0.4);
+    assert.equal(tall.scrollBy, 120);
+    assert.equal(tall.fraction, MIN_HEIGHT);
+  });
+
+  test('an empty pane fits at its short height', () => {
+    const result = fit(420, 460, 0.2, 0.2);
+    assert.equal(result.scrollBy, 0);
+    assert.equal(result.fraction, 0.2);
+    assert.ok(paneBottom(460, result) <= visibleHeight);
+  });
+
+  test('unmeasured, no scroll and the wanted height', () => {
+    assert.deepEqual(
+      openFit({ verseTop: 500, paneTop: 540, visibleHeight: 0, windowHeight, wanted: 0.6, lowest: MIN_HEIGHT }),
+      { scrollBy: 0, fraction: 0.6 },
+    );
   });
 });

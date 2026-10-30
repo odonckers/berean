@@ -42,6 +42,23 @@ export function chapterBlocks(blocks: readonly CoreBlock[]): Block[] {
 }
 
 /**
+ * The blocks without the core's book title ("EXODUS"), which the reader
+ * already titles (the iOS look's caption and heading, the material app
+ * bar). Temporary, until the core tags book titles: it drops only the
+ * first block of chapter 1, and only when it is a heading whose text is
+ * the book's name, ignoring case. Every other heading stays.
+ */
+export function withoutBookTitle(
+  blocks: readonly Block[],
+  chapter: number,
+  bookName: string | undefined,
+): readonly Block[] {
+  const first = blocks[0];
+  if (chapter !== 1 || bookName === undefined || first?.kind !== 'heading') return blocks;
+  return first.text.toLocaleLowerCase() === bookName.toLocaleLowerCase() ? blocks.slice(1) : blocks;
+}
+
+/**
  * Whether a run is verse text. A note run (verse 0) isn't: it has no
  * number and no study, and is never a verse to select.
  */
@@ -127,6 +144,37 @@ export function paneSplit(
   const found = blocks[block];
   if (found?.kind !== 'paragraph') return undefined;
   return { block, run: found.runs.findLastIndex((run) => run.verse === verse) };
+}
+
+/**
+ * Where a verse's number starts in its block's text, as drawn from
+ * blockSegments and numberSpan: the offset of its fill, after the
+ * separator. None if the block doesn't number the verse.
+ */
+export function numberOffset(runs: readonly Run[], verse: number): number | undefined {
+  let offset = 0;
+  for (const segment of blockSegments(runs)) {
+    if (segment.kind === 'space') offset += 1;
+    else if (segment.kind === 'number') {
+      const span = numberSpan(segment.label, segment.separated);
+      if (segment.verse === verse) return offset + span.separator.length;
+      offset += [span.separator, span.pad, span.label, span.pad, span.trailing].join('').length;
+    } else offset += segment.text.length;
+  }
+  return undefined;
+}
+
+/**
+ * The line holding a text offset, from a Text's laid-out lines (each with
+ * the text it draws, in order); the last line past the end, -1 for none.
+ */
+export function lineAt(lines: readonly { text: string }[], offset: number): number {
+  let end = 0;
+  for (const [index, line] of lines.entries()) {
+    end += line.text.length;
+    if (offset < end) return index;
+  }
+  return lines.length - 1;
 }
 
 /** The block holding a verse's number, where focus returns on close; -1 if none. */

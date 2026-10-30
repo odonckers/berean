@@ -16,6 +16,7 @@ import {
   type ScrollView,
   StyleSheet,
   Text,
+  type TextLayoutEvent,
   View,
   useWindowDimensions,
 } from 'react-native';
@@ -44,12 +45,15 @@ import {
   type Run,
   blockSegments,
   chapterBlocks,
+  lineAt,
   numberBlock,
+  numberOffset,
   numberSpan,
   numberedVerses,
   paneSplit,
+  withoutBookTitle,
 } from '@/reader/chapter-blocks';
-import { MAX_HEIGHT, MIN_HEIGHT, paneMaxFraction } from '@/reader/pane-snap';
+import { MAX_HEIGHT, MIN_HEIGHT, openFit, paneMaxFraction } from '@/reader/pane-snap';
 import { ReadingColumn, useColumnPaddingTop } from '@/reader/reading-column';
 import {
   forgetVerse,
@@ -63,11 +67,6 @@ import { markersByVerse, paneStudy, studyActionLabel } from '@/reader/verse-stud
 // Study guide installation isn't modelled yet, so the guide is treated as
 // not installed (the pane offers a Research tab when there is content).
 const GUIDE_INSTALLED = false;
-
-// Spec §5: opening a verse in the bottom 35% of the viewport scrolls it to
-// about 20% from the top so the pane fits.
-const SCROLL_ZONE = 0.65;
-const SCROLL_TARGET = 0.2;
 
 // Per-verse accessibility actions on a paragraph block, named by verse.
 const VERSE_ACTION = 'verse-';
@@ -136,10 +135,12 @@ export function BibleChapterView({
   // The verse whose study is open: not once its close is asked for.
   const open = closing ? undefined : selected;
 
-  const chapterContent = useMemo(
-    () => (loaded.ok ? chapterBlocks(loaded.value.blocks) : []),
-    [loaded],
-  );
+  // The reader titles the book itself, so the core's book title block goes.
+  const chapterContent = useMemo(() => {
+    if (!loaded.ok) return [];
+    const bookName = books.ok ? books.value.find((b) => b.book === book)?.name : undefined;
+    return withoutBookTitle(chapterBlocks(loaded.value.blocks), chapter, bookName);
+  }, [loaded, books, book, chapter]);
 
   // The study content of the verse under the pane, read (synchronously)
   // only while a pane is mounted. Any error, NotFound included (no Study
@@ -163,9 +164,11 @@ export function BibleChapterView({
   // The chapter scroll and its viewport, for the open auto-scroll.
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
   const viewport = useRef({ offset: 0, insetTop: 0, insetBottom: 0, height: 0 });
-  // Set on a tap open, so the new pane's first layout runs the auto-scroll;
-  // a restored pane never scrolls.
-  const scrollOnPaneLayout = useRef(false);
+  // Each paragraph block's top in the column and its laid-out lines, by its
+  // index in the chapter's blocks: where a verse's first line is, for the
+  // open auto-scroll.
+  const blockTops = useRef(new Map<number, number>());
+  const blockLines = useRef(new Map<number, TextLayoutEvent['nativeEvent']['lines']>());
   // The chapter scroll's gesture, which the pane's resize drag blocks.
   const [chapterScroll, setChapterScroll] = useState<NativeGesture>();
 
@@ -225,29 +228,49 @@ export function BibleChapterView({
     rememberVerse(chapterKey, verse);
     setSelection({ chapterKey, verse, restored: false, closing: false });
     void Haptics.selectionAsync().catch(() => {});
-    scrollOnPaneLayout.current = true;
   };
 
-  // Spec §5 exception: a verse in the bottom 35% scrolls to about 20% from
-  // the top, alongside the pane's open animation. This measures the split
-  // point: the pane's top is the bottom of the block ending with the
-  // selected verse. The split point lands at 20%, so the verse's last line
-  // sits just above it.
   const onPaneLayout = (e: LayoutChangeEvent) => {
     paneTop.current = e.nativeEvent.layout.y;
     updatePaneMax();
-    if (!scrollOnPaneLayout.current) return;
-    scrollOnPaneLayout.current = false;
-    const { offset, insetTop, height } = viewport.current;
-    if (height === 0) return;
-    const splitTop = columnTop + e.nativeEvent.layout.y;
-    const visible = height - insetTop;
-    if (splitTop - offset - insetTop > visible * SCROLL_ZONE) {
-      scrollRef.current?.scrollTo({
-        y: splitTop - insetTop - visible * SCROLL_TARGET,
-        animated: !reducedMotion,
-      });
+  };
+
+  // The top of a verse's first line in the column: the line of its block
+  // holding the start of its number. Unmeasured, none.
+  const verseTop = (verse: number) => {
+    const index = numberBlock(chapterContent, verse);
+    const block = chapterContent[index];
+    const top = blockTops.current.get(index);
+    if (block?.kind !== 'paragraph' || top === undefined) return undefined;
+    const lines = blockLines.current.get(index) ?? [];
+    const offset = numberOffset(block.runs, verse);
+    const line = offset === undefined ? undefined : lines[lineAt(lines, offset)];
+    return top + (line?.y ?? 0);
+  };
+
+  // Spec §5, as the opening pane lays out: a verse in the bottom 35%
+  // scrolls so its first line lands about 20% from the top, alongside the
+  // open animation, and the reader scrolls (or the pane opens shorter) so
+  // the whole pane, My notes included, fits above the tab bar. Only a tap
+  // open asks; a restored pane never scrolls.
+  const fitOpen = (wanted: number, lowest: number) => {
+    const { offset, insetTop, insetBottom, height } = viewport.current;
+    if (height === 0 || paneTop.current === undefined || selected === undefined) return wanted;
+    const inView = (y: number) => columnTop + y - offset - insetTop;
+    const pane = inView(paneTop.current);
+    const verse = verseTop(selected);
+    const fit = openFit({
+      verseTop: verse === undefined ? pane : inView(verse),
+      paneTop: pane,
+      visibleHeight: height - insetTop - insetBottom - contentInsets.bottom,
+      windowHeight,
+      wanted,
+      lowest,
+    });
+    if (fit.scrollBy > 0) {
+      scrollRef.current?.scrollTo({ y: offset + fit.scrollBy, animated: !reducedMotion });
     }
+    return fit.fraction;
   };
 
   // Tapping the verse again while its pane collapses reopens it where it
@@ -391,6 +414,16 @@ export function BibleChapterView({
               else blockRefs.current.delete(blockIndex);
             }
       }
+      onLayout={
+        blockIndex === undefined
+          ? undefined
+          : (e) => blockTops.current.set(blockIndex, e.nativeEvent.layout.y)
+      }
+      onTextLayout={
+        blockIndex === undefined
+          ? undefined
+          : (e) => blockLines.current.set(blockIndex, e.nativeEvent.lines)
+      }
       style={[type.reading.scripture, { color: colors.text }]}
       accessibilityActions={numberedVerses(runs).map((verse) => ({
         name: `${VERSE_ACTION}${verse}`,
@@ -483,6 +516,7 @@ export function BibleChapterView({
         onClosed={finishClose}
         onResize={(fraction) => rememberPaneFraction(chapterKey, fraction)}
         onLayout={onPaneLayout}
+        fitOpen={fitOpen}
       />,
       after.length > 0 && renderBlock(`b${index}-continued`, after),
     ];

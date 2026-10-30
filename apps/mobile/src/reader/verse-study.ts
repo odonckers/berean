@@ -85,6 +85,21 @@ export function paneStudy(
   return { tabs, studyNotes, crossRefs, footnotes: study.footnotes };
 }
 
+/**
+ * The pane's tab row, in the spec's order: Study notes, Cross refs,
+ * Research, Footnotes. While the study guide isn't installed, Research
+ * offers it, before Footnotes; Research alone never counts as content, so
+ * a verse with none has no tabs.
+ */
+export function shownTabs(tabs: readonly PaneTab[], guideInstalled: boolean): PaneTab[] {
+  const content = tabs.filter((key) => key !== 'research');
+  if (content.length === 0 || guideInstalled) return content;
+  const footnotes = content.indexOf('footnotes');
+  return footnotes === -1
+    ? [...content, 'research']
+    : [...content.slice(0, footnotes), 'research', ...content.slice(footnotes)];
+}
+
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /**
