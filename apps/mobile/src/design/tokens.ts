@@ -128,9 +128,11 @@ export type M3Roles = {
   outline: string;
   outlineVariant: string;
   scrim: string;
-  /** The iOS look's palette scrim (guide v3 §05): warm ink at 45%, no blur. */
+  /** The iOS look's palette scrim (guide v3 §05): warm ink at 45% in light, no blur; dark's scrim in dark. */
   scrimWarm: string;
 };
+
+const darkScrim = 'rgba(0,0,0,0.32)';
 
 export const m3Roles: Record<'light' | 'dark', M3Roles> = {
   light: {
@@ -170,9 +172,9 @@ export const m3Roles: Record<'light' | 'dark', M3Roles> = {
     // unselected filter-chip edge stays visible (M3 baseline outlineVariant is ~1.6:1
     // against surface).
     outlineVariant: '#4E443B',
-    scrim: 'rgba(0,0,0,0.32)',
-    // The light theme's ink: dark's own text is cream and would lighten the page.
-    scrimWarm: 'rgba(31,26,20,0.45)',
+    scrim: darkScrim,
+    // The guide defines no dark warm scrim, so dark uses the theme's scrim token.
+    scrimWarm: darkScrim,
   },
 };
 
