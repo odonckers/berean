@@ -127,6 +127,7 @@ fn john_3_16() {
     );
     assert!(first.html.contains("<em>w24.08 pp. 2-6</em>"));
     assert!(first.html.ends_with("</div>"));
+    assert_eq!(first.source, "w24.08 pp. 2-6");
     assert_eq!(
         first.target,
         Some(document("w24:0:20240800", 2024530, Some(1)))
@@ -137,6 +138,7 @@ fn john_3_16() {
     assert_eq!(second.label, "“He First Loved Us”");
     assert!(second.html.contains('$'));
     assert!(second.html.contains("<em>cl chap. 23</em>"));
+    assert_eq!(second.source, "cl chap. 23");
     assert_eq!(second.target, Some(document("cl:0:0", 1102002048, Some(6))));
 }
 
@@ -179,6 +181,10 @@ fn every_entry_parses() {
         assert!(!refs.items.is_empty(), "{start}");
         for item in &refs.items {
             assert!(!item.label.is_empty(), "{start}");
+            assert!(!item.source.is_empty(), "{start}: {}", item.label);
+            for text in [&item.label, &item.source] {
+                assert!(!text.contains(['<', '>']), "{start}: {text}");
+            }
             assert!(item.target.is_some(), "{start}: {}", item.label);
             multi_target += usize::from(item.html.contains('$'));
         }
@@ -264,13 +270,19 @@ fn guide_not_installed_is_listed_from_the_catalog() {
 }
 
 #[test]
-fn no_guide_and_no_catalog_is_not_found() {
+fn no_guide_and_no_catalog_is_unavailable() {
     let core = new_core("study-bare", &[(NWT_S, "nwt_S.jwpub")]);
-    let err = core
+    let refs = core
         .reader()
         .study_references(&verse(NWT_S, 43, 3, 16))
-        .unwrap_err();
-    assert!(matches!(err, CoreError::NotFound), "{err:?}");
+        .unwrap();
+    assert_eq!(
+        refs,
+        StudyReferences {
+            availability: StudyAvailability::Unavailable,
+            items: vec![],
+        }
+    );
 }
 
 #[test]
@@ -570,15 +582,19 @@ fn study_edition_not_installed_is_listed_from_the_catalog() {
 }
 
 #[test]
-fn no_study_edition_and_no_catalog_is_not_found() {
-    let core = new_core("study-bare-nwtsty", &[(NWT_S, "nwt_S.jwpub")]);
-    let err = core
-        .reader()
-        .verse_study(&verse(NWT_S, 43, 3, 16))
-        .unwrap_err();
-    assert!(matches!(err, CoreError::NotFound), "{err:?}");
+fn no_study_edition_and_no_catalog_is_unavailable() {
+    let core = new_core("study-bare-nwt-e", &[(NWT_E, "nwt_E.jwpub")]);
+    let location = verse(NWT_E, 43, 3, 3);
+    let study = core.reader().verse_study(&location).unwrap();
+    let full = verse_study(&location).unwrap();
+    assert_eq!(study.availability, StudyAvailability::Unavailable);
+    assert!(study.study_notes.is_empty());
+    assert!(!study.footnotes.is_empty());
+    assert!(!study.cross_refs.is_empty());
+    assert_eq!(study.footnotes, full.footnotes);
+    assert_eq!(study.cross_refs, full.cross_refs);
     // The margin markers do not need the catalog.
-    let counts = core.reader().chapter_study_markers(NWT_S, 43, 3).unwrap();
+    let counts = core.reader().chapter_study_markers(NWT_E, 43, 3).unwrap();
     assert!(!counts.is_empty());
     assert!(counts.iter().all(|c| c.study_notes == 0));
 }
