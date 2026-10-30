@@ -6,6 +6,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SearchShortcut } from '@/components/search-shortcut';
 import { LookProvider } from '@/design/look';
 import { BereanThemeProvider, useBerean } from '@/design/theme';
+import { SearchProvider } from '@/search/search-context';
 import { useNavigationBarStyle } from '../../modules/berean-system-bars';
 
 function RootStack() {
@@ -13,7 +14,8 @@ function RootStack() {
   const barStyle = scheme === 'dark' ? 'light' : 'dark';
   useNavigationBarStyle(barStyle);
   return (
-    <>
+    // One search for every entry, so the query carries over between them.
+    <SearchProvider>
       <Stack screenOptions={{ contentStyle: { backgroundColor: colors.surface } }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen
@@ -23,7 +25,7 @@ function RootStack() {
       </Stack>
       <SearchShortcut />
       <StatusBar style={barStyle} />
-    </>
+    </SearchProvider>
   );
 }
 
