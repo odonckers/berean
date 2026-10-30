@@ -111,6 +111,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::catalog::{Catalog, CatalogFilter};
+use crate::doc_blocks::DocBlock;
 use crate::jwpub::{self, DocumentParagraph, DocumentSummary, Publication, PublicationViewItem};
 use crate::languages;
 use crate::library::{format_pub_key, Library, PubKind, PublicationSummary};
@@ -177,6 +178,9 @@ pub struct Document {
     pub html: String,
     /// One per `DocumentParagraph` row, in order.
     pub paragraphs: Vec<ParagraphAnchor>,
+    /// The document laid out as plain text, in HTML (reading) order, not pid
+    /// order.
+    pub blocks: Vec<DocBlock>,
 }
 
 /// Where a paragraph is in its document's HTML.
@@ -465,6 +469,7 @@ impl Reader {
                 title: summary.title,
                 html,
                 paragraphs,
+                blocks: Vec::new(),
             })
         })
     }
