@@ -9,8 +9,16 @@ import { UIText } from '@/components/text';
 import { useBerean } from '@/design/theme';
 import { hairline } from '@/design/tokens';
 import { useKeyboardHeight } from '@/design/use-keyboard-height';
+import {
+  flattenGroups,
+  moveSelection,
+  NO_SELECTION,
+  resultsId,
+  selectedIndex,
+} from '@/search/palette-selection';
 import { resultsLabel } from '@/search/results';
 import { useSearch } from '@/search/search-context';
+import { useListKeys } from '../../modules/berean-shortcuts';
 
 type SearchPaletteProps = {
   visible: boolean;
@@ -22,10 +30,11 @@ type SearchPaletteProps = {
 // and Escape (Android maps Escape to back) close it through onRequestClose;
 // tapping the scrim closes it too. The dialog, footer included, stays a
 // margin clear of the system bars and the keyboard; the results scroll
-// within it.
+// within it. On a hardware keyboard Up and Down move a selection through
+// the results, starting on the first, and Enter opens the selected one.
 export function SearchPalette({ visible, onClose }: SearchPaletteProps) {
   const { m3, radii, spacing } = useBerean();
-  const { total, truncated, open } = useSearch();
+  const { text, scope, total, truncated, open } = useSearch();
   const groups = useVisibleGroups();
   const insets = useSafeAreaInsets();
   const keyboardHeight = useKeyboardHeight();
@@ -39,12 +48,23 @@ export function SearchPalette({ visible, onClose }: SearchPaletteProps) {
     spacing.xl,
   );
 
-  // Enter opens the top result.
-  const openFirst = () => {
-    const first = groups[0]?.hits[0];
-    if (first === undefined) return;
+  const rows = flattenGroups(groups);
+  const results = resultsId(
+    text,
+    scope,
+    rows.map((row) => row.key),
+  );
+  const [selection, setSelection] = useState(NO_SELECTION);
+  const selected = rows[selectedIndex(selection, results, rows.length)];
+  const listKeys = useListKeys((key) =>
+    setSelection((s) => moveSelection(s, results, rows.length, key === 'up' ? -1 : 1)),
+  );
+
+  // Enter opens the selected result.
+  const openSelected = () => {
+    if (selected === undefined) return;
     onClose();
-    open(first.hit);
+    open(selected.hit);
   };
 
   return (
@@ -81,13 +101,16 @@ export function SearchPalette({ visible, onClose }: SearchPaletteProps) {
         >
           <SearchField
             autoFocus
-            onSubmitEditing={openFirst}
+            onSubmitEditing={openSelected}
+            onFocus={(e) => listKeys.capture(e.nativeEvent.target)}
+            onBlur={(e) => listKeys.release(e.nativeEvent.target)}
             submitBehavior="submit"
             style={{ marginHorizontal: spacing.xl }}
           />
           <SearchResults
             header={<SearchScopeChips style={{ paddingBottom: spacing.xs }} />}
             onOpened={onClose}
+            selectedKey={selected?.key}
             style={styles.results}
             contentContainerStyle={{ paddingHorizontal: spacing.xl, paddingBottom: spacing.lg }}
           />
