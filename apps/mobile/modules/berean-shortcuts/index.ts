@@ -12,6 +12,7 @@ type BereanShortcutsModule = {
   captureListKeys(viewTag: number): Promise<void>;
   releaseListKeys(viewTag: number): Promise<void>;
   setFocusRing(color: string, widthDp: number): Promise<void>;
+  followFocusRingIn(viewTag: number): Promise<void>;
 };
 
 // Android only for now; null on iOS and web, so the hook is a no-op there.
@@ -43,6 +44,15 @@ export function useKeyboardFocusRing(color: string, widthDp: number) {
   useEffect(() => {
     BereanShortcuts?.setFocusRing(color, widthDp).catch(() => {});
   }, [color, widthDp]);
+}
+
+/**
+ * Gives the window holding this view the keyboard focus ring too, until it
+ * closes. A Modal is its own window, which the root's ring never sees. Call
+ * it from the view's onFocus with `e.nativeEvent.target`.
+ */
+export function followFocusRingIn(viewTag: number) {
+  BereanShortcuts?.followFocusRingIn(viewTag).catch(() => {});
 }
 
 /**

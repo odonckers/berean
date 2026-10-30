@@ -27,7 +27,7 @@ import {
 } from '@/search/palette-selection';
 import { resultsLabel } from '@/search/results';
 import { useSearch } from '@/search/search-context';
-import { useListKeys } from '../../modules/berean-shortcuts';
+import { followFocusRingIn, useListKeys } from '../../modules/berean-shortcuts';
 
 type SearchPaletteProps = {
   visible: boolean;
@@ -91,7 +91,11 @@ export function SearchPalette({ visible, onClose }: SearchPaletteProps) {
     <SearchField
       autoFocus
       onSubmitEditing={openSelected}
-      onFocus={(e) => listKeys.capture(e.nativeEvent.target)}
+      onFocus={(e) => {
+        listKeys.capture(e.nativeEvent.target);
+        // The palette's Modal is its own window, outside the root's ring.
+        followFocusRingIn(e.nativeEvent.target);
+      }}
       onBlur={(e) => listKeys.release(e.nativeEvent.target)}
       submitBehavior="submit"
       style={style}

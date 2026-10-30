@@ -36,6 +36,15 @@ class BereanShortcutsModule : Module() {
     AsyncFunction("setFocusRing") { color: String, widthDp: Double ->
       focusRingStyle = Color.parseColor(color) to widthDp
       attachFocusRing()
+      dialogRings.forEach { (root, ring) -> attachFocusRing(ring, root) }
+    }.runOnQueue(Queues.MAIN)
+
+    // The ring above follows focus in the activity's window only. A Modal
+    // (the search palette) is its own dialog window with its own view tree,
+    // so a view inside it hands that window over here to get a ring too,
+    // until the window goes away.
+    AsyncFunction("followFocusRingIn") { view: View ->
+      followFocusRingIn(view.rootView)
     }.runOnQueue(Queues.MAIN)
 
     OnActivityEntersForeground { attachFocusRing() }
@@ -44,12 +53,35 @@ class BereanShortcutsModule : Module() {
 
   private val focusRing = KeyboardFocusRing()
   private var focusRingStyle: Pair<Int, Double>? = null
+  // Rings for other windows (Modals), by root view, each dropped when its
+  // root leaves the window.
+  private val dialogRings = mutableMapOf<View, KeyboardFocusRing>()
 
   private fun attachFocusRing() {
-    val (color, widthDp) = focusRingStyle ?: return
     val decorView = appContext.currentActivity?.window?.decorView ?: return
-    val widthPx = (widthDp * decorView.resources.displayMetrics.density).roundToInt()
-    focusRing.attach(decorView, color, widthPx)
+    attachFocusRing(focusRing, decorView)
+  }
+
+  private fun attachFocusRing(ring: KeyboardFocusRing, root: View) {
+    val (color, widthDp) = focusRingStyle ?: return
+    val widthPx = (widthDp * root.resources.displayMetrics.density).roundToInt()
+    ring.attach(root, color, widthPx)
+  }
+
+  private fun followFocusRingIn(root: View) {
+    if (!root.isAttachedToWindow) return
+    if (root === appContext.currentActivity?.window?.decorView) return
+    val ring = dialogRings.getOrPut(root) {
+      root.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+        override fun onViewAttachedToWindow(v: View) = Unit
+        override fun onViewDetachedFromWindow(v: View) {
+          v.removeOnAttachStateChangeListener(this)
+          dialogRings.remove(v)?.detach()
+        }
+      })
+      KeyboardFocusRing()
+    }
+    attachFocusRing(ring, root)
   }
 
   internal fun emitShortcut(key: String) {
