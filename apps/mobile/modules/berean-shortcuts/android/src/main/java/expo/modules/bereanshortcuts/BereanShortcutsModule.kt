@@ -1,11 +1,13 @@
 package expo.modules.bereanshortcuts
 
+import android.graphics.Color
 import android.view.KeyEvent
 import android.view.View
 import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.lang.ref.WeakReference
+import kotlin.math.roundToInt
 
 class BereanShortcutsModule : Module() {
   override fun definition() = ModuleDefinition {
@@ -28,6 +30,26 @@ class BereanShortcutsModule : Module() {
     AsyncFunction("releaseListKeys") { view: View ->
       view.setOnKeyListener(null)
     }.runOnQueue(Queues.MAIN)
+
+    // The keyboard focus ring's color (#RRGGBB, the theme's accent) and width
+    // in dp. Kept, so a recreated activity's window gets the ring too.
+    AsyncFunction("setFocusRing") { color: String, widthDp: Double ->
+      focusRingStyle = Color.parseColor(color) to widthDp
+      attachFocusRing()
+    }.runOnQueue(Queues.MAIN)
+
+    OnActivityEntersForeground { attachFocusRing() }
+    OnActivityDestroys { focusRing.detach() }
+  }
+
+  private val focusRing = KeyboardFocusRing()
+  private var focusRingStyle: Pair<Int, Double>? = null
+
+  private fun attachFocusRing() {
+    val (color, widthDp) = focusRingStyle ?: return
+    val decorView = appContext.currentActivity?.window?.decorView ?: return
+    val widthPx = (widthDp * decorView.resources.displayMetrics.density).roundToInt()
+    focusRing.attach(decorView, color, widthPx)
   }
 
   internal fun emitShortcut(key: String) {
