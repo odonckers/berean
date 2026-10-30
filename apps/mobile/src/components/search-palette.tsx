@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   useWindowDimensions,
@@ -59,6 +60,7 @@ export function SearchPalette({ visible, onClose }: SearchPaletteProps) {
     measured ?? windowHeight,
     insets,
     keyboardHeight,
+    Platform.OS === 'android',
     spacing.xl,
   );
 

@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { useRef } from 'react';
 import {
   KeyboardAvoidingView,
+  Platform,
   Pressable,
   StyleSheet,
   View,
@@ -9,6 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { keyboardBottom } from '@/components/palette-frame';
 import { ScaledSymbol } from '@/components/scaled-symbol';
 import { SearchField } from '@/components/search-field';
 import { SearchResults, SearchScopeChips } from '@/components/search-results';
@@ -21,8 +23,8 @@ import { useSearch } from '@/search/search-context';
 // The field sits at the top between a back arrow and, once there's a query,
 // a clear button; Back (the arrow or the system gesture) collapses it. The
 // filter chips sit under the field once there are results to scope. The results run under the navigation bar
-// and the keyboard, padded so the last row scrolls clear of both; the
-// keyboard covers the navigation bar where it's open.
+// and the keyboard, padded so the last row scrolls clear of both (see
+// keyboardBottom for how the two combine on each platform).
 export function MaterialSearchView() {
   const { m3, spacing } = useBerean();
   const insets = useSafeAreaInsets();
@@ -96,7 +98,8 @@ export function MaterialSearchView() {
         contentContainerStyle={{
           paddingStart: insets.left + spacing.lg,
           paddingEnd: insets.right + spacing.lg,
-          paddingBottom: Math.max(insets.bottom, keyboardHeight) + spacing.lg,
+          paddingBottom:
+            keyboardBottom(keyboardHeight, insets.bottom, Platform.OS === 'android') + spacing.lg,
         }}
       />
     </View>
