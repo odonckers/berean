@@ -1,4 +1,4 @@
-import type { PublicationSummary } from 'berean-ffi-rn';
+import { PubKind, type PublicationSummary } from 'berean-ffi-rn';
 import { router, Stack, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, FlatList, Pressable, StyleSheet, View } from 'react-native';
@@ -25,6 +25,17 @@ function loadLibrary(): Loaded<LibraryData> {
 
 function openCatalog() {
   router.push('/library/catalog');
+}
+
+// Publications read in the Read tab: navigate selects it, and its stack
+// either takes the new params in place (same screen on top) or pushes.
+function openReader(pub: PublicationSummary) {
+  const params = { pubKey: pub.pubKey, title: displayTitle(pub) };
+  if (pub.kind === PubKind.Bible) {
+    router.navigate({ pathname: '/', params });
+  } else {
+    router.navigate({ pathname: '/publication', params });
+  }
 }
 
 function confirmRemove(pub: PublicationSummary) {
@@ -133,9 +144,10 @@ export default function LibraryScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`${displayTitle(item)}, ${publicationDetail(item, data.value.names)}`}
-              accessibilityHint="Long press to remove"
+              accessibilityHint="Opens the publication. Long press to remove"
               accessibilityActions={[{ name: 'remove', label: 'Remove' }]}
               onAccessibilityAction={() => confirmRemove(item)}
+              onPress={() => openReader(item)}
               onLongPress={() => confirmRemove(item)}
               style={[styles.row, { borderColor: colors.separator }]}
             >

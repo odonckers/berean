@@ -10,12 +10,14 @@ import {
   radii,
   readingType,
   spacing,
+  studyPaneColors,
   uiType,
   verseNumberType,
   type ColorSet,
   type HighlightName,
   type M3Roles,
   type ReadingVariant,
+  type StudyPaneColors,
   type TypeRole,
   type UIVariant,
 } from '@/design/tokens';
@@ -28,6 +30,7 @@ export type Berean = {
   colors: ColorSet;
   m3: M3Roles;
   highlights: Record<HighlightName, string>;
+  studyPane: StudyPaneColors;
   type: {
     ui: Record<UIVariant, TypeRole>;
     reading: Record<ReadingVariant, TypeRole>;
@@ -44,6 +47,7 @@ function makeBerean(look: Look, scheme: Scheme): Berean {
     colors: colorSets[scheme],
     m3: m3Roles[scheme],
     highlights: highlightFills[scheme],
+    studyPane: studyPaneColors[scheme],
     type: { ui: uiType[look], reading: readingType, verseNumber: verseNumberType },
     spacing,
     radii,

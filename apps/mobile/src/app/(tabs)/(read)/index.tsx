@@ -1,104 +1,97 @@
-import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { PubKind } from 'berean-ffi-rn';
+import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 
 import { Screen } from '@/components/screen';
-import { ScriptureText, UIText } from '@/components/text';
-import { useBerean } from '@/design/theme';
-import { highlightSpokenNames, readingMeasure, type HighlightName } from '@/design/tokens';
+import { UIText } from '@/components/text';
+import { TextButton } from '@/components/text-button';
+import { useStackOptions } from '@/design/use-stack-options';
+import { library } from '@/ffi/core';
+import { displayTitle } from '@/library/labels';
+import { load, type Loaded } from '@/library/load';
+import { BibleChapterView } from '@/reader/bible-chapter';
+import { type BibleLocation, rememberBible, rememberedBible } from '@/reader/session';
 
-// Design specimen until real chapters arrive. ASV (public domain).
-const verses: { number: number; text: string; highlight?: HighlightName }[] = [
-  { number: 1, text: 'In the beginning was the Word, and the Word was with God, and the Word was God.' },
-  { number: 2, text: 'The same was in the beginning with God.' },
-  {
-    number: 3,
-    text: 'All things were made through him; and without him was not anything made that hath been made.',
-  },
-  { number: 4, text: 'In him was life; and the life was the light of men.', highlight: 'yellow' },
-  { number: 5, text: 'And the light shineth in the darkness; and the darkness apprehended it not.' },
-  { number: 6, text: 'There came a man, sent from God, whose name was John.' },
-  {
-    number: 7,
-    text: 'The same came for witness, that he might bear witness of the light, that all might believe through him.',
-  },
-  { number: 8, text: 'He was not the light, but came that he might bear witness of the light.' },
-  {
-    number: 9,
-    text: 'There was the true light, even the light which lighteth every man, coming into the world.',
-  },
-  {
-    number: 10,
-    text: 'He was in the world, and the world was made through him, and the world knew him not.',
-  },
-  { number: 11, text: 'He came unto his own, and they that were his own received him not.' },
-  {
-    number: 12,
-    text: 'But as many as received him, to them gave he the right to become children of God, even to them that believe on his name:',
-  },
-  {
-    number: 13,
-    text: 'who were born, not of blood, nor of the will of the flesh, nor of the will of man, but of God.',
-  },
-  {
-    number: 14,
-    text: 'And the Word became flesh, and dwelt among us (and we beheld his glory, glory as of the only begotten from the Father), full of grace and truth.',
-  },
-  {
-    number: 15,
-    text: 'John beareth witness of him, and crieth, saying, This was he of whom I said, He that cometh after me is become before me: for he was before me.',
-  },
-  { number: 16, text: 'For of his fulness we all received, and grace for grace.' },
-  {
-    number: 17,
-    text: 'For the law was given through Moses; grace and truth came through Jesus Christ.',
-  },
-  {
-    number: 18,
-    text: 'No man hath seen God at any time; the only begotten Son, who is in the bosom of the Father, he hath declared him.',
-  },
-];
+type ReadParams = { pubKey?: string; title?: string; book?: string; chapter?: string };
 
-export default function ReadScreen() {
-  const { colors, highlights, type, radii, spacing } = useBerean();
-  const { fontScale } = useWindowDimensions();
-  const measure = readingMeasure * fontScale;
-  return (
-    <Screen title="Read" search measure={measure}>
-      {/* The reading column: capped at the measure, centered, so wide windows
-          grow the margins. Phones are narrower than the cap. */}
-      <View style={[styles.column, { maxWidth: measure, gap: spacing.md }]}>
-        <ScriptureText variant="chapterHeading">John 1</ScriptureText>
-        <ScriptureText variant="sectionHeading">The Word</ScriptureText>
-        <View>
-          {verses.map(({ number, text, highlight }) => (
-            <ScriptureText
-              key={number}
-              accessibilityLabel={
-                highlight
-                  ? `Verse ${number}, highlighted, ${highlightSpokenNames[highlight]}. ${text}`
-                  : `Verse ${number}. ${text}`
-              }
-              style={
-                highlight && {
-                  backgroundColor: highlights[highlight],
-                  borderRadius: radii.chip,
-                  marginHorizontal: -spacing.xs,
-                  paddingHorizontal: spacing.xs,
-                }
-              }
-            >
-              <Text style={[type.verseNumber, { color: colors.textSecondary }]}>{number} </Text>
-              {text}
-            </ScriptureText>
-          ))}
-        </View>
-        <UIText variant="caption" secondary>
-          Sample passage (ASV). Real chapters come from the Berean core in Expo 4.
-        </UIText>
-      </View>
-    </Screen>
-  );
+// The first installed Bible, at its first chapter.
+function firstInstalledBible(): Loaded<BibleLocation | undefined> {
+  return load(() => {
+    const pub = library()
+      .installed()
+      .find((p) => p.kind === PubKind.Bible);
+    return pub && { pubKey: pub.pubKey, title: displayTitle(pub), book: 1, chapter: 1 };
+  });
 }
 
-const styles = StyleSheet.create({
-  column: { width: '100%', alignSelf: 'center' },
-});
+// The Bible reader. With no params it shows the Bible last open this
+// session, else the first installed one.
+export default function ReadScreen() {
+  const params = useLocalSearchParams<ReadParams>();
+  const stackOptions = useStackOptions();
+  const fromParams: BibleLocation | undefined =
+    params.pubKey === undefined
+      ? undefined
+      : {
+          pubKey: params.pubKey,
+          title: params.title ?? '',
+          book: Number(params.book ?? 1),
+          chapter: Number(params.chapter ?? 1),
+        };
+  const fallsBack = fromParams === undefined && rememberedBible() === undefined;
+
+  // Refreshed on focus while nothing else is shown, so a Bible installed
+  // from Library appears on return.
+  const [installed, setInstalled] = useState<Loaded<BibleLocation | undefined>>(() =>
+    fallsBack ? firstInstalledBible() : { ok: true, value: undefined },
+  );
+  useFocusEffect(
+    useCallback(() => {
+      if (fallsBack) setInstalled(firstInstalledBible());
+    }, [fallsBack]),
+  );
+
+  const bible = fromParams ?? rememberedBible() ?? (installed.ok ? installed.value : undefined);
+
+  const { pubKey, title, book, chapter } = bible ?? {};
+  useEffect(() => {
+    if (pubKey !== undefined && title !== undefined && book !== undefined && chapter !== undefined)
+      rememberBible({ pubKey, title, book, chapter });
+  }, [pubKey, title, book, chapter]);
+
+  if (bible === undefined) {
+    // Titled like other tab roots: the material top app bar, the iOS
+    // look's large title (drawn inline by Screen where the header is hidden).
+    return (
+      <>
+        <Stack.Screen
+          options={{ title: 'Read', headerLargeTitleEnabled: stackOptions.headerLargeTitleEnabled }}
+        />
+        <Screen title="Read">
+          {installed.ok ? (
+            <>
+              <UIText>No Bible installed yet.</UIText>
+              <TextButton
+                title="Open Library"
+                align="leading"
+                onPress={() => router.navigate('/library')}
+              />
+            </>
+          ) : (
+            <UIText secondary>{installed.message}</UIText>
+          )}
+        </Screen>
+      </>
+    );
+  }
+
+  // The chapter view titles the screen with its chapter heading.
+  return (
+    <BibleChapterView
+      pubKey={bible.pubKey}
+      title={bible.title}
+      book={bible.book}
+      chapter={bible.chapter}
+    />
+  );
+}

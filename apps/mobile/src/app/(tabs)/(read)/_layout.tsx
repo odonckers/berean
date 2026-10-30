@@ -6,7 +6,20 @@ export default function ReadLayout() {
   const screenOptions = useStackOptions();
   return (
     <Stack screenOptions={screenOptions}>
+      {/* The root follows the look's stack options like other tab roots;
+          the screen sets its title per look. */}
       <Stack.Screen name="index" options={{ title: 'Read' }} />
+      {/* Pushed publications keep the native header for back and the title,
+          even where the stack options hide it (iOS look on Android).
+          One entry per publication and document, so opening another
+          publication from Library pushes instead of replacing the top one.
+          The function form of dangerouslySingular is getId under a new name:
+          expo-router calls it as getId({ params }) => fn(name, params). */}
+      <Stack.Screen
+        name="publication"
+        options={{ title: '', headerShown: true }}
+        dangerouslySingular={(_name, params) => `${params.pubKey ?? ''}/${params.docId ?? ''}`}
+      />
     </Stack>
   );
 }

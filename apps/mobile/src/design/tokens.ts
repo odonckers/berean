@@ -139,7 +139,7 @@ export const m3Roles: Record<'light' | 'dark', M3Roles> = {
     surface: colorSets.light.surface,
     surfaceContainerLow: '#F7F1E4',
     surfaceContainer: '#F3ECDD',
-    surfaceContainerHigh: '#EEE6D4',
+    surfaceContainerHigh: '#EEE5D3', // Lumen
     surfaceContainerHighest: '#E9E0CC',
     onSurface: colorSets.light.text,
     onSurfaceVariant: colorSets.light.textSecondary,
@@ -170,6 +170,46 @@ export const m3Roles: Record<'light' | 'dark', M3Roles> = {
     scrim: 'rgba(0,0,0,0.32)',
   },
 };
+
+// Study pane colors that have no general role (Lumen review of the inline
+// study pane). Material: the 1dp ring and the My notes footer. iOS: the
+// segmented control and the My notes footer.
+export type StudyPaneColors = {
+  materialRing: string;
+  materialFooter: string;
+  iosFooter: string;
+  segmentTrack: string;
+  segmentThumb: string;
+  segmentText: string;
+};
+
+export const studyPaneColors: Record<'light' | 'dark', StudyPaneColors> = {
+  light: {
+    materialRing: '#E0D4BC',
+    materialFooter: m3Roles.light.surfaceContainerHigh,
+    iosFooter: '#F5EFE0',
+    segmentTrack: colorSets.light.separator,
+    // Light thumb is surfaceRaised with a small shadow.
+    segmentThumb: colorSets.light.surfaceRaised,
+    segmentText: colorSets.light.text,
+  },
+  dark: {
+    materialRing: m3Roles.dark.outlineVariant,
+    materialFooter: m3Roles.dark.surfaceContainerHigh,
+    // Derived: Lumen gave only the light value. The light footer is one step
+    // darker than the raised pane, so the dark one is one step lighter than
+    // the dark pane (#211D18), the same step as the segment track.
+    iosFooter: '#2A241F',
+    segmentTrack: '#2A241F',
+    segmentThumb: '#5C544A',
+    segmentText: colorSets.dark.text,
+  },
+};
+
+// Reading column horizontal padding, and the study pane's inset from the
+// column's outer edge (so the pane runs wider than the text).
+export const readingColumnPadding = { ios: 22, material: 20 } as const;
+export const studyPaneInset = { ios: 10, material: 12 } as const;
 
 // 4-pt grid.
 export const spacing = {
@@ -250,8 +290,11 @@ export const readingType: Record<ReadingVariant, TypeRole> = {
 const averageCharEm = 0.48;
 export const readingMeasure = Math.round(70 * averageCharEm * scriptureFontSize);
 
-// Verse numbers use the UI font with tabular figures.
+// Verse numbers use the UI font with tabular figures. They are spans in the
+// serif scripture text, so they name the system family ('System' on iOS;
+// Android falls back to its default sans) rather than inherit the serif.
 export const verseNumberType: TypeRole = {
+  fontFamily: 'System',
   fontSize: 11,
   fontWeight: '600',
   fontVariant: ['tabular-nums'],
