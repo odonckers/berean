@@ -1,5 +1,12 @@
 import { router } from 'expo-router';
-import { KeyboardAvoidingView, Pressable, StyleSheet, View } from 'react-native';
+import { useRef } from 'react';
+import {
+  KeyboardAvoidingView,
+  Pressable,
+  StyleSheet,
+  View,
+  type TextInputInstance,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ScaledSymbol } from '@/components/scaled-symbol';
@@ -8,16 +15,24 @@ import { SearchResults, SearchScopeChips } from '@/components/search-results';
 import { UIText } from '@/components/text';
 import { useBerean } from '@/design/theme';
 import { useKeyboardHeight } from '@/design/use-keyboard-height';
+import { useSearch } from '@/search/search-context';
 
 // Material look: the full-screen search view the M3 search bar expands into.
-// The field sits at the top beside a back arrow; Back (the arrow or the
-// system gesture) collapses it. The results run under the navigation bar
+// The field sits at the top between a back arrow and, once there's a query,
+// a clear button; Back (the arrow or the system gesture) collapses it. The
+// filter chips sit under the field once there are results to scope. The results run under the navigation bar
 // and the keyboard, padded so the last row scrolls clear of both; the
 // keyboard covers the navigation bar where it's open.
 export function MaterialSearchView() {
   const { m3, spacing } = useBerean();
   const insets = useSafeAreaInsets();
   const keyboardHeight = useKeyboardHeight();
+  const { text, setText, total } = useSearch();
+  const field = useRef<TextInputInstance>(null);
+  const clear = () => {
+    setText('');
+    field.current?.focus();
+  };
   return (
     <View style={[styles.root, { backgroundColor: m3.surface }]}>
       <View
@@ -28,7 +43,7 @@ export function MaterialSearchView() {
             paddingTop: insets.top + spacing.xs,
             paddingBottom: spacing.xs,
             paddingStart: insets.left + spacing.xs,
-            paddingEnd: insets.right + spacing.lg,
+            paddingEnd: insets.right + spacing.xs,
           },
         ]}
       >
@@ -47,10 +62,35 @@ export function MaterialSearchView() {
         </Pressable>
         {/* Flat inside the view's header, as in the M3 search view. */}
         <SearchField
+          ref={field}
           autoFocus
           style={[styles.flatField, { paddingHorizontal: spacing.sm }]}
         />
+        {text.length > 0 && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Clear search"
+            onPress={clear}
+            android_ripple={{ color: m3.outline, borderless: true }}
+            style={styles.iconButton}
+          >
+            <ScaledSymbol
+              name={{ ios: 'xmark', android: 'close' }}
+              tintColor={m3.onSurfaceVariant}
+              accessible={false}
+            />
+          </Pressable>
+        )}
       </View>
+      {total > 0 && (
+        <SearchScopeChips
+          style={{
+            paddingStart: insets.left + spacing.lg,
+            paddingEnd: insets.right + spacing.lg,
+            paddingVertical: spacing.xs,
+          }}
+        />
+      )}
       <SearchResults
         style={styles.root}
         contentContainerStyle={{

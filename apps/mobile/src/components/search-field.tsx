@@ -1,4 +1,10 @@
-import { StyleSheet, TextInput, type TextInputProps } from 'react-native';
+import type { Ref } from 'react';
+import {
+  StyleSheet,
+  TextInput,
+  type TextInputInstance,
+  type TextInputProps,
+} from 'react-native';
 
 import { useBerean } from '@/design/theme';
 import { hairline } from '@/design/tokens';
@@ -8,7 +14,7 @@ import { useSearch } from '@/search/search-context';
 // bottom field off iOS, the palette). Bound to the shared search, so the
 // query carries over between them. Heights are minimums so scaled text
 // grows the field instead of clipping.
-export function SearchField(props: TextInputProps) {
+export function SearchField({ ref, ...props }: TextInputProps & { ref?: Ref<TextInputInstance> }) {
   const { look, m3, colors, type, radii, spacing } = useBerean();
   const { text, setText } = useSearch();
   const lookStyle =
@@ -24,6 +30,7 @@ export function SearchField(props: TextInputProps) {
         };
   return (
     <TextInput
+      ref={ref}
       accessibilityLabel="Search Berean"
       placeholder="Search Berean"
       placeholderTextColor={m3.onSurfaceVariant}
