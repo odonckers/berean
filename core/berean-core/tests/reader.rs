@@ -6,7 +6,10 @@ mod common;
 
 use std::sync::OnceLock;
 
-use berean_core::reader::{BibleBook, Location, LocationSpan, Reader, TocEntry};
+use berean_core::reader::{
+    BibleBook, BibleChapter, ChapterBlock, Location, LocationSpan, ParagraphStyle, Reader,
+    TocEntry, VerseRun,
+};
 use berean_core::{CancelToken, Core, CoreError};
 use common::{fixture, raw_db};
 
@@ -856,4 +859,207 @@ fn bible_books_of_a_missing_or_non_bible_are_not_found() {
     assert_not_found(r.bible_books("nwt:2:0"));
     assert_not_found(r.bible_books(W_E));
     assert_invalid(r.bible_books("nwt"), "malformed publication key");
+}
+
+fn heading(text: &str) -> ChapterBlock {
+    ChapterBlock::Heading { text: text.into() }
+}
+
+fn run(verse: u32, label: Option<&str>, text: &str, cross_refs: &[&str]) -> VerseRun {
+    VerseRun {
+        verse,
+        label: label.map(Into::into),
+        text: text.into(),
+        footnotes: Vec::new(),
+        cross_refs: cross_refs.iter().map(|&m| m.into()).collect(),
+    }
+}
+
+/// Each paragraph's style and runs, in order.
+fn paragraphs(ch: &BibleChapter) -> Vec<(&ParagraphStyle, &[VerseRun])> {
+    ch.blocks
+        .iter()
+        .filter_map(|b| match b {
+            ChapterBlock::Paragraph { style, runs, .. } => Some((style, runs.as_slice())),
+            ChapterBlock::Heading { .. } => None,
+        })
+        .collect()
+}
+
+/// The runs of a chapter's verses, in order (not its notes).
+fn verse_runs(ch: &BibleChapter) -> Vec<&VerseRun> {
+    paragraphs(ch)
+        .into_iter()
+        .filter(|(style, _)| **style != ParagraphStyle::Note)
+        .flat_map(|(_, runs)| runs)
+        .collect()
+}
+
+fn collapse(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+#[test]
+fn john_3_blocks() {
+    let ch = reader().bible_chapter(NWT_E, 43, 3).unwrap();
+    assert!(matches!(
+        ch.blocks[0],
+        ChapterBlock::Paragraph {
+            style: ParagraphStyle::Prose,
+            ..
+        }
+    ));
+    let runs = verse_runs(&ch);
+    let first = |verse| *runs.iter().find(|r| r.verse == verse).unwrap();
+    assert_eq!(first(1).label.as_deref(), Some("3"));
+    assert_eq!(first(2).label.as_deref(), Some("2"));
+    assert_eq!(
+        first(3),
+        &VerseRun {
+            verse: 3,
+            label: Some("3".into()),
+            text: "In response Jesus said to him: “Most truly I say to you, unless anyone is \
+                   born again, he cannot see the Kingdom of God.”"
+                .into(),
+            footnotes: vec!["a".into()],
+            cross_refs: vec!["f".into(), "g".into()],
+        }
+    );
+    for r in &runs {
+        assert!(!r.text.contains('<'), "{r:?}");
+        // No marker letter is left glued to punctuation (`again,a`).
+        for marker in r.footnotes.iter().chain(&r.cross_refs) {
+            for p in [",", ".", ";", ":", "!", "?", "”", "’"] {
+                let glued = format!("{p}{marker}");
+                assert!(
+                    !r.text.contains(&format!("{glued} ")) && !r.text.ends_with(&glued),
+                    "{r:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn psalm_23_blocks() {
+    let ch = reader().bible_chapter(NWT_E, 19, 23).unwrap();
+    assert_eq!(
+        paragraphs(&ch)[..3],
+        [
+            (
+                &ParagraphStyle::Superscription,
+                &[run(0, None, "A melody of David.", &[])][..]
+            ),
+            (
+                &ParagraphStyle::PoetryLine,
+                &[run(1, Some("23"), "Jehovah is my Shepherd.", &["a"])][..]
+            ),
+            (
+                &ParagraphStyle::PoetryContinuation,
+                &[run(1, None, "I will lack nothing.", &["b"])][..]
+            ),
+        ]
+    );
+}
+
+#[test]
+fn chapter_headings() {
+    let blocks = |book, chapter| reader().bible_chapter(NWT_E, book, chapter).unwrap().blocks;
+    let psalm_119 = blocks(19, 119);
+    let aleph = psalm_119
+        .iter()
+        .position(|b| *b == heading("א [Aleph]"))
+        .unwrap();
+    let verse_1 = psalm_119
+        .iter()
+        .position(|b| match b {
+            ChapterBlock::Paragraph { runs, .. } => runs.iter().any(|r| r.verse == 1),
+            ChapterBlock::Heading { .. } => false,
+        })
+        .unwrap();
+    assert!(aleph < verse_1);
+    assert_eq!(blocks(1, 1)[0], heading("GENESIS"));
+    assert_eq!(
+        blocks(19, 1)[..3],
+        [
+            heading("PSALMS"),
+            heading("BOOK ONE"),
+            heading("(Psalms 1-41)")
+        ]
+    );
+    // The heading's footnote marker is dropped.
+    assert!(blocks(25, 1).contains(&heading("א [Aleph]")));
+}
+
+/// The text of a chapter's last block, which must be a note.
+#[track_caller]
+fn last_note(book: u32, chapter: u32) -> String {
+    let ch = reader().bible_chapter(NWT_E, book, chapter).unwrap();
+    match ch.blocks.last().unwrap() {
+        ChapterBlock::Paragraph {
+            style: ParagraphStyle::Note,
+            runs,
+            ..
+        } => {
+            assert_eq!(runs.len(), 1);
+            assert_eq!((runs[0].verse, &runs[0].label), (0, &None));
+            runs[0].text.clone()
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn notes_after_the_verses() {
+    assert_eq!(
+        last_note(35, 3),
+        "To the director; with my stringed instruments."
+    );
+    assert!(
+        last_note(39, 4).starts_with("(End of the translation of the Hebrew-Aramaic Scriptures")
+    );
+}
+
+#[test]
+fn split_verse_has_a_run_in_each_paragraph() {
+    // John 1:3 is split across two paragraphs.
+    let ch = reader().bible_chapter(NWT_E, 43, 1).unwrap();
+    let with_verse_3 = paragraphs(&ch)
+        .into_iter()
+        .filter(|(_, runs)| runs.iter().any(|r| r.verse == 3))
+        .count();
+    assert_eq!(with_verse_3, 2);
+}
+
+/// In every chapter of both Bibles, each verse's runs joined are its text.
+#[test]
+fn blocks_hold_every_verse() {
+    for bible in [NWT_E, NWT_S] {
+        for book in reader().bible_books(bible).unwrap() {
+            for chapter in 1..=book.chapter_count {
+                let at = format!("{bible} {}:{chapter}", book.book);
+                let ch = reader()
+                    .bible_chapter(bible, book.book, chapter)
+                    .unwrap_or_else(|e| panic!("{at}: {e:?}"));
+                let runs = verse_runs(&ch);
+                for v in &ch.verses {
+                    let texts: Vec<&str> = runs
+                        .iter()
+                        .filter(|r| r.verse == v.verse)
+                        .map(|r| r.text.as_str())
+                        .collect();
+                    assert!(!texts.is_empty(), "{at}:{} has no run", v.verse);
+                    assert_eq!(
+                        collapse(&texts.join(" ")),
+                        collapse(&v.text),
+                        "{at}:{}",
+                        v.verse
+                    );
+                }
+                for r in &runs {
+                    assert!(ch.verses.iter().any(|v| v.verse == r.verse), "{at}: {r:?}");
+                }
+            }
+        }
+    }
 }

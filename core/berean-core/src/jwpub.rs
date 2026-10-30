@@ -176,13 +176,19 @@ pub struct BibleBook {
     pub chapter_display_title: Option<String>,
 }
 
-/// One row of `BibleChapter`. `content` is the raw encrypted blob.
+/// One row of `BibleChapter`. `content`, `pre_content` and `post_content`
+/// are raw encrypted blobs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BibleChapterRow {
     pub bible_chapter_id: i64,
     pub content: Option<Vec<u8>>,
     pub first_verse_id: i64,
     pub last_verse_id: i64,
+    /// What comes before the verses: the book's title on its first chapter,
+    /// a book division of the Psalms.
+    pub pre_content: Option<Vec<u8>>,
+    /// What comes after the verses (Habakkuk 3, Malachi 4).
+    pub post_content: Option<Vec<u8>>,
 }
 
 /// One row of `BibleVerse`. `content` is the raw encrypted blob.
@@ -740,7 +746,7 @@ impl Publication {
                 "BookNumber",
                 "ChapterNumber",
             ],
-            &[],
+            &["PreContent", "PostContent"],
             " FROM BibleChapter WHERE BookNumber = ?1 AND ChapterNumber = ?2",
         )?
         else {
@@ -752,6 +758,8 @@ impl Publication {
                 content: r.get(1)?,
                 first_verse_id: r.get(2)?,
                 last_verse_id: r.get(3)?,
+                pre_content: r.get(6)?,
+                post_content: r.get(7)?,
             })
         })?;
         match rows.len() {
