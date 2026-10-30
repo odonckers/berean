@@ -9,6 +9,7 @@ A spec's recommended direction stays **pending** until Owen decides on it in the
 | [Berean design guide](berean-design-guide.md) | v3 with Notes section; approved direction (Oct 28, 2026), reference for all platforms |
 | [Inline study pane](inline-study-pane.md) | Decided: direction B, open questions resolved |
 | [Markdown notes, folders and tags (core FFI shapes)](markdown-notes.md) | Proposed; Wren decides in the PR |
+| [Document blocks for publication articles (core FFI shapes)](document-blocks.md) | Proposed; Wren decides in the PR |
 | Studyspace infinite canvas | Planned |
 | Omnisearch | Planned |
 | Note hyperlinks with inline previews | Planned |
