@@ -15,9 +15,9 @@
 //!
 //! # Resolving
 //!
-//! [`Reader::resolve`] returns a [`LocationSpan`], from its `start` through
-//! its `end`; a single verse, chapter, document or paragraph gives
-//! `start == end`. It takes one of:
+//! [`Reader::resolve`] returns a [`Resolved::Span`] holding a
+//! [`LocationSpan`], from its `start` through its `end`; a single verse,
+//! chapter, document or paragraph gives `start == end`. It takes one of:
 //!
 //! - A citation: `<book> <chapter>`, `<book> <chapter>:<verse>`, a verse
 //!   range in one chapter `<book> <chapter>:<verse>-<verse>`, one across
@@ -45,6 +45,11 @@
 //!   document, or a paragraph or range of paragraphs of it, by JW language
 //!   code and MEPS document id. It resolves to the first installed
 //!   publication, in key order, in that language holding the document.
+//!
+//! An `http://`, `https://` or `mailto:` link (the scheme in any case, with
+//! something after it) is not looked up: it gives [`Resolved::External`]
+//! with the link as given, for the apps to hand to the system. Any other
+//! scheme (`javascript:`, `ftp:`, `data:`, `file:`, ...) is `Invalid`.
 //!
 //! Both ends of a range must exist, and the end may not come before the start
 //! (in Bible order: book, chapter, verse; or paragraph order). A span stays
@@ -111,6 +116,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::catalog::{Catalog, CatalogFilter};
+use crate::doc_blocks::{self, DocBlock};
 use crate::jwpub::{self, DocumentParagraph, DocumentSummary, Publication, PublicationViewItem};
 use crate::languages;
 use crate::library::{format_pub_key, Library, PubKind, PublicationSummary};
@@ -157,6 +163,19 @@ pub struct LocationSpan {
     pub end: Location,
 }
 
+/// What [`Reader::resolve`] gives: a span of the library, or a web or mail
+/// link for the apps to hand to the system.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Resolved {
+    Span {
+        span: LocationSpan,
+    },
+    /// An `http://`, `https://` or `mailto:` link, as given (trimmed).
+    External {
+        url: String,
+    },
+}
+
 /// One table-of-contents entry. The entries of a publication form a flat
 /// list in display order; `depth` is 0 for a top-level entry and one more
 /// for each level of nesting.
@@ -177,6 +196,9 @@ pub struct Document {
     pub html: String,
     /// One per `DocumentParagraph` row, in order.
     pub paragraphs: Vec<ParagraphAnchor>,
+    /// The document laid out as plain text, in HTML (reading) order, not pid
+    /// order.
+    pub blocks: Vec<DocBlock>,
 }
 
 /// Where a paragraph is in its document's HTML.
@@ -452,21 +474,24 @@ impl Reader {
     /// `pub_key`. Malformed key => `Invalid`; not installed, or no such
     /// document (or one without content) => `NotFound`.
     pub fn document(&self, pub_key: &str, doc_id: i64) -> Result<Document, CoreError> {
-        self.library().with_publication(pub_key, |publication| {
-            let summary = find_document(publication, doc_id)?.ok_or(CoreError::NotFound)?;
-            let html = publication.document_html(summary.document_id)?;
-            let paragraphs = publication
-                .document_paragraphs(summary.document_id)?
-                .into_iter()
-                .map(|p| paragraph_anchor(&html, p))
-                .collect::<Result<_, _>>()?;
-            Ok(Document {
-                doc_id,
-                title: summary.title,
-                html,
-                paragraphs,
+        self.library()
+            .with_publication_in(pub_key, |publication, dir| {
+                let summary = find_document(publication, doc_id)?.ok_or(CoreError::NotFound)?;
+                let html = publication.document_html(summary.document_id)?;
+                let paragraphs: Vec<ParagraphAnchor> = publication
+                    .document_paragraphs(summary.document_id)?
+                    .into_iter()
+                    .map(|p| paragraph_anchor(&html, p))
+                    .collect::<Result<_, _>>()?;
+                let blocks = doc_blocks::document_blocks(&html, &paragraphs, dir)?;
+                Ok(Document {
+                    doc_id,
+                    title: summary.title,
+                    html,
+                    paragraphs,
+                    blocks,
+                })
             })
-        })
     }
 
     /// Chapter `chapter` of book `book` (1-66) of the installed Bible
@@ -520,9 +545,20 @@ impl Reader {
     }
 
     /// Resolve a citation or `jwpub://` link to the span of locations it
-    /// names; see the module docs for the forms accepted.
-    pub fn resolve(&self, reference: &str) -> Result<LocationSpan, CoreError> {
+    /// names, or an `http://`, `https://` or `mailto:` link to
+    /// [`Resolved::External`]; see the module docs for the forms accepted.
+    pub fn resolve(&self, reference: &str) -> Result<Resolved, CoreError> {
         let reference = reference.trim();
+        if is_external(reference) {
+            return Ok(Resolved::External {
+                url: reference.to_string(),
+            });
+        }
+        self.resolve_span(reference)
+            .map(|span| Resolved::Span { span })
+    }
+
+    fn resolve_span(&self, reference: &str) -> Result<LocationSpan, CoreError> {
         match reference.strip_prefix("jwpub://") {
             Some(link) => {
                 if let Some(rest) = link.strip_prefix("b/") {
@@ -945,10 +981,21 @@ type VerseRef = (u32, u32, u32);
 /// A first and last paragraph.
 type ParagraphRange = (u32, u32);
 
+/// Whether `reference` starts with `http://`, `https://` or `mailto:` (in
+/// any case) and has something after it.
+pub(crate) fn is_external(reference: &str) -> bool {
+    ["http://", "https://", "mailto:"].iter().any(|prefix| {
+        reference.len() > prefix.len()
+            && reference
+                .get(..prefix.len())
+                .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
+    })
+}
+
 /// Split the part of a Bible link after `jwpub://b/`,
 /// `<symbol>/<book>:<chapter>:<verse>[-<book>:<chapter>:<verse>]`, into its
 /// symbol and its first and last verse.
-fn bible_link(rest: &str) -> Option<(&str, VerseRef, VerseRef)> {
+pub(crate) fn bible_link(rest: &str) -> Option<(&str, VerseRef, VerseRef)> {
     let verse_ref = |s: &str| -> Option<VerseRef> {
         let mut parts = s.split(':');
         let r = (
@@ -966,7 +1013,7 @@ fn bible_link(rest: &str) -> Option<(&str, VerseRef, VerseRef)> {
 /// Split the part of a document link after `jwpub://p/`,
 /// `<code>:<doc_id>[/[<paragraph>[-<paragraph>]]]`, into its language code,
 /// MEPS document id and first and last paragraph (in either order).
-fn document_link(rest: &str) -> Option<(&str, i64, Option<ParagraphRange>)> {
+pub(crate) fn document_link(rest: &str) -> Option<(&str, i64, Option<ParagraphRange>)> {
     let rest = rest.strip_suffix('/').unwrap_or(rest);
     let (head, paragraphs) = match rest.split_once('/') {
         Some((head, paragraphs)) => (head, Some(paragraphs)),
@@ -1104,7 +1151,7 @@ fn xt_link(div: &str) -> Option<(&str, &str)> {
 }
 
 /// The value of `name="..."` in an opening tag.
-fn attribute<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
+pub(crate) fn attribute<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
     let key = format!(" {name}=\"");
     let rest = &tag[tag.find(&key)? + key.len()..];
     Some(&rest[..rest.find('"')?])
@@ -1874,7 +1921,7 @@ fn verse_parts(html: &str, book: u32, chapter: u32) -> Result<Vec<(u32, usize, u
 
 /// The end of the `<{name}>` element starting at `begin`, just past its
 /// matching `</{name}>`.
-fn element_end(html: &str, begin: usize, name: &str) -> Option<usize> {
+pub(crate) fn element_end(html: &str, begin: usize, name: &str) -> Option<usize> {
     let open = format!("<{name}");
     let close = format!("</{name}>");
     let mut depth = 0usize;
@@ -1923,7 +1970,7 @@ pub(crate) fn plain_text(html: &str) -> String {
 
 /// Decode `&amp;`, `&lt;`, `&gt;`, `&quot;`, `&apos;`, `&nbsp;` and numeric
 /// character references; anything else is left as written.
-fn decode_references(text: &str) -> String {
+pub(crate) fn decode_references(text: &str) -> String {
     let mut out = String::new();
     let mut rest = text;
     while let Some(i) = rest.find('&') {
@@ -2033,7 +2080,7 @@ fn parse_citation(reference: &str) -> Result<Citation, CoreError> {
 }
 
 /// A non-empty run of ASCII digits as a number.
-fn number<T: std::str::FromStr>(s: &str) -> Option<T> {
+pub(crate) fn number<T: std::str::FromStr>(s: &str) -> Option<T> {
     if s.is_empty() || !s.bytes().all(|b| b.is_ascii_digit()) {
         return None;
     }

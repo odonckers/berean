@@ -8,10 +8,10 @@ use std::sync::OnceLock;
 
 use berean_core::reader::{
     BibleBook, BibleChapter, ChapterBlock, Location, LocationSpan, ParagraphStyle, Reader,
-    TocEntry, VerseRun,
+    Resolved, TocEntry, VerseRun,
 };
 use berean_core::{CancelToken, Core, CoreError};
-use common::{fixture, raw_db};
+use common::{fixture, raw_db, span_of};
 
 const W_E: &str = "w26:0:20260800";
 const W_S: &str = "w26:1:20260800";
@@ -121,7 +121,7 @@ fn span(start: Location, end: Location) -> LocationSpan {
 /// Resolve a reference that names a single location.
 #[track_caller]
 fn resolve_one(reference: &str) -> Location {
-    let span = reader().resolve(reference).unwrap();
+    let span = span_of(reader().resolve(reference));
     assert_eq!(span.start, span.end, "{reference:?}");
     span.start
 }
@@ -513,25 +513,25 @@ fn resolve_verse_ranges() {
     let john = |c, v| verse_location(NWT_E, 43, c, Some(v));
     for s in ["John 3:16-18", "john 3:16–18."] {
         assert_eq!(
-            r.resolve(s).unwrap(),
+            span_of(r.resolve(s)),
             span(john(3, 16), john(3, 18)),
             "{s:?}"
         );
     }
     // Across chapters: John 3 ends at verse 36.
     assert_eq!(
-        r.resolve("John 3:36-4:2").unwrap(),
+        span_of(r.resolve("John 3:36-4:2")),
         span(john(3, 36), john(4, 2))
     );
     assert_eq!(
-        r.resolve("Juan 3:16-18").unwrap(),
+        span_of(r.resolve("Juan 3:16-18")),
         span(
             verse_location(NWT_S, 43, 3, Some(16)),
             verse_location(NWT_S, 43, 3, Some(18))
         )
     );
     assert_eq!(
-        r.resolve("Salmos 23:1-6").unwrap(),
+        span_of(r.resolve("Salmos 23:1-6")),
         span(
             verse_location(NWT_S, 19, 23, Some(1)),
             verse_location(NWT_S, 19, 23, Some(6))
@@ -539,7 +539,7 @@ fn resolve_verse_ranges() {
     );
     // A chapter alone: start and end are the chapter, without a verse.
     assert_eq!(
-        r.resolve("Psalm 23").unwrap(),
+        span_of(r.resolve("Psalm 23")),
         point(verse_location(NWT_E, 19, 23, None))
     );
     // Both ends must exist.
@@ -574,17 +574,17 @@ fn resolve_single_chapter_books() {
         assert_eq!(resolve_one(&format!("{name} 1")), verse(1), "{name}");
         assert_eq!(resolve_one(&format!("{name} 1:3")), verse(3), "{name}");
         assert_eq!(
-            r.resolve(&format!("{name} 3-5")).unwrap(),
+            span_of(r.resolve(&format!("{name} 3-5"))),
             span(verse(3), verse(5)),
             "{name}"
         );
         assert_not_found(r.resolve(&format!("{name} 30")));
     }
     let jude = |v| verse_location(NWT_E, 65, 1, Some(v));
-    assert_eq!(r.resolve("Jude 3").unwrap(), point(jude(3)));
-    assert_eq!(r.resolve("Jude 3–5").unwrap(), span(jude(3), jude(5)));
+    assert_eq!(span_of(r.resolve("Jude 3")), point(jude(3)));
+    assert_eq!(span_of(r.resolve("Jude 3–5")), span(jude(3), jude(5)));
     // Jude has 25 verses.
-    assert_eq!(r.resolve("Jude 24-25").unwrap(), span(jude(24), jude(25)));
+    assert_eq!(span_of(r.resolve("Jude 24-25")), span(jude(24), jude(25)));
     assert_not_found(r.resolve("Jude 25-26"));
     assert_invalid(r.resolve("Jude 5-3"), "range ends before it starts");
     for (name, book) in [
@@ -601,7 +601,7 @@ fn resolve_single_chapter_books() {
         );
     }
     assert_eq!(
-        r.resolve("Judas 3-5").unwrap(),
+        span_of(r.resolve("Judas 3-5")),
         span(
             verse_location(NWT_S, 65, 1, Some(3)),
             verse_location(NWT_S, 65, 1, Some(5))
@@ -616,18 +616,18 @@ fn resolve_chapter_ranges() {
     // From the first verse of the first chapter through the last verse of
     // the last, as the Bible has them.
     assert_eq!(
-        r.resolve("John 3-4").unwrap(),
+        span_of(r.resolve("John 3-4")),
         span(
             verse_location(NWT_E, 43, 3, Some(1)),
             verse_location(NWT_E, 43, 4, Some(54))
         )
     );
     assert_eq!(
-        r.resolve("John 3–4").unwrap(),
-        r.resolve("John 3-4").unwrap()
+        span_of(r.resolve("John 3–4")),
+        span_of(r.resolve("John 3-4"))
     );
     assert_eq!(
-        r.resolve("Juan 3-4").unwrap(),
+        span_of(r.resolve("Juan 3-4")),
         span(
             verse_location(NWT_S, 43, 3, Some(1)),
             verse_location(NWT_S, 43, 4, Some(54))
@@ -635,14 +635,14 @@ fn resolve_chapter_ranges() {
     );
     // Psalms 3 and 4 open with a superscription, verse 0.
     assert_eq!(
-        r.resolve("Psalm 3-4").unwrap(),
+        span_of(r.resolve("Psalm 3-4")),
         span(
             verse_location(NWT_E, 19, 3, Some(0)),
             verse_location(NWT_E, 19, 4, Some(8))
         )
     );
     assert_eq!(
-        r.resolve("John 20-21").unwrap(),
+        span_of(r.resolve("John 20-21")),
         span(
             verse_location(NWT_E, 43, 20, Some(1)),
             verse_location(NWT_E, 43, 21, Some(25))
@@ -650,7 +650,7 @@ fn resolve_chapter_ranges() {
     );
     // A range of one chapter is the chapter.
     assert_eq!(
-        r.resolve("John 3-3").unwrap(),
+        span_of(r.resolve("John 3-3")),
         point(verse_location(NWT_E, 43, 3, None))
     );
     assert_invalid(r.resolve("John 4-3"), "range ends before it starts");
@@ -703,11 +703,11 @@ fn resolve_bible_links() {
         ),
     ] {
         assert!(w_links.contains(&format!("href=\"{link}\"")), "{link}");
-        assert_eq!(r.resolve(link).unwrap(), span(start, end), "{link}");
+        assert_eq!(span_of(r.resolve(link)), span(start, end), "{link}");
     }
     // A psalm from its superscription.
     assert_eq!(
-        r.resolve("jwpub://b/NWTR/19:72:0-19:72:20").unwrap(),
+        span_of(r.resolve("jwpub://b/NWTR/19:72:0-19:72:20")),
         span(
             verse_location(NWT_E, 19, 72, Some(0)),
             verse_location(NWT_E, 19, 72, Some(20))
@@ -775,8 +775,7 @@ fn resolve_document_links() {
     assert_not_found(r.resolve(&format!("jwpub://p/E:{WIN_THE_BATTLE_DOC}/999")));
     // A paragraph range.
     assert_eq!(
-        r.resolve(&format!("jwpub://p/E:{WIN_THE_BATTLE_DOC}/2-3"))
-            .unwrap(),
+        span_of(r.resolve(&format!("jwpub://p/E:{WIN_THE_BATTLE_DOC}/2-3"))),
         span(
             document_location(W_E, WIN_THE_BATTLE_DOC, Some(2)),
             document_location(W_E, WIN_THE_BATTLE_DOC, Some(3))
@@ -798,6 +797,39 @@ fn resolve_document_links() {
         assert_invalid(r.resolve(link), "malformed document link");
     }
     assert_invalid(r.resolve("jwpub://c/E:1/2:3"), "unsupported link");
+}
+
+#[test]
+fn resolve_external_links() {
+    let r = reader();
+    for url in [
+        "http://example.com/x",
+        "https://www.jw.org/en/",
+        "mailto:someone@example.com",
+        "HTTPS://WWW.JW.ORG/",
+        "Mailto:someone@example.com",
+    ] {
+        assert_eq!(
+            r.resolve(&format!("  {url} ")).unwrap(),
+            Resolved::External {
+                url: url.to_string()
+            },
+            "{url:?}"
+        );
+    }
+    for s in [
+        "javascript:alert(1)",
+        "ftp://example.com/x",
+        "data:text/plain,hi",
+        "file:///etc/passwd",
+        "http://",
+        "HTTPS://",
+        "mailto:",
+        "http:example.com",
+        "www.jw.org",
+    ] {
+        assert!(matches!(r.resolve(s), Err(CoreError::Invalid(_))), "{s:?}");
+    }
 }
 
 fn bible_book(pub_key: &str, book: u32) -> BibleBook {

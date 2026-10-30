@@ -23,6 +23,8 @@ Ruled on PR #51. These are settled; the sections below reflect them. Letters mat
 - **(g) Scope.** As stated in §6 (g).
 - **(h) Links.** Parsed in the block, resolved on tap. An unresolvable link fails visibly: never a crash,
   never a silent no-op (§3 Link targets).
+- **(h2) External links (Wren, Oct 30):** resolve returns External { url } for http, https and mailto only;
+  the apps hand it to the system; other schemes are Invalid.
 - **(i) Roles.** Closed `ParagraphRole` enum with a `Body` fallback.
 - **(j) Tables.** In v1.
 - **(k) Delivery.** A field on `Document`.
@@ -380,7 +382,7 @@ This departs from the earlier proposal, which mapped `jwpub://` links to `LinkTa
   would come back `Invalid`. `jwpub://c/` study-note links (w 4, rsg 6) are rejected too.
 
 So the block carries a cheap parsed target, and the app calls `Reader::resolve(url)` on tap or long-press
-preview, which already returns a `LocationSpan`. The scanner parses all five `jwpub://p/` shapes: it keeps the
+preview, which returns a `Resolved`: a `Span` or an `External` URL. The scanner parses all five `jwpub://p/` shapes: it keeps the
 paragraph range, ignores tokens, and takes the first `$` part. All 98,374 Bible hrefs have the single
 `B:C:V-B:C:V` shape that `resolve` handles.
 
@@ -393,13 +395,14 @@ paragraph range, ignores tokens, and takes the first `$` part. All 98,374 Bible 
 
 Links with `Invalid` are still drawn as links, not plain text, so a tap is never a silent no-op.
 
-FFI `resolve` returns `Result<LocationSpan, CoreError>`. The error is thrown (Swift `throws`, a TS exception
+FFI `resolve` returns `Result<Resolved, CoreError>`. The error is thrown (Swift `throws`, a TS exception
 from ubrn), never a panic.
 
 | `resolve` outcome | Shows |
 |---|---|
-| `Ok(span)` | opens it |
-| `CoreError::Invalid(message)` | "Can't open this link" |
+| `Ok(Resolved::Span { span })` | opens it |
+| `Ok(Resolved::External { url })` (`http`, `https`, `mailto` only) | app hands the URL to the system |
+| `CoreError::Invalid(message)` (including any other scheme: `javascript:`, `ftp:`, `data:`, `file:`) | "Can't open this link" |
 | `CoreError::NotFound` | "This publication isn't downloaded" (a variant of the can't-open state) |
 | any other error (`Corrupt`, `Io`) | "Can't open this link" |
 
@@ -412,8 +415,8 @@ from ubrn), never a panic.
   `NotFound`). The link names no `pub_key`, so the app can't offer a direct download yet; it says so.
 - **Footnote refs** (`FootnoteRef`) are not links and don't go through `resolve`. A tap scrolls to or shows the
   `DocFootnote` with the same id; a ref with no footnote shows the can't-open state too.
-- The core never returns an "ok but empty" target. A test covers each fixture href shape mapping to `Ok`,
-  `Invalid` or `NotFound`, and that `resolve` never panics on any of the 193,049 hrefs in the fixtures.
+- The core never returns an "ok but empty" target. A test covers each fixture href shape mapping to `Span`,
+  `External`, `Invalid` or `NotFound`, and that `resolve` never panics on any of the 193,049 hrefs in the fixtures.
 
 ## 4. Parsing
 
@@ -456,7 +459,7 @@ Test plan, against all five fixtures (rsg included, since it must not fail):
 - Common only holds `Text`, `Emphasis` and `Strong`, and no doc-only node is needed under `Common` anywhere in
   the five fixtures except the 13 it `sup` cases, which come out split: `<em>b<sup>e</sup>rit</em>` gives the
   three runs of §4.
-- Link resolution: each fixture href shape maps to `Ok`, `Invalid` or `NotFound`, and `resolve` never panics
+- Link resolution: each fixture href shape maps to `Span`, `External`, `Invalid` or `NotFound`, and `resolve` never panics
   on any of the 193,049 hrefs in the fixtures (§3 Link targets).
 - A small synthetic HTML for the error cases.
 
@@ -506,7 +509,8 @@ brochures and books (ll, te, it including tables). rsg (`details`/`summary`, alr
 targets, and returns `Invalid` for about 20% of publication links until `resolve` is extended.
 **Decided (Wren, Oct 30):** links resolve on tap, and an unresolvable link fails visibly: never a crash, never
 a silent no-op. `DocLinkTarget::Invalid` is drawn as a link and shows "Can't open this link" without calling
-`resolve`. Otherwise `resolve` errors are thrown: `Invalid`, `Corrupt` and `Io` show "Can't open this link",
+`resolve`. Otherwise `Ok(Resolved::Span)` opens it, `Ok(Resolved::External { url })` (`http`, `https`,
+`mailto` only) is handed to the system, and `resolve` errors are thrown (any other scheme is `Invalid`): `Invalid`, `Corrupt` and `Io` show "Can't open this link",
 and `NotFound` shows "This publication isn't downloaded" (§3 Link targets). `para:token`, `$` and
 `jwpub://c/` in `resolve` are a follow-up row (§7).
 

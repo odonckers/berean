@@ -3,6 +3,8 @@
 use std::io::Read;
 use std::path::PathBuf;
 
+use berean_core::reader::{LocationSpan, Resolved};
+use berean_core::CoreError;
 use rusqlite::Connection;
 
 /// The path of a real JWPUB fixture. The fixtures are not committed: run
@@ -42,4 +44,15 @@ pub fn raw_db(name: &str) -> (tempfile::TempDir, Connection) {
     std::fs::write(&path, db).unwrap();
     let conn = Connection::open(&path).unwrap();
     (dir, conn)
+}
+
+/// The span a `Reader::resolve` result names; panics on an error or an
+/// external link.
+#[allow(dead_code)] // Not every test crate that includes `common` uses it.
+#[track_caller]
+pub fn span_of(resolved: Result<Resolved, CoreError>) -> LocationSpan {
+    match resolved {
+        Ok(Resolved::Span { span }) => span,
+        other => panic!("expected a span, got {other:?}"),
+    }
 }

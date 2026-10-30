@@ -16,7 +16,7 @@ use berean_core::reader::{
     StudyAvailability, StudyNote, StudyReferences, VerseStudy, VerseStudyCounts,
 };
 use berean_core::{CancelToken, Core, CoreError};
-use common::{fixture, raw_db};
+use common::{fixture, raw_db, span_of};
 
 const NWT_E: &str = "nwt:0:0";
 const NWT_S: &str = "nwt:1:0";
@@ -111,7 +111,7 @@ fn study(location: &Location) -> Result<StudyReferences, CoreError> {
 
 #[test]
 fn john_3_16() {
-    let location = core().reader().resolve("John 3:16").unwrap().start;
+    let location = span_of(core().reader().resolve("John 3:16")).start;
     let refs = study(&location).unwrap();
     assert_eq!(refs.availability, StudyAvailability::Installed);
     assert_eq!(refs.items.len(), 32);
@@ -377,7 +377,7 @@ fn verse_texts(book: u32, chapter: u32, first: u32, last: u32) -> String {
 #[test]
 fn john_3_16_study() {
     let reader = core().reader();
-    let location = reader.resolve("John 3:16").unwrap().start;
+    let location = span_of(reader.resolve("John 3:16")).start;
     assert_eq!(location.pub_key, NWT_E);
     let study = verse_study(&location).unwrap();
     assert_eq!(study.availability, StudyAvailability::Installed);
@@ -412,7 +412,7 @@ fn john_3_16_study() {
 
     // Marker p's targets, then q's, in `ElementNumber` order.
     let targets: Vec<&LocationSpan> = study.cross_refs.iter().map(|c| &c.target).collect();
-    let span = |citation: &str| reader.resolve(citation).unwrap();
+    let span = |citation: &str| span_of(reader.resolve(citation));
     assert_eq!(
         targets,
         [

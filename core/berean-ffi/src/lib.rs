@@ -570,6 +570,7 @@ pub struct Document {
     pub title: String,
     pub html: String,
     pub paragraphs: Vec<ParagraphAnchor>,
+    pub blocks: Vec<DocBlock>,
 }
 
 impl From<berean_core::reader::Document> for Document {
@@ -579,6 +580,384 @@ impl From<berean_core::reader::Document> for Document {
             title: d.title,
             html: d.html,
             paragraphs: d.paragraphs.into_iter().map(Into::into).collect(),
+            blocks: mirror(d.blocks),
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::doc_blocks::DocBlock`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum DocBlock {
+    Heading {
+        level: u8,
+        paragraph: Option<u32>,
+        inlines: Vec<DocInline>,
+    },
+    Paragraph {
+        paragraph: u32,
+        number: Option<String>,
+        role: ParagraphRole,
+        inlines: Vec<DocInline>,
+    },
+    Question {
+        paragraph: u32,
+        number: String,
+        for_paragraphs: Vec<u32>,
+        inlines: Vec<DocInline>,
+    },
+    AnswerField {
+        paragraph: u32,
+        tag: String,
+    },
+    Figure {
+        image: DocImage,
+        caption: Vec<DocBlock>,
+    },
+    Aside {
+        title: Option<DocTitle>,
+        blocks: Vec<DocBlock>,
+    },
+    List {
+        ordered: bool,
+        items: Vec<DocListItem>,
+    },
+    Table {
+        rows: Vec<DocTableRow>,
+    },
+    Footnotes {
+        items: Vec<DocFootnote>,
+    },
+    Rule,
+}
+
+impl From<berean_core::doc_blocks::DocBlock> for DocBlock {
+    fn from(b: berean_core::doc_blocks::DocBlock) -> Self {
+        use berean_core::doc_blocks::DocBlock as B;
+        match b {
+            B::Heading {
+                level,
+                paragraph,
+                inlines,
+            } => DocBlock::Heading {
+                level,
+                paragraph,
+                inlines: mirror(inlines),
+            },
+            B::Paragraph {
+                paragraph,
+                number,
+                role,
+                inlines,
+            } => DocBlock::Paragraph {
+                paragraph,
+                number,
+                role: role.into(),
+                inlines: mirror(inlines),
+            },
+            B::Question {
+                paragraph,
+                number,
+                for_paragraphs,
+                inlines,
+            } => DocBlock::Question {
+                paragraph,
+                number,
+                for_paragraphs,
+                inlines: mirror(inlines),
+            },
+            B::AnswerField { paragraph, tag } => DocBlock::AnswerField { paragraph, tag },
+            B::Figure { image, caption } => DocBlock::Figure {
+                image: image.into(),
+                caption: mirror(caption),
+            },
+            B::Aside { title, blocks } => DocBlock::Aside {
+                title: title.map(Into::into),
+                blocks: mirror(blocks),
+            },
+            B::List { ordered, items } => DocBlock::List {
+                ordered,
+                items: mirror(items),
+            },
+            B::Table { rows } => DocBlock::Table { rows: mirror(rows) },
+            B::Footnotes { items } => DocBlock::Footnotes {
+                items: mirror(items),
+            },
+            B::Rule => DocBlock::Rule,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::doc_blocks::DocTitle`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct DocTitle {
+    pub paragraph: u32,
+    pub inlines: Vec<DocInline>,
+}
+
+impl From<berean_core::doc_blocks::DocTitle> for DocTitle {
+    fn from(t: berean_core::doc_blocks::DocTitle) -> Self {
+        DocTitle {
+            paragraph: t.paragraph,
+            inlines: mirror(t.inlines),
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::doc_blocks::DocImage`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct DocImage {
+    pub file: String,
+    pub path: String,
+    pub alt: String,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+}
+
+impl From<berean_core::doc_blocks::DocImage> for DocImage {
+    fn from(i: berean_core::doc_blocks::DocImage) -> Self {
+        DocImage {
+            file: i.file,
+            path: i.path,
+            alt: i.alt,
+            width: i.width,
+            height: i.height,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::doc_blocks::DocListItem`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct DocListItem {
+    pub blocks: Vec<DocBlock>,
+}
+
+impl From<berean_core::doc_blocks::DocListItem> for DocListItem {
+    fn from(i: berean_core::doc_blocks::DocListItem) -> Self {
+        DocListItem {
+            blocks: mirror(i.blocks),
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::doc_blocks::DocTableRow`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct DocTableRow {
+    pub cells: Vec<DocTableCell>,
+}
+
+impl From<berean_core::doc_blocks::DocTableRow> for DocTableRow {
+    fn from(r: berean_core::doc_blocks::DocTableRow) -> Self {
+        DocTableRow {
+            cells: mirror(r.cells),
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::doc_blocks::DocTableCell`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct DocTableCell {
+    pub header: bool,
+    pub colspan: u32,
+    pub blocks: Vec<DocBlock>,
+}
+
+impl From<berean_core::doc_blocks::DocTableCell> for DocTableCell {
+    fn from(c: berean_core::doc_blocks::DocTableCell) -> Self {
+        DocTableCell {
+            header: c.header,
+            colspan: c.colspan,
+            blocks: mirror(c.blocks),
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::doc_blocks::DocFootnote`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct DocFootnote {
+    pub id: u32,
+    pub marker: String,
+    pub paragraph: Option<u32>,
+    pub inlines: Vec<DocInline>,
+}
+
+impl From<berean_core::doc_blocks::DocFootnote> for DocFootnote {
+    fn from(f: berean_core::doc_blocks::DocFootnote) -> Self {
+        DocFootnote {
+            id: f.id,
+            marker: f.marker,
+            paragraph: f.paragraph,
+            inlines: mirror(f.inlines),
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::doc_blocks::ParagraphRole`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum ParagraphRole {
+    Body,
+    Title,
+    Summary,
+    ContextTitle,
+    ThemeScripture,
+    PublicationReference,
+    Byline,
+    TocEntry,
+}
+
+impl From<berean_core::doc_blocks::ParagraphRole> for ParagraphRole {
+    fn from(r: berean_core::doc_blocks::ParagraphRole) -> Self {
+        use berean_core::doc_blocks::ParagraphRole as R;
+        match r {
+            R::Body => ParagraphRole::Body,
+            R::Title => ParagraphRole::Title,
+            R::Summary => ParagraphRole::Summary,
+            R::ContextTitle => ParagraphRole::ContextTitle,
+            R::ThemeScripture => ParagraphRole::ThemeScripture,
+            R::PublicationReference => ParagraphRole::PublicationReference,
+            R::Byline => ParagraphRole::Byline,
+            R::TocEntry => ParagraphRole::TocEntry,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::doc_blocks::DocInline`]. `Common` holds
+/// the shared [`Inline`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum DocInline {
+    Common {
+        inline: Inline,
+    },
+    Superscript {
+        children: Vec<DocInline>,
+    },
+    Subscript {
+        children: Vec<DocInline>,
+    },
+    SmallCaps {
+        children: Vec<DocInline>,
+    },
+    Link {
+        children: Vec<DocInline>,
+        url: String,
+        target: DocLinkTarget,
+    },
+    FootnoteRef {
+        id: u32,
+        marker: String,
+    },
+    PageMarker {
+        page: String,
+    },
+}
+
+impl From<berean_core::doc_blocks::DocInline> for DocInline {
+    fn from(i: berean_core::doc_blocks::DocInline) -> Self {
+        use berean_core::doc_blocks::DocInline as I;
+        match i {
+            I::Common { inline } => DocInline::Common {
+                inline: inline.into(),
+            },
+            I::Superscript { children } => DocInline::Superscript {
+                children: mirror(children),
+            },
+            I::Subscript { children } => DocInline::Subscript {
+                children: mirror(children),
+            },
+            I::SmallCaps { children } => DocInline::SmallCaps {
+                children: mirror(children),
+            },
+            I::Link {
+                children,
+                url,
+                target,
+            } => DocInline::Link {
+                children: mirror(children),
+                url,
+                target: target.into(),
+            },
+            I::FootnoteRef { id, marker } => DocInline::FootnoteRef { id, marker },
+            I::PageMarker { page } => DocInline::PageMarker { page },
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::doc_blocks::DocLinkTarget`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum DocLinkTarget {
+    Bible {
+        symbol: String,
+        start: DocVerse,
+        end: DocVerse,
+    },
+    Document {
+        language: String,
+        doc_id: i64,
+        first: Option<u32>,
+        last: Option<u32>,
+    },
+    StudyNote {
+        language: String,
+        doc_id: i64,
+        chapter: u32,
+        verse: u32,
+    },
+    External {
+        url: String,
+    },
+    Invalid,
+}
+
+impl From<berean_core::doc_blocks::DocLinkTarget> for DocLinkTarget {
+    fn from(t: berean_core::doc_blocks::DocLinkTarget) -> Self {
+        use berean_core::doc_blocks::DocLinkTarget as T;
+        match t {
+            T::Bible { symbol, start, end } => DocLinkTarget::Bible {
+                symbol,
+                start: start.into(),
+                end: end.into(),
+            },
+            T::Document {
+                language,
+                doc_id,
+                first,
+                last,
+            } => DocLinkTarget::Document {
+                language,
+                doc_id,
+                first,
+                last,
+            },
+            T::StudyNote {
+                language,
+                doc_id,
+                chapter,
+                verse,
+            } => DocLinkTarget::StudyNote {
+                language,
+                doc_id,
+                chapter,
+                verse,
+            },
+            T::External { url } => DocLinkTarget::External { url },
+            T::Invalid => DocLinkTarget::Invalid,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::doc_blocks::DocVerse`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct DocVerse {
+    pub book: u32,
+    pub chapter: u32,
+    pub verse: u32,
+}
+
+impl From<berean_core::doc_blocks::DocVerse> for DocVerse {
+    fn from(v: berean_core::doc_blocks::DocVerse) -> Self {
+        DocVerse {
+            book: v.book,
+            chapter: v.chapter,
+            verse: v.verse,
         }
     }
 }
@@ -789,6 +1168,23 @@ impl From<berean_core::reader::LocationSpan> for LocationSpan {
     }
 }
 
+/// The FFI mirror of [`berean_core::reader::Resolved`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum Resolved {
+    Span { span: LocationSpan },
+    External { url: String },
+}
+
+impl From<berean_core::reader::Resolved> for Resolved {
+    fn from(r: berean_core::reader::Resolved) -> Self {
+        use berean_core::reader::Resolved as R;
+        match r {
+            R::Span { span } => Resolved::Span { span: span.into() },
+            R::External { url } => Resolved::External { url },
+        }
+    }
+}
+
 /// The FFI mirror of [`berean_core::reader::StudyAvailability`].
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
 pub enum StudyAvailability {
@@ -978,8 +1374,10 @@ impl Reader {
             .collect())
     }
 
-    /// Resolve a citation or `jwpub://` link to the span it names.
-    pub fn resolve(&self, reference: String) -> Result<LocationSpan, CoreError> {
+    /// Resolve a citation or `jwpub://` link to the span it names, or an
+    /// `http://`, `https://` or `mailto:` link to `External`, for the app to
+    /// hand to the system.
+    pub fn resolve(&self, reference: String) -> Result<Resolved, CoreError> {
         Ok(self.inner.resolve(&reference)?.into())
     }
 
@@ -2222,6 +2620,16 @@ mod tests {
             &doc.html[p6.begin.unwrap() as usize..p6.end.unwrap() as usize],
             "<p id=\"p6\" data-pid=\"6\" class=\"si\">January 2016 Printing</p>"
         );
+        assert!(doc.blocks.contains(&DocBlock::Paragraph {
+            paragraph: 6,
+            number: None,
+            role: ParagraphRole::Body,
+            inlines: vec![DocInline::Common {
+                inline: Inline::Text {
+                    text: "January 2016 Printing".into(),
+                },
+            }],
+        }));
 
         let chapter = reader.bible_chapter("nwt:0:0".into(), 43, 3).unwrap();
         assert_eq!((chapter.book, chapter.chapter), (43, 3));
@@ -2263,11 +2671,23 @@ mod tests {
         };
         assert_eq!(
             reader.resolve("John 3:16-18".into()).unwrap(),
-            LocationSpan {
-                start: john(16),
-                end: john(18),
+            Resolved::Span {
+                span: LocationSpan {
+                    start: john(16),
+                    end: john(18),
+                }
             }
         );
+        assert_eq!(
+            reader.resolve(" HTTPS://www.jw.org/ ".into()).unwrap(),
+            Resolved::External {
+                url: "HTTPS://www.jw.org/".into()
+            }
+        );
+        assert!(matches!(
+            reader.resolve("javascript:alert(1)".into()),
+            Err(CoreError::Invalid(_))
+        ));
         assert!(matches!(
             reader.resolve("John 3:18-16".into()),
             Err(CoreError::Invalid(_))
@@ -2280,7 +2700,9 @@ mod tests {
         let labels: Vec<&str> = study.cross_refs.iter().map(|c| c.label.as_str()).collect();
         assert_eq!(labels, ["p", "p", "p", "p", "q", "q", "q", "q", "q"]);
         assert_eq!(
-            study.cross_refs[0].target,
+            Resolved::Span {
+                span: study.cross_refs[0].target.clone()
+            },
             reader.resolve("Romans 5:8".into()).unwrap()
         );
         assert!(study.cross_refs[0].snippet.is_some());
@@ -2700,6 +3122,234 @@ mod tests {
             ud.rename_folder(999, "x".into()),
             Err(CoreError::NotFound)
         ));
+    }
+
+    #[test]
+    fn doc_blocks_mirror_the_core_tree() {
+        use berean_core::doc_blocks as core;
+        use berean_core::notes::Inline as CoreInline;
+
+        let core_text = |text: &str| core::DocInline::Common {
+            inline: CoreInline::Text { text: text.into() },
+        };
+        let text = |text: &str| DocInline::Common {
+            inline: Inline::Text { text: text.into() },
+        };
+        let core_verse = |verse| core::DocVerse {
+            book: 43,
+            chapter: 3,
+            verse,
+        };
+        let verse = |verse| DocVerse {
+            book: 43,
+            chapter: 3,
+            verse,
+        };
+        let blocks: Vec<DocBlock> = mirror(vec![
+            core::DocBlock::Heading {
+                level: 1,
+                paragraph: Some(1),
+                inlines: vec![core_text("Title")],
+            },
+            core::DocBlock::Paragraph {
+                paragraph: 2,
+                number: Some("1".into()),
+                role: core::ParagraphRole::ThemeScripture,
+                inlines: vec![
+                    core::DocInline::Common {
+                        inline: CoreInline::Emphasis {
+                            children: vec![CoreInline::Text { text: "b".into() }],
+                        },
+                    },
+                    core::DocInline::Superscript {
+                        children: vec![core_text("e")],
+                    },
+                    core::DocInline::Link {
+                        children: vec![core::DocInline::SmallCaps {
+                            children: vec![core_text("John 3:16")],
+                        }],
+                        url: "jwpub://b/NWTR/43:3:16-43:3:17".into(),
+                        target: core::DocLinkTarget::Bible {
+                            symbol: "NWTR".into(),
+                            start: core_verse(16),
+                            end: core_verse(17),
+                        },
+                    },
+                    core::DocInline::Link {
+                        children: vec![core::DocInline::PageMarker { page: "3".into() }],
+                        url: "jwpub://p/E:1102021206/4-5".into(),
+                        target: core::DocLinkTarget::Document {
+                            language: "E".into(),
+                            doc_id: 1102021206,
+                            first: Some(4),
+                            last: Some(5),
+                        },
+                    },
+                    core::DocInline::FootnoteRef {
+                        id: 7,
+                        marker: "a".into(),
+                    },
+                ],
+            },
+            core::DocBlock::Question {
+                paragraph: 3,
+                number: "1-2".into(),
+                for_paragraphs: vec![2, 4],
+                inlines: vec![core::DocInline::Subscript {
+                    children: vec![core_text("q")],
+                }],
+            },
+            core::DocBlock::AnswerField {
+                paragraph: 5,
+                tag: "textarea-1".into(),
+            },
+            core::DocBlock::Figure {
+                image: core::DocImage {
+                    file: "a.jpg".into(),
+                    path: "/pubs/a.jpg".into(),
+                    alt: "A".into(),
+                    width: Some(10),
+                    height: None,
+                },
+                caption: Vec::new(),
+            },
+            core::DocBlock::Aside {
+                title: Some(core::DocTitle {
+                    paragraph: 6,
+                    inlines: vec![core_text("Box")],
+                }),
+                blocks: vec![core::DocBlock::List {
+                    ordered: true,
+                    items: vec![core::DocListItem {
+                        blocks: vec![core::DocBlock::Table {
+                            rows: vec![core::DocTableRow {
+                                cells: vec![core::DocTableCell {
+                                    header: true,
+                                    colspan: 2,
+                                    blocks: vec![core::DocBlock::Rule],
+                                }],
+                            }],
+                        }],
+                    }],
+                }],
+            },
+            core::DocBlock::Footnotes {
+                items: vec![core::DocFootnote {
+                    id: 7,
+                    marker: "a".into(),
+                    paragraph: None,
+                    inlines: vec![core::DocInline::Link {
+                        children: vec![core_text("x")],
+                        url: "#x".into(),
+                        target: core::DocLinkTarget::Invalid,
+                    }],
+                }],
+            },
+        ]);
+        assert_eq!(
+            blocks,
+            [
+                DocBlock::Heading {
+                    level: 1,
+                    paragraph: Some(1),
+                    inlines: vec![text("Title")],
+                },
+                DocBlock::Paragraph {
+                    paragraph: 2,
+                    number: Some("1".into()),
+                    role: ParagraphRole::ThemeScripture,
+                    inlines: vec![
+                        DocInline::Common {
+                            inline: Inline::Emphasis {
+                                children: vec![Inline::Text { text: "b".into() }],
+                            },
+                        },
+                        DocInline::Superscript {
+                            children: vec![text("e")],
+                        },
+                        DocInline::Link {
+                            children: vec![DocInline::SmallCaps {
+                                children: vec![text("John 3:16")],
+                            }],
+                            url: "jwpub://b/NWTR/43:3:16-43:3:17".into(),
+                            target: DocLinkTarget::Bible {
+                                symbol: "NWTR".into(),
+                                start: verse(16),
+                                end: verse(17),
+                            },
+                        },
+                        DocInline::Link {
+                            children: vec![DocInline::PageMarker { page: "3".into() }],
+                            url: "jwpub://p/E:1102021206/4-5".into(),
+                            target: DocLinkTarget::Document {
+                                language: "E".into(),
+                                doc_id: 1102021206,
+                                first: Some(4),
+                                last: Some(5),
+                            },
+                        },
+                        DocInline::FootnoteRef {
+                            id: 7,
+                            marker: "a".into(),
+                        },
+                    ],
+                },
+                DocBlock::Question {
+                    paragraph: 3,
+                    number: "1-2".into(),
+                    for_paragraphs: vec![2, 4],
+                    inlines: vec![DocInline::Subscript {
+                        children: vec![text("q")],
+                    }],
+                },
+                DocBlock::AnswerField {
+                    paragraph: 5,
+                    tag: "textarea-1".into(),
+                },
+                DocBlock::Figure {
+                    image: DocImage {
+                        file: "a.jpg".into(),
+                        path: "/pubs/a.jpg".into(),
+                        alt: "A".into(),
+                        width: Some(10),
+                        height: None,
+                    },
+                    caption: Vec::new(),
+                },
+                DocBlock::Aside {
+                    title: Some(DocTitle {
+                        paragraph: 6,
+                        inlines: vec![text("Box")],
+                    }),
+                    blocks: vec![DocBlock::List {
+                        ordered: true,
+                        items: vec![DocListItem {
+                            blocks: vec![DocBlock::Table {
+                                rows: vec![DocTableRow {
+                                    cells: vec![DocTableCell {
+                                        header: true,
+                                        colspan: 2,
+                                        blocks: vec![DocBlock::Rule],
+                                    }],
+                                }],
+                            }],
+                        }],
+                    }],
+                },
+                DocBlock::Footnotes {
+                    items: vec![DocFootnote {
+                        id: 7,
+                        marker: "a".into(),
+                        paragraph: None,
+                        inlines: vec![DocInline::Link {
+                            children: vec![text("x")],
+                            url: "#x".into(),
+                            target: DocLinkTarget::Invalid,
+                        }],
+                    }],
+                },
+            ]
+        );
     }
 
     #[test]
