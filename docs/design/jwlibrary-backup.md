@@ -1,6 +1,6 @@
 # `.jwlibrary` backup: import and export
 
-**Status:** Draft. Kerning & Co. recommendation (Iris, with Pebble and Hinge), written up by Lumen. The direction is **pending Owen, through Wren**.
+**Status:** Draft. Kerning & Co. recommendation (Iris, with Pebble and Hinge), written up by Lumen. **Direction approved Oct 30 2026; parity questions pending Echo.**
 **Board row:** Expo 6d (…E3AK8), bookmarks and `.jwlibrary` import/export designs. The bookmarks half is [bookmarks.md](bookmarks.md).
 **Platforms:** SwiftUI on iOS, iPadOS and macOS. Expo (`apps/mobile`) on iOS and Android, in both looks: Material 3 and the iOS look.
 **Owner:** Design (Lumen). **Core:** #20 ([userdata.md](userdata.md), parity rows BK-1, BK-2 and UD-8). **Build:** Kiwi and Moss (SwiftUI), Otter (Expo).
@@ -13,9 +13,9 @@ Kerning's recommended default, **Merge**, is not built. Wren approved [userdata.
 | --- | --- |
 | `import_preview(path, progress, cancel)` → `ImportPreview { backup, current, folders, filed_notes, device_name, created }`. The counts are highlights, notes, tags, bookmarks and favorites. | The review screen can show real counts for both sides, before anything changes. |
 | `import_backup` **replaces everything** atomically. Cancel is honoured until the final swap. | Replace works now. All-or-nothing is guaranteed. |
-| One undo copy (`userData.prev.db`), via `undo_import() -> Bool` | "Restore previous library" already exists, after a Replace and for the most recent import only. |
+| One undo copy (`userData.prev.db`), via `undo_import() -> Bool` | "Restore previous library" already exists, after a Replace and for the most recent import only. S2 (keep two, Decision 2) needs a core change (Echo). |
 | Import **clears Berean note folders**, which a JW backup doesn't have. Export **drops** them. | Both have to be said on screen (§3.4, §6). |
-| No per-category include, no merge, no duplicate policy | Merge, include toggles and the duplicates drill-in need a core row (Echo). See Open decision 1. |
+| No per-category include, no merge, no duplicate policy | Merge, include toggles and the duplicates drill-in need a core row (Echo). See Decision 1. |
 | Playlists, media and `InputField` round-trip but aren't counted | No "Playlists" row; one static line instead (§3.2). |
 | Progress is in coarse steps (5 for preview, 6 for import, 5 for export) | Show a determinate bar from the steps, plus a status line. Don't promise a smooth percentage. |
 
@@ -37,7 +37,7 @@ This spec covers both phases. **Phase 1** is the review screen in Replace mode o
 | Mac | **File › Import Backup…** (⇧⌘I, proposed). Dropping a `.jwlibrary` on the window or the Dock icon. Double-clicking the file in Finder. |
 | iPad | The Library tab's toolbar overflow menu. Drag and drop from Files (Split View). Opening the file from Files, Mail or AirDrop. |
 | iPhone, and Expo in both looks | The Library tab's overflow menu: **Import Backup…** and **Export Backup…**. Opening the file from another app. |
-| All | Settings › Backup, once a Settings screen exists. The Expo app has none yet; see Open decision 4. |
+| All | Settings › Backup, once a Settings screen exists. The Expo app has none yet; see Decision 4. |
 
 Opening a file from outside goes straight to **Reading** (§3.2), skipping the picker.
 
@@ -76,21 +76,17 @@ Opening a file from outside goes straight to **Reading** (§3.2), skipping the p
 - **Confirmation:** an iOS alert or Mac confirmation dialog: "Replace your library?" / "Your notes, highlights, tags, bookmarks and favorites on this device will be replaced by the backup." with **Replace** (`.destructive`) and **Cancel** (`.cancel`, the default). On Material, an M3 basic dialog with the same text, Cancel, and **Replace** in the error color, trailing as M3 places the confirming action. Dialogs follow each platform's placement. The "never in the primary position" rule applies to the sheet footer.
 - **Color:** Replace uses the system red, never the accent (#9B3F2A reads red-brown). The accent goes on Merge. The numbers in §7 change how this is done.
 
-### 3.5 Snapshot and restore — **Pending Owen's decision**
+### 3.5 Snapshot and restore — **Decided (Owen): S2**
 
-The core already keeps **one** undo copy for Replace. Kerning proposes a snapshot before **every** import, Merge included. The options:
+Berean takes a snapshot of the current library before **every** import (Replace now, Merge in Phase 2) and keeps the **last two**. When a third would be made, the oldest is pruned. Storage: up to two copies of `userData.db` and its media.
 
-| Option | Keeps | Storage | Core work |
-| --- | --- | --- | --- |
-| **S0. As built** | The data before the last Replace | One copy of `userData.db` and its media | None |
-| **S1. Snapshot every import, keep 1** (Lumen's lean) | The data before the last import of any kind | One copy | Merge must snapshot as well, a small change in the merge row |
-| **S2. Snapshot every import, keep 2** | The last two | Two copies | As S1, plus a choice of which to restore |
+**Core change for Echo:** the core today keeps only **one** undo copy (`userData.prev.db`, restored by `undo_import() -> Bool`). Keeping two snapshots, pruning the oldest, and restoring a chosen one is a core change, and Merge must snapshot too.
 
-The spec holds for every option:
+The restore UI:
 - After a successful import, a banner at the top of the Library tab says "Library replaced from backup" (or "Backup merged"), with **Restore Previous Library** and a close button. It stays until it's closed or the next import.
-- The same action lives under Library overflow (and Settings later), and is disabled when `undo_import` has nothing to restore.
+- The same action lives under Library overflow (and Settings later), and is disabled when there's no snapshot to restore.
 - Restoring asks for confirmation with the destructive role: "Restore your previous library? Changes since the import will be lost."
-- With S2, the action opens a two-row chooser, showing date and source.
+- The action opens a two-row chooser, showing each snapshot's date and source, so either of the two can be restored. Until Echo's core change lands there's only one row.
 
 ### 3.6 Errors (core error, then message)
 
@@ -130,7 +126,7 @@ Echo: out-of-storage currently arrives as a string inside `Io`. A distinct varia
 | Expo Material, tablet (≥ 600 dp) | A large dialog, at most 840 dp wide, in the **list-detail** layout: categories as the list, mode and duplicates as the detail. |
 
 **File types** (Kiwi, Moss and Otter):
-- **iOS, iPadOS and macOS:** declare `.jwlibrary` as an **imported** type (`UTImportedTypeDeclarations`), not an exported one, because Berean doesn't own the format. It conforms to `public.zip-archive` and `public.data`. Add a `CFBundleDocumentTypes` entry with the Viewer role, so it opens from Files, Mail, AirDrop and a Finder double-click. The UTI identifier should match JW Library's own declaration if it has one, so the two don't conflict; **Echo to verify** (see Open decision 5).
+- **iOS, iPadOS and macOS:** declare `.jwlibrary` as an **imported** type (`UTImportedTypeDeclarations`), not an exported one, because Berean doesn't own the format. It conforms to `public.zip-archive` and `public.data`. Add a `CFBundleDocumentTypes` entry with the Viewer role, so it opens from Files, Mail, AirDrop and a Finder double-click. The UTI identifier should match JW Library's own declaration if it has one, so the two don't conflict; **Echo to verify** (see Decision 5).
 - **Expo iOS:** the same keys through `app.json` `ios.infoPlist`.
 - **Android:** an intent filter for `ACTION_VIEW` and `ACTION_SEND` on `content:` URIs. MIME types are unreliable for this extension (often `application/octet-stream` or `application/zip`), so accept both and check the extension and the zip's `manifest.json` in the app. In Expo it goes through `android.intentFilters` or a config plugin.
 
@@ -175,14 +171,14 @@ What this means:
 2. In Material, the M3 error role is almost indistinguishable from Berean's accent. So Replace must **not rely on color**. It's set apart by its label ("Replace Library…"), a warning icon, its unfilled style, the non-primary position, and the confirmation dialog.
 3. `tokens.ts` has **no destructive or error role** yet. Add `destructive` per look and scheme (proposed: iOS look #D70015 / #FF453A; Material `error` #B3261E / #F2B8B5, with `onError` #FFFFFF / #601410, which is 7.66:1).
 
-## 8. Open decisions for Owen
+## 8. Decisions
 
-1. **Merge.** Ship import as **Replace-only now** (Phase 1, works on today's core, matches JW Library's restore), then add Merge as Kerning's default when Echo builds it (Phase 2)? Or hold the import UI until Merge exists? Lumen's lean: ship Phase 1 now. Merge needs a new core row: include filters, duplicate policies, per-item overrides, snapshots.
-2. **Snapshot policy:** S0, S1 (lean) or S2 (§3.5).
-3. **Destructive color:** approve the new `destructive` token values, and the rule that Replace is set apart without relying on color in Material (§7).
-4. **Where Import and Export live on phones and tablets:** the Library tab's overflow (proposed for now), then Settings › Backup when Settings exists.
-5. **The `.jwlibrary` UTI identifier:** match JW Library's declaration (Echo to verify) or use a Berean-namespaced imported identifier.
-6. **Keyboard:** ⇧⌘I and ⇧⌘E for Import and Export on Mac (proposed; Kiwi to check conflicts).
+1. **Merge.** **Decided (Owen):** ship import as **Replace-only now** (Phase 1, on today's core), then add Merge as the default once Echo's merge import lands (Phase 2). Merge needs a new core row: include filters, duplicate policies, per-item overrides, snapshots.
+2. **Snapshot policy.** **Decided (Owen):** S2, a snapshot before every import, keeping the last two (§3.5). A core change for Echo.
+3. **Destructive color.** **Decided (Wren):** the `destructive` token, #D70015 light and #FF453A dark, and Replace set apart in Material by its label, a warning icon and the confirmation step, not color (§7).
+4. **Where Import and Export live on phones and tablets.** **Decided (Wren):** the Library tab's overflow menu until Settings exists, then Settings › Backup.
+5. **The `.jwlibrary` UTI identifier:** match JW Library's declaration or use a Berean-namespaced imported identifier. **Pending Echo** (parity check).
+6. **Keyboard.** **Decided (Wren):** ⇧⌘I and ⇧⌘E for Import and Export on Mac.
 
 ## 9. References
 

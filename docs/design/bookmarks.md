@@ -1,6 +1,6 @@
 # Bookmarks
 
-**Status:** Draft. Kerning & Co. recommendation (Iris, with Pebble and Hinge), written up by Lumen. The direction is **pending Owen, through Wren**.
+**Status:** Draft. Kerning & Co. recommendation (Iris, with Pebble and Hinge), written up by Lumen. **Direction approved Oct 30 2026; parity questions pending Echo.**
 **Board row:** Expo 6d (…E3AK8), bookmarks and `.jwlibrary` import/export designs. The backup half is [jwlibrary-backup.md](jwlibrary-backup.md).
 **Platforms:** SwiftUI on iOS, iPadOS and macOS. Expo (`apps/mobile`) on iOS and Android, in both looks: Material 3 and the iOS look (dev-only Look toggle).
 **Owner:** Design (Lumen). **Core:** done in #20 (`UserData::bookmarks`, `set_bookmark`, `remove_bookmark`; parity row UD-5). **Build:** Kiwi and Moss (SwiftUI), Otter (Expo).
@@ -99,7 +99,7 @@ Hardware keyboard (iPad, Android): Ctrl+D (⌘D on iPad) opens the picker in sav
 - **All 10 slots full.** Covered by the header message in §3.2. Saving takes Replace or Delete, and nothing is overwritten silently.
 - **Import collisions.** A `.jwlibrary` import can bring bookmarks into slots that are already filled:
   - **Replace import:** the backup's bookmarks replace all of yours, as the counts on the review screen say.
-  - **Merge import** (if Owen approves it; see [jwlibrary-backup.md](jwlibrary-backup.md) §3.3): the same publication, slot and location is a silent duplicate. The same publication and slot with a different location is a collision, summarized as "3 bookmark slots are used in both", with **Keep mine** (default), **Use backup's**, or **Keep both**. Keep both moves the backup's bookmark into a free slot in that publication. If none is free, it's listed in the success summary as "2 bookmarks didn't fit".
+  - **Merge import** (Phase 2, approved by Owen to follow Phase 1; see [jwlibrary-backup.md](jwlibrary-backup.md) §3.3): the same publication, slot and location is a silent duplicate. The same publication and slot with a different location is a collision, summarized as "3 bookmark slots are used in both", with **Keep mine** (default), **Use backup's**, or **Keep both**. Keep both moves the backup's bookmark into a free slot in that publication. If none is free, it's listed in the success summary as "2 bookmarks didn't fit".
 - **Watchtower and other issues:** each issue is its own publication key, so it has its own 10 slots.
 - **Multiple Mac windows:** each window's popover and menu reflect that window's publication.
 - **Undo after leaving the reader:** the snackbar or toast goes away with the picker's screen. Nothing else undoes it.
@@ -108,13 +108,13 @@ Hardware keyboard (iPad, Android): Ctrl+D (⌘D on iPad) opens the picker in sav
 
 If bookmarks ever get search, folders, or a cross-publication view, give them a sidebar section on iPad and Mac, and a Library-tab entry on phones. That is when the download row in §7 applies. Not for v1, because 10 fixed slots per publication don't need a second screen.
 
-## 9. Open decisions for Owen
+## 9. Decisions
 
-1. **Approve the direction:** the picker is the list, scoped to the open publication. That's a popover on iPad and Mac, a sheet on iPhone and in the Expo iOS look, and an M3 modal bottom sheet in Material.
-2. **What the toolbar button saves when a verse is selected:** the verse (proposed) or always the chapter (closer to JW Library).
-3. **Mac shortcuts:** ⌘D, plus ⌥⌘1 to ⌥⌘9 and ⌥⌘0 (Hinge's suggestion, not a HIG rule).
-4. **Delete and Replace with Undo, no confirmation dialog** (proposed).
-5. **Bible scoping:** per edition and language (the current data model) unless Echo finds that JW Library shares slots across Bibles. This needs Echo's check first.
+1. **Direction:** the picker is the list, scoped to the open publication. That's a popover on iPad and Mac, a sheet on iPhone and in the Expo iOS look, and an M3 modal bottom sheet in Material. **Decided (Wren):** accepted as proposed.
+2. **What the toolbar button saves when a verse is selected:** **Decided (Wren):** the selected verse.
+3. **Mac shortcuts:** ⌘D, plus ⌥⌘1 to ⌥⌘9 and ⌥⌘0 (Hinge's suggestion, not a HIG rule). **Decided (Wren):** accepted.
+4. **Delete and Replace:** **Decided (Wren):** take effect at once, with Undo and no confirmation dialog.
+5. **Bible scoping:** per edition and language (the current data model) unless Echo finds that JW Library shares slots across Bibles. **Pending Echo** (parity check).
 
 ## 10. References
 
