@@ -7,13 +7,17 @@ import { SearchField } from '@/components/search-field';
 import { SearchResults, SearchScopeChips } from '@/components/search-results';
 import { UIText } from '@/components/text';
 import { useBerean } from '@/design/theme';
+import { useKeyboardHeight } from '@/design/use-keyboard-height';
 
 // Material look: the full-screen search view the M3 search bar expands into.
 // The field sits at the top beside a back arrow; Back (the arrow or the
-// system gesture) collapses it.
+// system gesture) collapses it. The results run under the navigation bar
+// and the keyboard, padded so the last row scrolls clear of both; the
+// keyboard covers the navigation bar where it's open.
 export function MaterialSearchView() {
   const { m3, spacing } = useBerean();
   const insets = useSafeAreaInsets();
+  const keyboardHeight = useKeyboardHeight();
   return (
     <View style={[styles.root, { backgroundColor: m3.surface }]}>
       <View
@@ -52,7 +56,7 @@ export function MaterialSearchView() {
         contentContainerStyle={{
           paddingStart: insets.left + spacing.lg,
           paddingEnd: insets.right + spacing.lg,
-          paddingBottom: insets.bottom + spacing.lg,
+          paddingBottom: Math.max(insets.bottom, keyboardHeight) + spacing.lg,
         }}
       />
     </View>
