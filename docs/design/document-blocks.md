@@ -1,12 +1,32 @@
 # Document blocks for publication articles (core FFI shapes)
 
-Status: Proposed (Oct 30, 2026); Wren decides in this PR. Row: Core: Document.blocks.
+Status: Decided by Wren (Oct 30, 2026); implementation follows. Row: Core: Document.blocks.
 
 Asked by: Otter, Expo 4 reader (#45, ask 5)
 
 This doc covers the core side only: the block tree for a publication document, the inline runs, link
 targets, images and paragraph anchoring. It follows the notes tree ([markdown-notes.md](markdown-notes.md))
 and the Bible chapter blocks (#47).
+
+## Decided (Wren, Oct 30)
+
+Ruled on PR #51. These are settled; the sections below reflect them. Letters match §6.
+
+- **(a) Inlines.** `DocInline` wraps the shared notes `Inline` in `Common { inline }` and adds only the
+  doc-only cases (`Superscript`, `Subscript`, `SmallCaps`, `Link`, `FootnoteRef`, `PageMarker`). Notes keep
+  plain `Inline`, unchanged. One shared inline renderer per app, not two parallel trees (§3).
+- **(b) Images.** Absolute `path` on the block, resolved at read time; `alt` kept. No new call.
+- **(c) Parser.** Hand-written scanning, no tokenizer dependency.
+- **(d) Answer textareas.** `AnswerField` with its paragraph and tag.
+- **(e) Page numbers.** Zero-width `PageMarker`, a doc-only `DocInline` case.
+- **(f) Anchoring.** Per paragraph id now; word tokens in a later row.
+- **(g) Scope.** As stated in §6 (g).
+- **(h) Links.** Parsed in the block, resolved on tap. An unresolvable link fails visibly: never a crash,
+  never a silent no-op (§3 Link targets).
+- **(i) Roles.** Closed `ParagraphRole` enum with a `Body` fallback.
+- **(j) Tables.** In v1.
+- **(k) Delivery.** A field on `Document`.
+- **Blocks.** `Aside`, `Table`, `AnswerField` and `Rule` are approved.
 
 ## 1. Goal and non-goals
 
@@ -96,8 +116,8 @@ Counts are occurrences; "-" = none. Block elements first, then inline.
 | `hr` | 10 | - | - | 2 | - | `Rule` |
 | `details` > `summary` | - | - | - | - | 3055 | `Heading`, `paragraph: None` (best effort, not v1) |
 | **Inline** | | | | | | |
-| `strong` | 276 | 100 | 105 | 24602 | 20464 | `Strong` (a question's leading number: consumed into `number`) |
-| `em` | 47 | 2 | - | 12334 | 74816 | `Emphasis` |
+| `strong` | 276 | 100 | 105 | 24602 | 20464 | `Common { Strong }` (a question's leading number: consumed into `number`) |
+| `em` | 47 | 2 | - | 12334 | 74816 | `Common { Emphasis }` |
 | `a.b`, `a.xt`, `a.it`, `a` | 231, 12, 7, 3 | 84, -, 14, - | 320, -, 46, - | 82635, 1, 3, 18171 | 15004, 73000, 3431, 1810 | `Link` (class ignored; target from `href`) |
 | `span.parNum` (`data-pnum`) | 69 | - | - | - | - | consumed into `Paragraph.number` |
 | `sup` | 66 (all in `parNum`) | - | - | 65 | - | `Superscript` (it); w's are consumed with `parNum` |
@@ -108,16 +128,17 @@ Counts are occurrences; "-" = none. Block elements first, then inline.
 | `a.fn-symbol` (`#footnotesourceN`) | 5 | - | - | - | - | consumed into `DocFootnote.marker` |
 | `label` + `textarea` | 78 | - | - | - | - | dropped (UI chrome; the field is `AnswerField`) |
 | `span.txtSrcBullet` | - | - | - | 5 | - | flattened (its text kept) |
-| `br` | - | - | - | - | - | none seen; would be `Text { "\n" }` |
+| `br` | - | - | - | - | - | none seen; would be `Common { Text { "\n" } }` |
+| text | yes | yes | yes | yes | yes | `Common { Text }` |
 | `data-video` on a link | 1 | - | - | - | - | dropped in v1; the link stays `External` (§7) |
 
-## 3. Proposed types
+## 3. Types
 
 In `reader.rs`, sync, built inside `Reader::document`.
 
 ### Field vs separate call
 
-- **Field `Document.blocks`** (recommended). Otter asked for the field. A reader opens one article at a time,
+- **Field `Document.blocks`** (decided, §6 k). Otter asked for the field. A reader opens one article at a time,
   and blocks are built from the HTML already decrypted for `html`. It roughly doubles the payload; an it
   entry's HTML is small, so that is cheap. A long it chart document costs more, but still once per open.
 - **`Reader::document_blocks(pub_key, doc_id)`**: callers that want only `html` don't pay for blocks, but
@@ -179,9 +200,9 @@ pub enum ParagraphRole {
 }
 
 pub enum DocInline {
-    Text { text: String },
-    Emphasis { children: Vec<DocInline> },
-    Strong { children: Vec<DocInline> },
+    /// A case notes can also express, rendered by the shared Inline renderer.
+    /// Documents emit only `Text`, `Emphasis` and `Strong` here.
+    Common { inline: Inline },
     Superscript { children: Vec<DocInline> },
     Subscript { children: Vec<DocInline> },
     SmallCaps { children: Vec<DocInline> },
@@ -200,7 +221,9 @@ pub enum DocLinkTarget {
     /// jwpub://c/E:DOC/C:V, a study-note ("commentary") link.
     StudyNote { language: String, doc_id: i64, chapter: u32, verse: u32 },
     External { url: String },     // http, https, mailto
-    Invalid,                      // anything else; drawn as its text, not tappable
+    /// Malformed href, or a `#` href other than a footnote. Still drawn as a link; a tap shows
+    /// "Can't open this link" without calling resolve.
+    Invalid,
 }
 pub struct DocVerse { pub book: u32, pub chapter: u32, pub verse: u32 }
 ```
@@ -259,8 +282,8 @@ public enum DocBlock {
     case rule
 }
 public enum DocInline {
-    case text(text: String)
-    case emphasis(children: [DocInline]) // also strong, superscript, subscript, smallCaps
+    case common(inline: Inline)               // the shared notes Inline
+    case superscript(children: [DocInline])   // also subscript, smallCaps
     case link(children: [DocInline], url: String, target: DocLinkTarget)
     case footnoteRef(id: UInt32, marker: String)
     case pageMarker(page: String)
@@ -275,25 +298,75 @@ type DocBlock =
   | { tag: DocBlock_Tags.Paragraph; inner: { paragraph: number; number: string | undefined; role: ParagraphRole; inlines: DocInline[] } }
   | { tag: DocBlock_Tags.Figure; inner: { image: DocImage; caption: DocBlock[] } }
   // ...
+type DocInline =
+  | { tag: DocInline_Tags.Common; inner: { inline: Inline } }
+  | { tag: DocInline_Tags.Superscript; inner: { children: DocInline[] } }
+  | { tag: DocInline_Tags.Link; inner: { children: DocInline[]; url: string; target: DocLinkTarget } }
+  // ...
 type DocLinkTarget =
   | { tag: DocLinkTarget_Tags.Document; inner: { language: string; docId: bigint; first: number | undefined; last: number | undefined } }
   // ...
 ```
 
-### `DocInline` vs extending `Inline`
+### `DocInline` wraps `Inline` (decided, §6 a)
 
-- **Extend notes `Inline`** with `Superscript`, `Subscript`, `SmallCaps`, `FootnoteRef`, `PageMarker`. Nothing
-  breaks yet: no Swift or TS code switches on `Inline` today, only the core's FFI mirror. But note bodies are
-  Markdown that round-trips through the editor and `markdown_spans`, and none of these can occur in a note.
-  The notes renderer (Kiwi, Expo 6) would have to handle cases a note never contains. And doc links need a
-  different target type anyway (below), so `Inline::Link` would not fit as is.
-- **`DocInline`** (recommended): a second inline type, so each app has a second switch. Most cases have the
-  same shape (`Text`, `Emphasis`, `Strong`, `Link` children), so a shared view can switch on both and differ
-  only in links and the doc-only cases. It keeps the notes contract honest.
-- What would flip it: Wren wants one renderer. Then add the cases to `Inline` before the notes read view
-  ships, since that is the cheapest moment, and give `LinkTarget` the doc variants too.
+`DocInline` is split from notes `Inline` but does not duplicate it. `Common { inline }` carries the shared
+`Inline`, and every app renders it with its one shared Inline renderer; the app adds only the doc-only cases.
+Notes keep plain `Inline`, unchanged, and nothing in the shared `Inline` changes. There are not two parallel
+inline trees.
 
-### Link targets: parsed, not resolved
+**Which cases are doc-only.** The rule is "doc-only = anything notes can't express":
+- `Link`, `FootnoteRef`, `PageMarker`: doc links carry a `DocLinkTarget`, and notes have no footnotes or pages.
+- `Superscript`, `Subscript`, `SmallCaps`: notes parse Markdown with pulldown-cmark 0.13.5 with only
+  `ENABLE_STRIKETHROUGH | ENABLE_TASKLISTS` (`notes.rs`). Superscript and subscript are off, and Markdown has
+  no small caps, so a note can never contain them. Putting them in `Inline` would be a shared-Inline change.
+  They take `Vec<DocInline>` children because the fixtures nest doc content in them (smallcaps inside links
+  403, em inside sup 1).
+
+**What documents emit inside `Common`.** `Text`, `Emphasis` and `Strong` only. Never `Common(Link)`: a doc link
+is always the doc-only `Link` with a `DocLinkTarget`. Never `Strikethrough`, `Code`, `Tag` or `LineBreak`
+(none in the fixtures; text that looks like `#tag` stays `Text`). The shared renderer still handles every
+case, so nothing is new there.
+
+**Named field.** `Common { inline }`, not a tuple `Common(Inline)`. UniFFI 0.31.2 supports both, but ubrn
+emits a tuple variant as `inner: Readonly<[Inline]>` (read as `inner[0]`), while every other variant in the
+core is named (`inner.children`). Swift gives `.common(inline:)`. Named is consistent.
+
+**Nesting.** `Inline::Emphasis { children: Vec<Inline> }` and `Strong` cannot hold a `DocInline`, so a doc-only
+case cannot sit inside a `Common` emphasis or strong. Measured in all five fixtures, doc-only inside em/strong:
+
+| Doc-only inside em/strong | Count |
+|---|---|
+| links | 0 |
+| page markers | 0 |
+| footnote refs | 0 |
+| sup inside em | 12 (it) |
+| sup inside strong | 1 (it) |
+
+w's 65 sup-in-strong are inside `parNum` and become `Paragraph.number`, so they never reach `inlines`. The
+other direction is common and fine, since it is `Common` inside a doc-only case, or common inside common:
+strong inside link (w 33 / ll 35 / it 11,926 / rsg 15,123), em inside link (1 / 12 / 3), smallcaps inside
+link (403), page markers inside links (69, it), em inside strong (37 w / 997 it), strong inside em (34, it).
+
+The 13 cases are split (§4): `<em>b<sup>e</sup>rit</em>` becomes `Common{Emphasis[Text "b"]}`,
+`Superscript[Common{Emphasis[Text "e"]}]`, `Common{Emphasis[Text "rit"]}`. Invariant, by construction of the
+types: no doc-only node under a `Common` node.
+
+**Bindings, checked.** A throwaway probe (not committed) built a `ProbeDocInline` in `berean-ffi` on UniFFI
+0.31.2, with `Common(Inline)`, a recursive `Superscript { children: Vec<ProbeDocInline> }`,
+`Link { children, url, target }` and `PageMarker`:
+- uniffi-bindgen generated Swift `public enum ProbeDocInline: Equatable, Hashable { case common(Inline) ...
+  case superscript(children: [ProbeDocInline]) ... }`. Recursion goes through arrays; no `indirect` needed.
+- ubrn 0.31.0-6 generated TS tagged unions: `ProbeDocInline_Tags.Common` with `inner: Readonly<[Inline]>`,
+  `Superscript` with `inner: {children: Array<ProbeDocInline>}`.
+- A Python-binding round trip of `[Common(Emphasis[b]), Superscript[Common(Emphasis[e])],
+  Link[Common(Strong[Ge 1:1]), PageMarker 3]]` returned every value intact.
+- Swift was not compiled (no Swift toolchain on the Linux box), and the TS was not run on a JSI runtime. Both
+  are covered by the existing apps CI when the FFI PR lands.
+
+No concrete problem with the wrapping was found; the only cost is the split rule.
+
+### Link targets: parsed, resolved on tap (decided, §6 h)
 
 This departs from the earlier proposal, which mapped `jwpub://` links to `LinkTarget::Passage` /
 `Publication` through the existing `resolve`. The fixtures show why that doesn't fit:
@@ -308,9 +381,39 @@ This departs from the earlier proposal, which mapped `jwpub://` links to `LinkTa
 
 So the block carries a cheap parsed target, and the app calls `Reader::resolve(url)` on tap or long-press
 preview, which already returns a `LocationSpan`. The scanner parses all five `jwpub://p/` shapes: it keeps the
-paragraph range, ignores tokens, and takes the first `$` part. Until `resolve` learns the token, `$` and `c/`
-forms (a follow-up row, §7), tapping those gives `Invalid` and the app shows the link as not openable. All
-98,374 Bible hrefs have the single `B:C:V-B:C:V` shape that `resolve` handles. The eager alternative is Q(h).
+paragraph range, ignores tokens, and takes the first `$` part. All 98,374 Bible hrefs have the single
+`B:C:V-B:C:V` shape that `resolve` handles.
+
+**Tap behavior.** An unresolvable link fails visibly: never a crash, never a silent no-op.
+
+| Case | App does | Shows |
+|---|---|---|
+| `DocLinkTarget::Invalid` (malformed href, or a `#` href other than a footnote) | does not call `resolve` | "Can't open this link" |
+| any other target | calls `Reader::resolve(url)` | by outcome, below |
+
+Links with `Invalid` are still drawn as links, not plain text, so a tap is never a silent no-op.
+
+FFI `resolve` returns `Result<LocationSpan, CoreError>`. The error is thrown (Swift `throws`, a TS exception
+from ubrn), never a panic.
+
+| `resolve` outcome | Shows |
+|---|---|
+| `Ok(span)` | opens it |
+| `CoreError::Invalid(message)` | "Can't open this link" |
+| `CoreError::NotFound` | "This publication isn't downloaded" (a variant of the can't-open state) |
+| any other error (`Corrupt`, `Io`) | "Can't open this link" |
+
+- `Invalid` is what today's `resolve` returns for the forms not yet supported, verified against the fixtures:
+  `jwpub://p/E:1200004129/360-360:4` and `jwpub://p/E:1200002904/14:1-32:8` give
+  `Invalid("malformed document link ...")`; `jwpub://p/E:1102021206/4-5$p/E:1102021206/22-30` gives
+  `Invalid("malformed document link ...")`; `jwpub://c/E:1001070161/1:18` gives `Invalid("unsupported link ...")`.
+  Once the follow-up row lands (§7), these open instead.
+- `NotFound` means the target publication or document isn't installed (`jwpub://p/E:999999999/` gives
+  `NotFound`). The link names no `pub_key`, so the app can't offer a direct download yet; it says so.
+- **Footnote refs** (`FootnoteRef`) are not links and don't go through `resolve`. A tap scrolls to or shows the
+  `DocFootnote` with the same id; a ref with no footnote shows the can't-open state too.
+- The core never returns an "ok but empty" target. A test covers each fixture href shape mapping to `Ok`,
+  `Invalid` or `NotFound`, and that `resolve` never panics on any of the 193,049 hrefs in the fixtures.
 
 ## 4. Parsing
 
@@ -321,6 +424,13 @@ forms (a follow-up row, §7), tapping those gives `Invalid` and the app shows th
   nesting. The one nested pid (`boxTtl` around an `h2`) is handled as the aside title.
 - **Inline runs** come from a second scanner over each pid element's content: `strong`, `em`, `sup`, `sub`,
   `span.altsize`, `a`, `span.fn`, `span.pageNum`, `span.parNum`. Any other tag is transparent: its text is kept.
+  `strong` and `em` become `Common { Strong }` / `Common { Emphasis }`; text becomes `Common { Text }`.
+- **Split rule.** A `Common` node cannot hold a doc-only node (§3). When one occurs inside `em` or `strong`,
+  the scanner splits the formatting around it and pushes the formatting down into its children:
+  `<em>b<sup>e</sup>rit</em>` gives `Common{Emphasis[Text "b"]}`, `Superscript[Common{Emphasis[Text "e"]}]`,
+  `Common{Emphasis[Text "rit"]}`. The same applies to a future link, page marker or footnote ref inside
+  `em`/`strong` (none in the fixtures). This is lossless for rendering (adjacent italic runs draw the same),
+  and the text equality test still holds. Only the 13 `sup` cases in it need it today.
 - **Text** is whitespace-collapsed (runs of ASCII whitespace become one space, trimmed at block edges;
   non-breaking spaces kept) and entities decoded. `label` and `textarea` text is dropped.
 - **Question links**: a paragraph's `data-rel-pid="[N]"` is inverted into question N's `for_paragraphs`. The
@@ -343,6 +453,11 @@ Test plan, against all five fixtures (rsg included, since it must not fail):
 - Blocks are in `begin` order.
 - Spot checks: w question "6-7" covers both its paragraphs; paragraph 2's `number` is "2" with no `sup` left
   in its inlines; it "L" + `SmallCaps("ORD")`; it's 27 colspans; w's 5 footnotes match their refs.
+- Common only holds `Text`, `Emphasis` and `Strong`, and no doc-only node is needed under `Common` anywhere in
+  the five fixtures except the 13 it `sup` cases, which come out split: `<em>b<sup>e</sup>rit</em>` gives the
+  three runs of §4.
+- Link resolution: each fixture href shape maps to `Ok`, `Invalid` or `NotFound`, and `resolve` never panics
+  on any of the 193,049 hrefs in the fixtures (§3 Link targets).
 - A small synthetic HTML for the error cases.
 
 ## 5. Highlights and notes anchoring
@@ -357,57 +472,72 @@ Test plan, against all five fixtures (rsg included, since it must not fail):
   textarea name (`textarea-4`); not verified against a JW backup with answers. Reading and writing typed
   answers is a later user-data row.
 
-## 6. Open questions for Wren
+## 6. Questions (decided)
 
-**(a) `DocInline` vs extending `Inline`.** Recommend `DocInline` (§3); flip to `Inline` only if you want one
-renderer, and then before the notes read view ships.
+**(a) `DocInline` vs extending `Inline`.** The proposal was a separate `DocInline`, or adding the doc cases to
+`Inline`. **Decided (Wren, Oct 30):** split, but no duplicate renderer. `DocInline` wraps the shared `Inline`
+in `Common { inline }` and adds only the doc-only cases; notes keep plain `Inline`, unchanged. Documents emit
+only `Text`, `Emphasis` and `Strong` inside `Common`, and formatting around a doc-only node is split (§3, §4).
 
 **(b) Image paths.** `file` plus an absolute `path` into the install directory, resolved at read time, vs
 `file` plus a new `Reader::media_path(pub_key, file)`. The path stays valid until the publication is updated
 or removed (the install directory changes), and the app re-reads the document after an update anyway.
-Recommend the absolute path on the block, no new call. `alt` is kept for accessibility.
+**Decided (Wren, Oct 30):** yes, the absolute path on the block, no new call; `alt` kept for accessibility.
 
-**(c) Parser.** Recommend hand-written scanning, no tokenizer dependency, consistent with #47.
+**(c) Parser.** **Decided (Wren, Oct 30):** yes, hand-written scanning, no tokenizer dependency, consistent
+with #47.
 
-**(d) Answer textareas.** Drop them, or model them as `AnswerField` hooks. Recommend `AnswerField` with its
-paragraph and tag; the UI may hide it. Typed-answer storage is a later user-data row.
+**(d) Answer textareas.** Drop them, or model them as `AnswerField` hooks. **Decided (Wren, Oct 30):** yes,
+`AnswerField` with its paragraph and tag; the UI may hide it. Typed-answer storage is a later row (§7).
 
-**(e) Page-number spans.** Drop, or keep as `PageMarker`. Recommend zero-width `PageMarker`: lossless, and it
-lets "p. 3" citations and page jumps work later; renderers ignore it.
+**(e) Page-number spans.** Drop, or keep as `PageMarker`. **Decided (Wren, Oct 30):** yes, zero-width
+`PageMarker`, a doc-only `DocInline` case: lossless, and it lets "p. 3" citations and page jumps work later;
+renderers may ignore it.
 
-**(f) Anchoring.** Recommend per-paragraph ids now; tokens in a later row.
+**(f) Anchoring.** **Decided (Wren, Oct 30):** yes, per paragraph id now; word tokens in a later row (§7).
 
-**(g) Scope.** Recommend v1 = Watchtower and magazine document classes in the fixture (w: 39, 68, 40, 20,
-59, 79), brochures and books (ll, te, it including tables). rsg (`details`/`summary`, already served by
+**(g) Scope.** v1 = Watchtower and magazine document classes in the fixture (w: 39, 68, 40, 20, 59, 79),
+brochures and books (ll, te, it including tables). rsg (`details`/`summary`, already served by
 `study_references`) and other classes later; unknown classes still produce best-effort `Paragraph`s.
+**Decided (Wren, Oct 30):** yes, scope as stated.
 
 **(h) Link targets.** Lazy (parsed, resolved on tap) vs eager `LinkTarget` (resolved in `document`, with
 `missing`). Eager costs a lookup per link (thousands in an it document), has no `pub_key` for uninstalled
-targets, and returns `Invalid` for about 20% of publication links until `resolve` is extended. Recommend lazy,
-plus a follow-up row for `para:token`, `$` and `jwpub://c/` in `resolve`.
+targets, and returns `Invalid` for about 20% of publication links until `resolve` is extended.
+**Decided (Wren, Oct 30):** links resolve on tap, and an unresolvable link fails visibly: never a crash, never
+a silent no-op. `DocLinkTarget::Invalid` is drawn as a link and shows "Can't open this link" without calling
+`resolve`. Otherwise `resolve` errors are thrown: `Invalid`, `Corrupt` and `Io` show "Can't open this link",
+and `NotFound` shows "This publication isn't downloaded" (§3 Link targets). `para:token`, `$` and
+`jwpub://c/` in `resolve` are a follow-up row (§7).
 
-**(i) `ParagraphRole`.** Closed enum vs passing the MEPS class string. Recommend the closed enum with a
-`Body` fallback: the apps never learn MEPS class codes, and a new role is an additive change.
+**(i) `ParagraphRole`.** Closed enum vs passing the MEPS class string. **Decided (Wren, Oct 30):** yes, the
+closed enum with a `Body` fallback: the apps never learn MEPS class codes, and a new role is an additive change.
 
-**(j) Tables in v1.** Recommend yes: small (35 tables in 23 it docs, no rowspan), and without them it's charts
-become loose paragraphs.
+**(j) Tables in v1.** Small (35 tables in 23 it docs, no rowspan), and without them it's charts become loose
+paragraphs. **Decided (Wren, Oct 30):** yes, tables in v1.
 
-**(k) Field vs separate call.** Recommend the field `Document.blocks` (§3).
+**(k) Field vs separate call.** **Decided (Wren, Oct 30):** a field on `Document` (`Document.blocks`, §3).
+
+The new blocks `Aside`, `Table`, `AnswerField` and `Rule` are approved.
 
 ## 7. Not in this row
 
-Follow-up rows to propose:
-- Core: document highlights / tokens (JW's tokenization; token ranges in `inlines`).
-- Core: `resolve` for `paragraph:token`, `$` lists and `jwpub://c/` links.
-- Core: typed answers (`InputField`) for `AnswerField`.
-- Core: rsg and `details` / `summary` blocks.
-- Core: video links (`data-video="webpubvid://..."`).
+Follow-up rows, now Holding:
+- Core: resolve para:token, $ list and c/ study-note links.
+- Core: word-token highlight anchors in documents.
+- Core: typed answers in AnswerField.
+- Core: Document.blocks for rsg.
 
-## 8. Implementation PR plan (after Wren decides)
+Not yet a row:
+- Video links (`data-video="webpubvid://..."`).
+
+## 8. Implementation PR plan
 
 Small PRs, each with fixture tests:
 1. Types and the scanner for w: headings, paragraphs and roles, questions, answer fields, figures, asides,
-   lists, footnotes, rules, all inlines and `DocLinkTarget` parsing. Tests on w.
-2. Books: ll, te and it, including tables, `SmallCaps`, `Superscript`/`Subscript` and te's footnote. The
-   whole-fixture invariants of §4 on all five fixtures, rsg included.
-3. FFI mirror in `berean-ffi`, Swift and TS bindings, and the `docs/parity.md` row.
+   lists, footnotes, rules, all inlines (`Common` and the doc-only cases) and `DocLinkTarget` parsing. Tests on w.
+2. Books: ll, te and it, including tables, `SmallCaps`, `Superscript`/`Subscript`, the split rule and te's
+   footnote. The whole-fixture invariants of §4 on all five fixtures, rsg included: no doc-only node needed
+   under `Common`, and its 13 `sup`-in-`em`/`strong` cases come out split.
+3. FFI mirror in `berean-ffi`, Swift and TS bindings, the `resolve` outcome test over every fixture href
+   shape (`Ok`, `Invalid`, `NotFound`; no panic on the 193,049 hrefs), and the `docs/parity.md` row.
