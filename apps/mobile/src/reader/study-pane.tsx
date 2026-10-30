@@ -26,6 +26,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
+import { ScaledSymbol } from '@/components/scaled-symbol';
 import { ScriptureText, UIText } from '@/components/text';
 import { useBerean } from '@/design/theme';
 import {
@@ -645,7 +646,7 @@ export function StudyPane({
         >
           My notes
         </UIText>
-        <SymbolView
+        <ScaledSymbol
           {...iconProps}
           name={{ ios: 'pencil', android: 'edit' }}
           size={material ? 20 : 17}
