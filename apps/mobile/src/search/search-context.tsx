@@ -132,7 +132,16 @@ export function SearchProvider({ children }: { children: ReactNode }) {
   const session = useMemo(
     () =>
       createSearchSession<Hit>({
-        query: (query, signal) => coreSearch().query(query, ALL, SEARCH_LIMIT, { signal }),
+        query: (query, signal) => {
+          const run = () => coreSearch().query(query, ALL, SEARCH_LIMIT, { signal });
+          // Dev menu toggle; inside `if (__DEV__)` so release bundles drop it.
+          if (__DEV__) {
+            return import('./dev-fault').then(({ simulatingCoreFailure }) =>
+              simulatingCoreFailure() ? Promise.reject(new Error('Simulated core failure (dev menu)')) : run(),
+            );
+          }
+          return run();
+        },
         classifyError,
         onChange: setState,
         debounceMs: DEBOUNCE_MS,
