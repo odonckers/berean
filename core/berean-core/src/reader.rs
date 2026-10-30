@@ -69,10 +69,16 @@
 //! guide gives `Corrupt` rather than another verse's references. An entry is
 //! a list of references in the guide's order, newest first; each is a `<div>`
 //! holding one `<a class="xt">` link, followed by a `<div>` naming its source
-//! (e.g. `w24.08 pp. 2-6`). Empty `<p>` elements between them are skipped;
-//! anything else => `Corrupt`. A link's target is the first paragraph of its
-//! first `$`-separated `jwpub://p/` target, in the publication its
-//! `Extract` row's `RefPublication` names.
+//! (e.g. `w24.08 pp. 2-6`), whose plain text is the reference's `source`.
+//! Empty `<p>` elements between them are skipped; anything else =>
+//! `Corrupt`. A link's target is the first paragraph of its first
+//! `$`-separated `jwpub://p/` target, in the publication its `Extract` row's
+//! `RefPublication` names.
+//!
+//! A study publication that is not installed is reported, not an error: as
+//! [`StudyAvailability::NotInstalled`] with the catalog's key for it, or
+//! [`StudyAvailability::Unavailable`] when there is no catalog or it lists
+//! none in the Bible's language.
 //!
 //! # Verse study
 //!
@@ -303,6 +309,9 @@ pub enum StudyAvailability {
     NotInstalled {
         pub_key: String,
     },
+    /// Not installed, and none to download: there is no catalog, or it lists
+    /// none in the language.
+    Unavailable,
 }
 
 /// The study content for one Bible verse; see the module docs.
@@ -384,6 +393,8 @@ pub struct StudyReferences {
 pub struct StudyReference {
     /// The link's text, as plain text.
     pub label: String,
+    /// The source the guide names for it, as plain text (`w24.08 pp. 2-6`).
+    pub source: String,
     /// The guide's HTML for the reference: from the `<div` holding the link
     /// through the `</div>` of the one naming its source.
     pub html: String,
@@ -537,7 +548,8 @@ impl Reader {
     /// unknown chapter or verse => `NotFound`. When the guide is not
     /// installed, the catalog's newest `rsg` in the language is returned as
     /// [`StudyAvailability::NotInstalled`]; if the catalog lists none (or
-    /// there is no catalog) => `NotFound`. A guide entry for another verse,
+    /// there is no catalog), as [`StudyAvailability::Unavailable`]; either
+    /// way with no items. A guide entry for another verse,
     /// or one not shaped as described => `Corrupt`.
     pub fn study_references(&self, location: &Location) -> Result<StudyReferences, CoreError> {
         let (Some(book), Some(chapter), Some(verse), None) = (
@@ -575,12 +587,9 @@ impl Reader {
                 .catalog()
                 .publications(&filter)?
                 .into_iter()
-                .find(|p| p.symbol == GUIDE)
-                .ok_or(CoreError::NotFound)?;
+                .find(|p| p.symbol == GUIDE);
             return Ok(StudyReferences {
-                availability: StudyAvailability::NotInstalled {
-                    pub_key: listed.pub_key,
-                },
+                availability: listed_availability(listed.map(|p| p.pub_key)),
                 items: Vec::new(),
             });
         };
@@ -596,6 +605,7 @@ impl Reader {
                 for link in study_links(&html)? {
                     items.push(StudyReference {
                         label: plain_text(link.text).trim().to_string(),
+                        source: plain_text(link.source).trim().to_string(),
                         html: html[link.begin..link.end].to_string(),
                         target: study_target(guide, &link)?,
                     });
@@ -619,9 +629,10 @@ impl Reader {
     /// the Bible's language is not installed, the catalog's newest `nwtsty`
     /// in the language is returned as [`StudyAvailability::NotInstalled`]
     /// with no study notes; if the catalog lists none (or there is no
-    /// catalog) => `NotFound`, as for [`Reader::study_references`], even
-    /// though the footnotes and cross references are there. Data not shaped
-    /// as described => `Corrupt`.
+    /// catalog), as [`StudyAvailability::Unavailable`] with no study notes,
+    /// as for [`Reader::study_references`]. Either way the footnotes and
+    /// cross references are there. Data not shaped as described =>
+    /// `Corrupt`.
     pub fn verse_study(&self, location: &Location) -> Result<VerseStudy, CoreError> {
         let (Some(book), Some(chapter), Some(verse), None) = (
             location.book,
@@ -687,15 +698,12 @@ impl Reader {
                 .catalog()
                 .publications(&filter)?
                 .into_iter()
-                .find(|p| p.symbol == STUDY_BIBLE)
-                .ok_or(CoreError::NotFound)?;
+                .find(|p| p.symbol == STUDY_BIBLE);
             return Ok(VerseStudy {
                 study_notes: Vec::new(),
                 cross_refs,
                 footnotes,
-                availability: StudyAvailability::NotInstalled {
-                    pub_key: listed.pub_key,
-                },
+                availability: listed_availability(listed.map(|p| p.pub_key)),
             });
         };
         let study_notes = library.with_publication(&study_bible, |sty| {
@@ -1005,6 +1013,16 @@ fn entry_verse(header: &str) -> Option<VerseRef> {
     (start == end).then_some(start)
 }
 
+/// The availability of a study publication that is not installed, from the
+/// key the catalog lists it under (`None` when it lists none, or there is no
+/// catalog).
+fn listed_availability(pub_key: Option<String>) -> StudyAvailability {
+    match pub_key {
+        Some(pub_key) => StudyAvailability::NotInstalled { pub_key },
+        None => StudyAvailability::Unavailable,
+    }
+}
+
 /// One reference of a guide entry.
 struct StudyLink<'a> {
     /// From the link `<div` through the source `</div>`, in bytes.
@@ -1012,6 +1030,8 @@ struct StudyLink<'a> {
     end: usize,
     /// The link's content (HTML).
     text: &'a str,
+    /// The source `<div>`, tags included (HTML).
+    source: &'a str,
     /// The link's `data-xtid` and `href`, if it has them.
     xtid: Option<&'a str>,
     href: Option<&'a str>,
@@ -1036,6 +1056,7 @@ fn study_links(html: &str) -> Result<Vec<StudyLink<'_>>, CoreError> {
             begin: at,
             end: source_end,
             text,
+            source: &html[source..source_end],
             xtid: attribute(tag, "data-xtid"),
             href: attribute(tag, "href"),
         });
@@ -2239,6 +2260,7 @@ mod tests {
         for link in &links {
             assert_eq!(&html[link.begin..link.end], format!("{LINK}\n{SOURCE}"));
             assert_eq!(link.text, "A &amp; B");
+            assert_eq!(link.source, SOURCE);
             assert_eq!(link.xtid, Some("7"));
             assert_eq!(
                 link.href,

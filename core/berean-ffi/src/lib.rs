@@ -794,6 +794,7 @@ impl From<berean_core::reader::LocationSpan> for LocationSpan {
 pub enum StudyAvailability {
     Installed,
     NotInstalled { pub_key: String },
+    Unavailable,
 }
 
 impl From<berean_core::reader::StudyAvailability> for StudyAvailability {
@@ -802,6 +803,42 @@ impl From<berean_core::reader::StudyAvailability> for StudyAvailability {
         match a {
             A::Installed => StudyAvailability::Installed,
             A::NotInstalled { pub_key } => StudyAvailability::NotInstalled { pub_key },
+            A::Unavailable => StudyAvailability::Unavailable,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::reader::StudyReference`], without its
+/// HTML.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct StudyReference {
+    pub label: String,
+    pub source: String,
+    pub target: Option<Location>,
+}
+
+impl From<berean_core::reader::StudyReference> for StudyReference {
+    fn from(r: berean_core::reader::StudyReference) -> Self {
+        StudyReference {
+            label: r.label,
+            source: r.source,
+            target: r.target.map(Into::into),
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::reader::StudyReferences`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct StudyReferences {
+    pub availability: StudyAvailability,
+    pub items: Vec<StudyReference>,
+}
+
+impl From<berean_core::reader::StudyReferences> for StudyReferences {
+    fn from(r: berean_core::reader::StudyReferences) -> Self {
+        StudyReferences {
+            availability: r.availability.into(),
+            items: mirror(r.items),
         }
     }
 }
@@ -950,6 +987,12 @@ impl Reader {
     /// study notes of the Bible verse at `location`.
     pub fn verse_study(&self, location: Location) -> Result<VerseStudy, CoreError> {
         Ok(self.inner.verse_study(&location.into())?.into())
+    }
+
+    /// What the Research Guide in the Bible's language cites for the Bible
+    /// verse at `location`, newest first.
+    pub fn study_references(&self, location: Location) -> Result<StudyReferences, CoreError> {
+        Ok(self.inner.study_references(&location.into())?.into())
     }
 
     /// For each verse of a chapter of the installed Bible `bible` with any
@@ -2268,6 +2311,30 @@ mod tests {
             }),
             Err(CoreError::Invalid(_))
         ));
+
+        // No guide installed and no catalog to list one.
+        assert_eq!(
+            reader.study_references(john(16)).unwrap(),
+            StudyReferences {
+                availability: StudyAvailability::Unavailable,
+                items: Vec::new(),
+            }
+        );
+        let progress = Arc::new(Recorder {
+            calls: Mutex::new(Vec::new()),
+        });
+        block_on(library.install(
+            "rsg:0:0".into(),
+            fixture("rsg_E.jwpub").display().to_string(),
+            progress,
+            CancelToken::new(),
+        ))
+        .unwrap();
+        let refs = reader.study_references(john(16)).unwrap();
+        assert_eq!(refs.availability, StudyAvailability::Installed);
+        assert!(!refs.items.is_empty());
+        assert_eq!(refs.items[0].source, "w24.08 pp. 2-6");
+        assert!(refs.items[0].target.is_some());
         assert!(matches!(
             reader.toc("zz:0:0".into()),
             Err(CoreError::NotFound)
