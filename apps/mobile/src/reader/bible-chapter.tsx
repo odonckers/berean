@@ -43,6 +43,7 @@ import {
   verseReference,
 } from '@/reader/bible-nav';
 import { BiblePicker } from '@/reader/bible-picker';
+import { type LandedVerse, landedLabel, landedVerse } from '@/reader/landed-verse';
 import {
   type Run,
   blockSegments,
@@ -184,6 +185,20 @@ export function BibleChapterView({
   const blockLines = useRef(new Map<number, TextLayoutEvent['nativeEvent']['lines']>());
   // A verse the chapter opened at, until it has been scrolled to.
   const pendingVerse = useRef<number | undefined>(undefined);
+  // The verse a search hit opened the chapter at, marked like the selected
+  // verse (without study) until a verse number is pressed or the chapter
+  // changes. State, so it outlives the cleared route param. Kept in step
+  // with the chapter and the arrival param as they render (a new chapter
+  // first, so an arrival in it isn't cleared), not in an effect.
+  const [landed, setLanded] = useState<LandedVerse>(undefined);
+  const [landedFrom, setLandedFrom] = useState({ chapterKey, arrivalVerse: undefined as number | undefined });
+  if (landedFrom.chapterKey !== chapterKey || landedFrom.arrivalVerse !== arrivalVerse) {
+    setLandedFrom({ chapterKey, arrivalVerse });
+    let next = landedVerse(landed, { kind: 'chapter', chapterKey });
+    if (arrivalVerse !== undefined) next = landedVerse(next, { kind: 'arrive', chapterKey, verse: arrivalVerse });
+    setLanded(next);
+  }
+  const landedHere = landed?.chapterKey === chapterKey ? landed.verse : undefined;
   // The chapter scroll's gesture, which the pane's resize drag blocks.
   const [chapterScroll, setChapterScroll] = useState<NativeGesture>();
 
@@ -346,6 +361,7 @@ export function BibleChapterView({
   // was (the pane springs back to its height); another verse opens its own
   // pane straight away, replacing the collapsing one.
   const toggle = (verse: number) => {
+    setLanded((prev) => landedVerse(prev, { kind: 'press', verse }));
     if (current?.verse !== verse) openVerse(verse);
     else if (current.closing) {
       setSelection({ ...current, closing: false });
@@ -502,7 +518,10 @@ export function BibleChapterView({
       style={[type.reading.scripture, { color: colors.text }]}
       accessibilityActions={numberedVerses(runs).map((verse) => ({
         name: `${VERSE_ACTION}${verse}`,
-        label: studyActionLabel(verse, markers.get(verse), verse === open),
+        label: landedLabel(
+          studyActionLabel(verse, markers.get(verse), verse === open),
+          verse === landedHere,
+        ),
       }))}
       onAccessibilityAction={(e) => {
         const { actionName } = e.nativeEvent;
@@ -525,7 +544,7 @@ export function BibleChapterView({
                 <Text
                   style={[
                     type.verseNumber,
-                    segment.verse === open
+                    segment.verse === open || segment.verse === landedHere
                       ? { color: colors.surfaceRaised, backgroundColor: colors.accent }
                       : { color: colors.textSecondary },
                   ]}
