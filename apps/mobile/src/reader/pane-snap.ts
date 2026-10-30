@@ -159,6 +159,33 @@ export function openFit({
   return { scrollBy, fraction: clampFraction(room / windowHeight, lowest, wanted) };
 }
 
+/**
+ * The scroll offset that puts a verse's first line about 20% from the top
+ * of the visible area (SCROLL_TARGET), for opening the reader at a verse.
+ * verseTop is in the column, columnTop the column's y in the scroll
+ * content; insetTop and insetBottom are the scroll's content insets and
+ * barBottom what the content pads for below them (the tab bar). Never
+ * above the content's top; the ScrollView clamps the bottom itself.
+ */
+export function verseScrollOffset({
+  verseTop,
+  columnTop,
+  insetTop,
+  insetBottom,
+  barBottom,
+  height,
+}: {
+  verseTop: number;
+  columnTop: number;
+  insetTop: number;
+  insetBottom: number;
+  barBottom: number;
+  height: number;
+}): number {
+  const visibleHeight = Math.max(height - insetTop - insetBottom - barBottom, 0);
+  return Math.max(columnTop + verseTop - visibleHeight * SCROLL_TARGET, 0) - insetTop;
+}
+
 /** The live height while dragging: the start height moved with the finger, clamped. */
 export function dragFraction({
   start,

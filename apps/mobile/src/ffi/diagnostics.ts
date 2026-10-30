@@ -11,6 +11,7 @@ import {
 } from 'berean-ffi-rn';
 import { Paths } from 'expo-file-system';
 
+import { getCore } from './core';
 import { coreErrorMessage } from './errors';
 import { fileUriToPath } from './paths';
 
@@ -136,4 +137,14 @@ export async function runFfiDiagnostics(): Promise<string[]> {
     report(`FAILED: ${coreErrorMessage(e)}`);
   }
   return lines;
+}
+
+/**
+ * Rebuilds the app core's search index from the installed publications:
+ * needed once for a user DB whose publications were installed before the
+ * index existed. Progress isn't shown, and nothing cancels it.
+ */
+export async function rebuildSearchIndex(): Promise<void> {
+  const progress: ProgressSink = { onProgress() {} };
+  await getCore().search().rebuildIndex(progress, new CancelToken());
 }

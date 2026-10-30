@@ -15,6 +15,7 @@ import {
   paneDetents,
   paneMaxFraction,
   releaseTarget,
+  verseScrollOffset,
 } from './pane-snap.ts';
 
 const windowHeight = 800;
@@ -300,5 +301,27 @@ describe('openFit', () => {
       openFit({ verseTop: 500, paneTop: 540, visibleHeight: 0, windowHeight, wanted: 0.6, lowest: MIN_HEIGHT }),
       { scrollBy: 0, fraction: 0.6 },
     );
+  });
+});
+
+describe('verseScrollOffset', () => {
+  const at = { columnTop: 16, insetTop: 0, insetBottom: 0, barBottom: 80, height: 880 };
+
+  test("puts the verse's first line 20% down the visible area", () => {
+    // Visible 800: the line, at 1016 in the content, lands 160 into it.
+    assert.equal(verseScrollOffset({ ...at, verseTop: 1000 }), 1016 - 160);
+  });
+
+  test('the content insets narrow the visible area and shift the offset', () => {
+    // Visible 880 - 100 - 20 - 80 = 680, so 20% is 136.
+    assert.equal(
+      verseScrollOffset({ ...at, verseTop: 1000, insetTop: 100, insetBottom: 20 }),
+      1016 - 100 - 136,
+    );
+  });
+
+  test('a verse near the top keeps the content at its top', () => {
+    assert.equal(verseScrollOffset({ ...at, verseTop: 20 }), 0);
+    assert.equal(verseScrollOffset({ ...at, verseTop: 20, insetTop: 100 }), -100);
   });
 });

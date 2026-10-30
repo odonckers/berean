@@ -5,6 +5,8 @@ import {
   Fragment,
   useCallback,
   useEffect,
+  useEffectEvent,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -41,6 +43,7 @@ import {
   verseReference,
 } from '@/reader/bible-nav';
 import { BiblePicker } from '@/reader/bible-picker';
+import { type LandedVerse, landedLabel, landedVerse } from '@/reader/landed-verse';
 import {
   type Run,
   blockSegments,
@@ -53,7 +56,13 @@ import {
   paneSplit,
   withoutBookTitle,
 } from '@/reader/chapter-blocks';
-import { MAX_HEIGHT, MIN_HEIGHT, openFit, paneMaxFraction } from '@/reader/pane-snap';
+import {
+  MAX_HEIGHT,
+  MIN_HEIGHT,
+  openFit,
+  paneMaxFraction,
+  verseScrollOffset,
+} from '@/reader/pane-snap';
 import { ReadingColumn, useColumnPaddingTop } from '@/reader/reading-column';
 import {
   forgetVerse,
@@ -86,11 +95,14 @@ export function BibleChapterView({
   title,
   book,
   chapter,
+  verse: arrivalVerse,
 }: {
   pubKey: string;
   title: string;
   book: number;
   chapter: number;
+  /** A verse to open the chapter at (a search hit), scrolled to once. */
+  verse?: number;
 }) {
   const { look, colors, m3, type } = useBerean();
   const material = look === 'material';
@@ -171,6 +183,22 @@ export function BibleChapterView({
   // open auto-scroll.
   const blockTops = useRef(new Map<number, number>());
   const blockLines = useRef(new Map<number, TextLayoutEvent['nativeEvent']['lines']>());
+  // A verse the chapter opened at, until it has been scrolled to.
+  const pendingVerse = useRef<number | undefined>(undefined);
+  // The verse a search hit opened the chapter at, marked like the selected
+  // verse (without study) until a verse number is pressed or the chapter
+  // changes. State, so it outlives the cleared route param. Kept in step
+  // with the chapter and the arrival param as they render (a new chapter
+  // first, so an arrival in it isn't cleared), not in an effect.
+  const [landed, setLanded] = useState<LandedVerse>(undefined);
+  const [landedFrom, setLandedFrom] = useState({ chapterKey, arrivalVerse: undefined as number | undefined });
+  if (landedFrom.chapterKey !== chapterKey || landedFrom.arrivalVerse !== arrivalVerse) {
+    setLandedFrom({ chapterKey, arrivalVerse });
+    let next = landedVerse(landed, { kind: 'chapter', chapterKey });
+    if (arrivalVerse !== undefined) next = landedVerse(next, { kind: 'arrive', chapterKey, verse: arrivalVerse });
+    setLanded(next);
+  }
+  const landedHere = landed?.chapterKey === chapterKey ? landed.verse : undefined;
   // The chapter scroll's gesture, which the pane's resize drag blocks.
   const [chapterScroll, setChapterScroll] = useState<NativeGesture>();
 
@@ -185,6 +213,15 @@ export function BibleChapterView({
       scrollRef.current?.scrollTo({ y: 0, animated: false });
     }
     shownChapter.current = chapterKey;
+  }, [chapterKey]);
+
+  // The blocks are keyed by chapter, so a new chapter's blocks measure
+  // afresh: the last chapter's measurements (by block index) go before
+  // theirs come in, and so does a verse still waiting to be scrolled to.
+  useLayoutEffect(() => {
+    blockTops.current.clear();
+    blockLines.current.clear();
+    pendingVerse.current = undefined;
   }, [chapterKey]);
 
   // The pane's tallest height: from its top to the bottom of the visible
@@ -250,6 +287,51 @@ export function BibleChapterView({
     return top + (line?.y ?? 0);
   };
 
+  // Opening at a verse (a search hit): once its block and the viewport
+  // have laid out, the verse's first line goes about 20% from the top,
+  // without animation, and screen reader focus to its paragraph. Tried as
+  // each of them lays out; it scrolls once per arrival, so later layouts
+  // and the reader's own scrolling are left alone. A verse the chapter
+  // doesn't number is dropped.
+  const scrollToPending = () => {
+    const verse = pendingVerse.current;
+    if (verse === undefined) return;
+    const index = numberBlock(chapterContent, verse);
+    if (index < 0) {
+      pendingVerse.current = undefined;
+      return;
+    }
+    const { insetTop, insetBottom, height } = viewport.current;
+    const top = verseTop(verse);
+    if (height === 0 || !blockLines.current.has(index) || top === undefined) return;
+    pendingVerse.current = undefined;
+    const y = verseScrollOffset({
+      verseTop: top,
+      columnTop,
+      insetTop,
+      insetBottom,
+      barBottom: contentInsets.bottom,
+      height,
+    });
+    viewport.current.offset = y;
+    scrollRef.current?.scrollTo({ y, animated: false });
+    // The block is looked up in the frame, not before it: by then a render
+    // may have unmounted the node it had (its ref is gone with it).
+    requestAnimationFrame(() => moveAccessibilityFocus(blockRefs.current.get(index)));
+  };
+
+  // Each arrival with a verse (the route's verse param) asks once. The
+  // param is then cleared, so a remount (switching the dev Look) keeps its
+  // place and the same verse opened again from search is a new arrival.
+  const arrive = useEffectEvent((verse: number) => {
+    pendingVerse.current = verse;
+    router.setParams({ verse: undefined });
+    scrollToPending();
+  });
+  useEffect(() => {
+    if (arrivalVerse !== undefined) arrive(arrivalVerse);
+  }, [arrivalVerse]);
+
   // Spec §5, as the opening pane lays out: a verse in the bottom 35%
   // scrolls so its first line lands about 20% from the top, alongside the
   // open animation, and the reader scrolls (or the pane opens shorter) so
@@ -279,6 +361,7 @@ export function BibleChapterView({
   // was (the pane springs back to its height); another verse opens its own
   // pane straight away, replacing the collapsing one.
   const toggle = (verse: number) => {
+    setLanded((prev) => landedVerse(prev, { kind: 'press', verse }));
     if (current?.verse !== verse) openVerse(verse);
     else if (current.closing) {
       setSelection({ ...current, closing: false });
@@ -419,17 +502,26 @@ export function BibleChapterView({
       onLayout={
         blockIndex === undefined
           ? undefined
-          : (e) => blockTops.current.set(blockIndex, e.nativeEvent.layout.y)
+          : (e) => {
+              blockTops.current.set(blockIndex, e.nativeEvent.layout.y);
+              scrollToPending();
+            }
       }
       onTextLayout={
         blockIndex === undefined
           ? undefined
-          : (e) => blockLines.current.set(blockIndex, e.nativeEvent.lines)
+          : (e) => {
+              blockLines.current.set(blockIndex, e.nativeEvent.lines);
+              scrollToPending();
+            }
       }
       style={[type.reading.scripture, { color: colors.text }]}
       accessibilityActions={numberedVerses(runs).map((verse) => ({
         name: `${VERSE_ACTION}${verse}`,
-        label: studyActionLabel(verse, markers.get(verse), verse === open),
+        label: landedLabel(
+          studyActionLabel(verse, markers.get(verse), verse === open),
+          verse === landedHere,
+        ),
       }))}
       onAccessibilityAction={(e) => {
         const { actionName } = e.nativeEvent;
@@ -452,7 +544,7 @@ export function BibleChapterView({
                 <Text
                   style={[
                     type.verseNumber,
-                    segment.verse === open
+                    segment.verse === open || segment.verse === landedHere
                       ? { color: colors.surfaceRaised, backgroundColor: colors.accent }
                       : { color: colors.textSecondary },
                   ]}
@@ -546,6 +638,7 @@ export function BibleChapterView({
         onLayout={(e) => {
           viewport.current.height = e.nativeEvent.layout.height;
           updatePaneMax();
+          scrollToPending();
         }}
       >
         {/* Per the reader frames: the iOS look titles the chapter in the

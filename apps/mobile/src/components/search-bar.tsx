@@ -12,7 +12,7 @@ function SearchBar({ style }: { style: StyleProp<ViewStyle> }) {
     <Pressable
       accessibilityRole="search"
       accessibilityLabel="Search Berean"
-      onPress={() => router.push('/search')}
+      onPress={() => router.push('/search-view')}
       android_ripple={{ color: m3.outline }}
       style={[
         styles.bar,

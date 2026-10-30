@@ -1,6 +1,7 @@
 // Dev-only: berean://dev-ffi runs the berean-ffi smoke test and prints the
 // results as plain text. A route in the root Stack (alongside (tabs) and
-// search); outside __DEV__ it redirects to /.
+// search-view); outside __DEV__ it redirects to /. The search index rebuild
+// lives at berean://dev-search-index, clear of these slow diagnostics.
 import { Redirect, Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text } from 'react-native';

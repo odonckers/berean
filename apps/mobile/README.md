@@ -30,7 +30,7 @@ npm start              # Metro for the installed dev client (expo start --dev-cl
 
 ## Rust core bindings
 
-The app reaches the Rust core through the local TurboModule [`modules/berean-ffi-rn`](modules/berean-ffi-rn/README.md). Its bindings are generated and gitignored, so run `npm run ubrn:android` before typecheck, prebuild, or a native build, and again after `core/` changes. It needs Rust with the Android targets, `cargo-ndk`, and the NDK (`ANDROID_NDK_HOME`). In a dev build, `berean://dev-ffi` prints a plain-text smoke test of the bindings.
+The app reaches the Rust core through the local TurboModule [`modules/berean-ffi-rn`](modules/berean-ffi-rn/README.md). Its bindings are generated and gitignored, so run `npm run ubrn:android` before typecheck, prebuild, or a native build, and again after `core/` changes. It needs Rust with the Android targets, `cargo-ndk`, and the NDK (`ANDROID_NDK_HOME`). In a dev build, `berean://dev-ffi` prints a plain-text smoke test of the bindings, and `berean://dev-search-index` rebuilds the search index.
 
 ## Checks
 

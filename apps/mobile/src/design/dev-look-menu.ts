@@ -1,20 +1,31 @@
 import { registerDevMenuItems } from 'expo-dev-menu';
 
 import type { Look } from '@/design/look';
+import { setSimulatingCoreFailure, simulatingCoreFailure } from '@/search/dev-fault';
 
 // Dev-only. Imported solely from inside `if (__DEV__)` in look.tsx, so it and
 // expo-dev-menu's JS never reach a release bundle.
 export function registerLookMenu(current: Look, setLook: (look: Look) => void) {
-  const mark = (look: Look) => (look === current ? '✓ ' : '');
+  const mark = (on: boolean) => (on ? '✓ ' : '');
+  // registerDevMenuItems replaces the whole list, so the toggle re-registers
+  // every item to move its mark.
   void registerDevMenuItems([
     {
-      name: `${mark('ios')}Look: iOS design preview`,
+      name: `${mark(current === 'ios')}Look: iOS design preview`,
       callback: () => setLook('ios'),
       shouldCollapse: true,
     },
     {
-      name: `${mark('material')}Look: Material`,
+      name: `${mark(current === 'material')}Look: Material`,
       callback: () => setLook('material'),
+      shouldCollapse: true,
+    },
+    {
+      name: `${mark(simulatingCoreFailure())}Search: simulate core failure`,
+      callback: () => {
+        setSimulatingCoreFailure(!simulatingCoreFailure());
+        registerLookMenu(current, setLook);
+      },
       shouldCollapse: true,
     },
   ]);

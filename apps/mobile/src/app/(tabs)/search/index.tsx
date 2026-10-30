@@ -1,30 +1,50 @@
-import { Platform, StyleSheet, View } from 'react-native';
+import { Stack, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useRef } from 'react';
+import { Platform } from 'react-native';
+import type { SearchBarCommands } from 'react-native-screens';
 
-import { SearchPlaceholder } from '@/components/search-placeholder';
-import { UIText } from '@/components/text';
-import { useContentInsets } from '@/design/tab-chrome';
-import { useBerean } from '@/design/theme';
+import { IosSearchView } from '@/components/search-view';
+import { useContentInsets, useHeaderHidden } from '@/design/tab-chrome';
+import { useSearch } from '@/search/search-context';
 
+// The iOS look's Search tab. On iOS the native header search field is the
+// control: the tab's search role puts it at the bottom of the glass tab bar
+// (iOS 26). That native field exists only on iOS, hence the Platform check;
+// elsewhere IosSearchView draws the field at the bottom itself.
 export default function SearchTabScreen() {
-  const { colors, spacing } = useBerean();
   const insets = useContentInsets();
-  if (Platform.OS === 'ios') return <SearchPlaceholder showField={false} />;
-  // The iOS look on Android hides the native header, so the title is drawn here.
+  const inlineTitle = useHeaderHidden();
+  const nativeField = Platform.OS === 'ios';
+  const { text, setText } = useSearch();
+
+  // The native field keeps its own text: on focus it takes the shared query,
+  // so a query typed in the palette carries over.
+  const searchBar = useRef<SearchBarCommands>(null);
+  const textRef = useRef(text);
+  useEffect(() => {
+    textRef.current = text;
+  }, [text]);
+  useFocusEffect(
+    useCallback(() => {
+      searchBar.current?.setText(textRef.current);
+    }, []),
+  );
+
   return (
-    <View
-      style={[
-        styles.root,
-        { backgroundColor: colors.surface, paddingTop: insets.top + spacing.lg },
-      ]}
-    >
-      <UIText variant="largeTitle" style={{ paddingHorizontal: spacing.lg }}>
-        Search
-      </UIText>
-      <SearchPlaceholder />
-    </View>
+    <>
+      {nativeField && (
+        <Stack.Screen
+          options={{
+            headerSearchBarOptions: {
+              ref: searchBar,
+              placeholder: 'Search Berean',
+              autoCapitalize: 'none',
+              onChangeText: (e) => setText(e.nativeEvent.text),
+            },
+          }}
+        />
+      )}
+      <IosSearchView nativeField={nativeField} inlineTitle={inlineTitle} insets={insets} />
+    </>
   );
 }
-
-const styles = StyleSheet.create({
-  root: { flex: 1 },
-});
