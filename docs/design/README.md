@@ -10,6 +10,8 @@ A spec's recommended direction stays **pending** until Owen decides on it in the
 | [Inline study pane](inline-study-pane.md) | Decided: direction B, open questions resolved |
 | [Markdown notes, folders and tags (core FFI shapes)](markdown-notes.md) | Proposed; Wren decides in the PR |
 | [Document blocks for publication articles (core FFI shapes)](document-blocks.md) | Decided by Wren (Oct 30, 2026); implementation follows |
+| [Bookmarks](bookmarks.md) | Draft; direction pending Owen through Wren |
+| [`.jwlibrary` backup: import and export](jwlibrary-backup.md) | Draft; direction pending Owen through Wren |
 | Studyspace infinite canvas | Planned |
 | Omnisearch | Planned |
 | Note hyperlinks with inline previews | Planned |
