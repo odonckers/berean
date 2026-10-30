@@ -55,6 +55,12 @@ export function SearchPalette({ visible, onClose }: SearchPaletteProps) {
     rows.map((row) => row.key),
   );
   const [selection, setSelection] = useState(NO_SELECTION);
+  // Each opening starts on the first result, even with the same results.
+  const [wasVisible, setWasVisible] = useState(visible);
+  if (visible !== wasVisible) {
+    setWasVisible(visible);
+    if (visible) setSelection(NO_SELECTION);
+  }
   const selected = rows[selectedIndex(selection, results, rows.length)];
   const listKeys = useListKeys((key) =>
     setSelection((s) => moveSelection(s, results, rows.length, key === 'up' ? -1 : 1)),
