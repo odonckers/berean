@@ -190,6 +190,8 @@ export function StudyPane({
   const reducedMotion = useReducedMotion();
   const { height: windowHeight, fontScale } = useWindowDimensions();
   const material = look === 'material';
+  // The footer's touch targets: 48dp Material, 44pt iOS look.
+  const footerTarget = material ? 48 : 44;
 
   // The tab row is built from the data. With no content there is no tab
   // row at all, and Research alone never counts as content.
@@ -712,13 +714,14 @@ export function StudyPane({
       </ScrollView>
 
       {/* A sibling of the body, so it stays pinned while the body scrolls:
-          My notes (showing the verse's notes) and New note. */}
+          My notes (showing the verse's notes) and New note, each a full
+          48dp / 44pt target however the row shares its width. */}
       <View
         onLayout={(e) => measure('footer', e.nativeEvent.layout.height)}
         style={[
           styles.myNotes,
           {
-            minHeight: material ? 48 : 44,
+            minHeight: footerTarget,
             backgroundColor: material ? studyPane.materialFooter : studyPane.iosFooter,
             borderTopColor: separator,
           },
@@ -729,7 +732,7 @@ export function StudyPane({
           accessibilityLabel={`My notes, ${noteCount(notes.length)}`}
           accessibilityState={{ selected: showingNotes }}
           onPress={() => showNotes(false)}
-          style={({ pressed }) => [styles.myNotesButton, { minHeight: material ? 48 : 44, opacity: pressed ? 0.6 : 1 }]}
+          style={({ pressed }) => [styles.myNotesButton, { minHeight: footerTarget, minWidth: footerTarget, opacity: pressed ? 0.6 : 1 }]}
         >
           <UIText
             style={[
@@ -744,7 +747,7 @@ export function StudyPane({
           accessibilityRole="button"
           accessibilityLabel="New note"
           onPress={onNewNote}
-          style={({ pressed }) => [styles.newNote, { minHeight: material ? 48 : 44, opacity: pressed ? 0.6 : 1 }]}
+          style={({ pressed }) => [styles.newNote, { minHeight: footerTarget, minWidth: footerTarget, opacity: pressed ? 0.6 : 1 }]}
         >
           <ScaledSymbol
             {...iconProps}
