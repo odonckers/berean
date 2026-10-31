@@ -102,3 +102,25 @@ export function scrollFrame({
   if (placement === 'hidden') return { frameBottom: 0, paddingBottom: bottomInset + writeEnd };
   return { frameBottom: toolsBottom + toolsHeight, paddingBottom: writeEnd };
 }
+
+export type CaretReveal = {
+  /** The caret's line, in the scroll content's coordinates. */
+  caretTop: number;
+  caretBottom: number;
+  /** The scroll view's offset and the height of its frame. */
+  scrollY: number;
+  viewportHeight: number;
+  /** Room kept between the line and the frame's edge. */
+  margin: number;
+};
+
+/**
+ * Where to scroll so the caret's line shows: just above the frame's bottom
+ * if it's below it, at the top (less the margin) if it's above. Undefined
+ * while the whole line is in view.
+ */
+export function caretRevealOffset({ caretTop, caretBottom, scrollY, viewportHeight, margin }: CaretReveal): number | undefined {
+  if (caretTop < scrollY) return Math.max(0, caretTop - margin);
+  if (caretBottom > scrollY + viewportHeight) return Math.max(0, caretBottom + margin - viewportHeight);
+  return undefined;
+}

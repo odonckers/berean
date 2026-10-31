@@ -1,11 +1,17 @@
 import { type Ref, type RefObject, useMemo, useState } from 'react';
-import { Platform, StyleSheet, Text, TextInput, type TextInputInstance, type TextStyle } from 'react-native';
+import { Platform, StyleSheet, Text, TextInput, type TextInputInstance, type TextStyle, View } from 'react-native';
 
 import { useBerean } from '@/design/theme';
 import { spacing } from '@/design/tokens';
 import { type Selection } from '@/notes/format-edits';
 import { type Draft } from '@/notes/note-draft';
-import { type HeadingLevel, type StyledSegment, type SyntaxKind, styledSegments } from '@/notes/syntax-spans';
+import {
+  type HeadingLevel,
+  segmentsBefore,
+  type StyledSegment,
+  type SyntaxKind,
+  styledSegments,
+} from '@/notes/syntax-spans';
 import { useSyntaxSpans } from '@/notes/use-syntax-spans';
 
 const mono = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
@@ -13,6 +19,11 @@ const mono = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
 // A folded link target's size against the body's: the guide's ⋯ chip is
 // 0.62em, and the target is longer than one ⋯, so it goes smaller.
 const foldedScale = 0.4;
+
+// The body's sides as Android's theme pads a TextInput given no padding
+// (the EditText background's 4dp inset), for the caret mirror to wrap
+// alike. iOS pads none.
+const bodySide = Platform.OS === 'android' ? 4 : 0;
 
 type WriteViewProps = {
   draft: Draft;
@@ -28,6 +39,10 @@ type WriteViewProps = {
   /** Set only after an edit made outside typing; otherwise the field keeps its own. */
   selection?: Selection;
   onSelectionChange?: (selection: Selection) => void;
+  /** The caret's line while the body has focus, in the body's coordinates. */
+  onCaretLayout?: (caret: { top: number; bottom: number }) => void;
+  /** The body's top within the view's parent. */
+  onBodyLayout?: (y: number) => void;
 };
 
 /**
@@ -52,6 +67,8 @@ export function WriteView({
   onFieldFocus,
   selection,
   onSelectionChange,
+  onCaretLayout,
+  onBodyLayout,
 }: WriteViewProps) {
   const { colors, m3, type } = useBerean();
   const spans = useSyntaxSpans(draft.content);
@@ -124,34 +141,62 @@ export function WriteView({
         textAlignVertical="top"
         style={[type.reading.chapterHeading, styles.title, { color: colors.text }]}
       />
-      {/* The source as styled runs instead of a value. */}
-      <TextInput
-        ref={bodyRef}
-        onChangeText={(content) => onChange({ ...draft, content })}
-        onFocus={() => onFieldFocus?.('body', true)}
-        onBlur={() => {
-          setBodySelection(undefined);
-          onFieldFocus?.('body', false);
-        }}
-        selection={selection}
-        onSelectionChange={(e) => {
-          setBodySelection(e.nativeEvent.selection);
-          onSelectionChange?.(e.nativeEvent.selection);
-        }}
-        multiline
-        placeholder="Write in Markdown"
-        placeholderTextColor={colors.textSecondary}
-        accessibilityLabel="Note, Markdown"
-        textAlignVertical="top"
-        autoCapitalize="sentences"
-        style={[type.reading.noteBody, styles.content, { color: colors.text }]}
-      >
-        {segments.map((segment, i) => (
-          <Text key={i} style={segmentStyle(segment)}>
-            {segment.text}
+      <View onLayout={(e) => onBodyLayout?.(e.nativeEvent.layout.y)}>
+        {/*
+         * Where the caret's line is: the text before it, unseen behind the
+         * field in its style and width. The zero-width space gives a caret
+         * just after a newline a line of its own.
+         */}
+        {bodySelection && (
+          <Text
+            pointerEvents="none"
+            importantForAccessibility="no-hide-descendants"
+            accessibilityElementsHidden
+            onTextLayout={(e) => {
+              // A line's y is the text's, inside the padding.
+              const line = e.nativeEvent.lines.at(-1);
+              const top = styles.content.paddingVertical + (line?.y ?? 0);
+              if (line) onCaretLayout?.({ top, bottom: top + line.height });
+            }}
+            style={[type.reading.noteBody, styles.content, styles.caretMirror]}
+          >
+            {segmentsBefore(segments, bodySelection.end).map((segment, i) => (
+              <Text key={i} style={segmentStyle(segment)}>
+                {segment.text}
+              </Text>
+            ))}
+            {'​'}
           </Text>
-        ))}
-      </TextInput>
+        )}
+        {/* The source as styled runs instead of a value. */}
+        <TextInput
+          ref={bodyRef}
+          onChangeText={(content) => onChange({ ...draft, content })}
+          onFocus={() => onFieldFocus?.('body', true)}
+          onBlur={() => {
+            setBodySelection(undefined);
+            onFieldFocus?.('body', false);
+          }}
+          selection={selection}
+          onSelectionChange={(e) => {
+            setBodySelection(e.nativeEvent.selection);
+            onSelectionChange?.(e.nativeEvent.selection);
+          }}
+          multiline
+          placeholder="Write in Markdown"
+          placeholderTextColor={colors.textSecondary}
+          accessibilityLabel="Note, Markdown"
+          textAlignVertical="top"
+          autoCapitalize="sentences"
+          style={[type.reading.noteBody, styles.content, { color: colors.text }]}
+        >
+          {segments.map((segment, i) => (
+            <Text key={i} style={segmentStyle(segment)}>
+              {segment.text}
+            </Text>
+          ))}
+        </TextInput>
+      </View>
     </>
   );
 }
@@ -160,6 +205,15 @@ const styles = StyleSheet.create({
   // No rule under it: the first line of the note, not a form field.
   title: { minHeight: 48, paddingVertical: spacing.sm },
   content: { minHeight: 240, paddingVertical: spacing.sm },
+  caretMirror: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    minHeight: 0,
+    paddingHorizontal: bodySide,
+    opacity: 0,
+  },
   // As Read draws them (note-body).
   minorHeading: { fontWeight: '600', fontSize: 17, lineHeight: 24 },
   strong: { fontWeight: '700' },

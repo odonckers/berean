@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import {
+  type CaretReveal,
+  caretRevealOffset,
   type FormatBarFrame,
   type FormatBarState,
   formatBarBottom,
@@ -103,5 +105,38 @@ describe('scroll frame', () => {
   test('Read: the whole body, with more room after the last line', () => {
     const read = { writing: false, placement: 'hidden', bottomInset: 48 } as const;
     assert.deepEqual(scrollFrame(scroll(read)), { frameBottom: 0, paddingBottom: 96 });
+  });
+});
+
+const caret = (over: Partial<CaretReveal>): CaretReveal => ({
+  caretTop: 500,
+  caretBottom: 524,
+  scrollY: 0,
+  viewportHeight: 400,
+  margin: 8,
+  ...over,
+});
+
+describe('caret reveal offset', () => {
+  test('a line the shrunk frame hides: just above its bottom', () => {
+    assert.equal(caretRevealOffset(caret({})), 132);
+  });
+
+  test('a line in view, or touching the edges: no scroll', () => {
+    assert.equal(caretRevealOffset(caret({ viewportHeight: 600 })), undefined);
+    assert.equal(caretRevealOffset(caret({ viewportHeight: 524 })), undefined);
+    assert.equal(caretRevealOffset(caret({ scrollY: 500 })), undefined);
+  });
+
+  test('a line partly under the bottom edge: the whole line shows', () => {
+    assert.equal(caretRevealOffset(caret({ viewportHeight: 510 })), 22);
+  });
+
+  test('a line above the view: its top at the top, less the margin', () => {
+    assert.equal(caretRevealOffset(caret({ scrollY: 520 })), 492);
+  });
+
+  test('never above the content’s start', () => {
+    assert.equal(caretRevealOffset(caret({ caretTop: 4, caretBottom: 28, scrollY: 10 })), 0);
   });
 });

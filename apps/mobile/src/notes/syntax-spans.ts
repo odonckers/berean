@@ -211,3 +211,16 @@ export function styledSegments(
   }
   return segments;
 }
+
+/** The runs up to `end`, the last one cut there: the text before a caret, styled as the field draws it. */
+export function segmentsBefore(segments: readonly StyledSegment[], end: number): StyledSegment[] {
+  const out: StyledSegment[] = [];
+  let at = 0;
+  for (const segment of segments) {
+    if (at >= end) break;
+    const take = Math.min(segment.text.length, end - at);
+    out.push(take === segment.text.length ? segment : { ...segment, text: segment.text.slice(0, take) });
+    at += take;
+  }
+  return out;
+}

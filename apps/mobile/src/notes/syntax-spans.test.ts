@@ -5,6 +5,7 @@ import type { SpanKind } from 'berean-ffi-rn';
 
 import {
   fromCoreSpans,
+  segmentsBefore,
   type SourceSpan,
   type StyledSegment,
   styledSegments,
@@ -310,5 +311,27 @@ describe('link target folding', () => {
       ['x://1', true],
       ['x://2', false],
     ]);
+  });
+});
+
+describe('segmentsBefore', () => {
+  const segments: StyledSegment[] = [{ text: 'Plain ' }, { text: '**', kind: 'strongMarker' }, { text: 'bold', strong: true }];
+
+  test('cuts the run the caret is in, keeping its style', () => {
+    assert.deepEqual(segmentsBefore(segments, 9), [
+      { text: 'Plain ' },
+      { text: '**', kind: 'strongMarker' },
+      { text: 'b', strong: true },
+    ]);
+  });
+
+  test('a caret on a run’s edge ends with the run before it', () => {
+    assert.deepEqual(segmentsBefore(segments, 6), [{ text: 'Plain ' }]);
+  });
+
+  test('nothing at the start; everything at the end or past it', () => {
+    assert.deepEqual(segmentsBefore(segments, 0), []);
+    assert.equal(joined(segmentsBefore(segments, 12)), 'Plain **bold');
+    assert.equal(joined(segmentsBefore(segments, 99)), 'Plain **bold');
   });
 });

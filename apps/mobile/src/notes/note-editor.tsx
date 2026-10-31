@@ -8,6 +8,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  type ScrollViewInstance,
   type StyleProp,
   StyleSheet,
   type TextInputInstance,
@@ -31,7 +32,7 @@ import { changeNotes, findNote, makeReferencer, useNotesRead } from '@/notes/dat
 import { folderTrail, noteMetaLine } from '@/notes/folders';
 import { FormatBar } from '@/notes/format-bar';
 import { FORMAT_BAR_DOCK_DELAY_MS, FORMAT_BAR_WHEN_KEYBOARD_CLOSED } from '@/notes/format-bar-config';
-import { formatBarBottom, formatBarPlacement, scrollFrame } from '@/notes/format-bar-placement';
+import { caretRevealOffset, formatBarBottom, formatBarPlacement, scrollFrame } from '@/notes/format-bar-placement';
 import { applyFormat, type EditState, type FormatAction, insertLink, replaceRange, type Selection } from '@/notes/format-edits';
 import { ModeSwitch, type NoteMode } from '@/notes/mode-switch';
 import { NoteAppBar } from '@/notes/note-app-bar';
@@ -302,6 +303,35 @@ export function NoteEditor({
     writeEnd: spacing.xl,
     readEnd: spacing.xxxl,
   });
+  const contentTop = insets.top + spacing.lg;
+
+  // The platform scrolls to the caret only when the caret moves, but a tap
+  // places it with the frame still full height; the keyboard and the tools
+  // shrink the frame after, and Android then keeps the field in view, not
+  // its caret. So when the frame shrinks, the caret's line is brought above
+  // its new bottom from where WriteView last laid it out.
+  const scrollRef = useRef<ScrollViewInstance>(null);
+  const scrollY = useRef(0);
+  const frameHeight = useRef(0);
+  const bodyTop = useRef(0);
+  const caret = useRef<{ top: number; bottom: number }>(undefined);
+  const onFrameLayout = (height: number) => {
+    const shrank = height < frameHeight.current;
+    frameHeight.current = height;
+    if (!shrank || !writing || focusedField !== 'body' || caret.current === undefined) return;
+    requestAnimationFrame(() => {
+      if (caret.current === undefined) return;
+      const top = contentTop + bodyTop.current;
+      const y = caretRevealOffset({
+        caretTop: top + caret.current.top,
+        caretBottom: top + caret.current.bottom,
+        scrollY: scrollY.current,
+        viewportHeight: frameHeight.current,
+        margin: spacing.sm,
+      });
+      if (y !== undefined) scrollRef.current?.scrollTo({ y, animated: false });
+    });
+  };
 
   return (
     <>
@@ -318,17 +348,23 @@ export function NoteEditor({
       {/* Surface behind the tools too, where the scroll view now stops short. */}
       <View ref={bodyViewRef} onLayout={bodyGap.measure} style={[styles.body, { backgroundColor: colors.surface }]}>
         <ScrollView
+          ref={scrollRef}
           style={{ backgroundColor: colors.surface, marginBottom: frame.frameBottom }}
           keyboardShouldPersistTaps="handled"
           contentInsetAdjustmentBehavior="automatic"
           contentContainerStyle={{
-            paddingTop: insets.top + spacing.lg,
+            paddingTop: contentTop,
             paddingBottom: frame.paddingBottom,
             paddingLeft: insets.left + spacing.lg,
             paddingRight: insets.right + spacing.lg,
           }}
           scrollEventThrottle={16}
           {...fill}
+          onScroll={(e) => {
+            scrollY.current = e.nativeEvent.contentOffset.y;
+            fill?.onScroll(e);
+          }}
+          onLayout={(e) => onFrameLayout(e.nativeEvent.layout.height)}
         >
           <View style={[styles.column, { maxWidth: readingMeasure * fontScale }, mode === 'read' && styles.readColumn]}>
             {!found ? (
@@ -343,6 +379,8 @@ export function NoteEditor({
                 onFieldFocus={onFieldFocus}
                 selection={pinned}
                 onSelectionChange={onSelectionChange}
+                onCaretLayout={(line) => (caret.current = line)}
+                onBodyLayout={(y) => (bodyTop.current = y)}
               />
             ) : (
               <NoteReadView
