@@ -1,0 +1,62 @@
+WINDOW type=3 title=Navigation bar
+                android.widget.ImageView desc="Back" clickable
+                android.widget.ImageView desc="Overview" clickable
+              android.widget.ImageView desc="Home" clickable
+WINDOW type=3 title=null
+              android.widget.TextView text="9:44" desc="9:44 PM"
+                    android.widget.ImageView desc="Android System notification: Serial console enabled"
+                android.widget.FrameLayout desc="Phone signal full."
+                    android.widget.ImageView desc="3G"
+              android.widget.LinearLayout desc="Battery charging, 100 percent."
+WINDOW type=1 title=Berean
+                                                  android.widget.Button desc="Back to #light" clickable
+                                                      android.widget.TextView text=""
+                                                    android.widget.TextView text="#light"
+                                                  android.view.View text="Light before law"
+                                                  android.widget.Button desc="Edit note" clickable
+                                                    android.widget.TextView text="Edit"
+                                                  android.widget.Button desc="More actions for Light before law" clickable
+                                                      android.widget.TextView text=""
+                                                    android.view.View text="Light before law"
+                                                    android.widget.TextView text="Gospel of John › Prologue · Oct 30"
+                                                    android.widget.TextView text="Genesis 1:3"
+                                                    android.widget.TextView text="The witness is not the light (v. 8). The true light is the one in John 1:9, coming into the world."
+                                                      android.widget.Button desc="John 1:9" clickable
+                                                    android.view.View text="Threads to follow"
+                                                    android.widget.TextView text="•"
+                                                    android.widget.TextView text="Life and light pair up again in John 8:12"
+                                                      android.widget.Button desc="John 8:12" clickable
+                                                    android.widget.TextView text="•"
+                                                    android.widget.TextView text="Insight on the Scriptures, Vol. 2 ↓ has an entry under “Light.”"
+                                                      android.widget.Button desc="Insight on the Scriptures, Vol. 2" clickable
+                                                      android.widget.Button desc=" ↓" clickable
+                                                    android.widget.CheckBox desc="Compare Genesis 1:3" clickable
+                                                        android.widget.TextView text=""
+                                                    android.widget.TextView text="Compare Genesis 1:3"
+                                                    android.widget.CheckBox desc="Read John 1:14 again" clickable
+                                                        android.widget.TextView text=""
+                                                    android.widget.TextView text="Read John 1:14 again"
+                                                    android.widget.TextView text="In thy light shall we see light."
+                                                    android.view.View desc="Psalm 36:9 · NWT, With you is the source of life; By your light we can see light." clickable
+                                                      android.widget.TextView text="Psalm 36:9 · NWT"
+                                                        android.widget.TextView text=""
+                                                      android.widget.TextView text="With you is the source of life; By your light we can see light."
+                                                    android.widget.TextView text="Search my notes for #light -#sermons"
+                                                    android.view.View desc=""
+                                                      android.widget.TextView text="#prologue"
+                                                      android.widget.TextView text="#light"
+                                    android.widget.FrameLayout desc="Read" clickable
+                                          android.widget.TextView text="Read"
+                                    android.widget.FrameLayout desc="Studyspace" clickable
+                                          android.widget.TextView text="Studyspace"
+                                    android.widget.FrameLayout desc="Notes" selected=true
+                                      android.widget.LinearLayout selected=true
+                                        android.widget.FrameLayout selected=true
+                                          android.widget.LinearLayout selected=true
+                                            android.widget.ImageView selected=true
+                                        android.view.ViewGroup selected=true
+                                          android.widget.TextView text="Notes" selected=true
+                                    android.widget.FrameLayout desc="Library" clickable
+                                          android.widget.TextView text="Library"
+                                    android.widget.FrameLayout desc="Search" clickable
+                                          android.widget.TextView text="Search"
