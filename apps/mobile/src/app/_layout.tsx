@@ -26,6 +26,10 @@ function RootStack() {
           name="search-view"
           options={{ presentation: 'modal', title: 'Search', headerShown: true }}
         />
+        <Stack.Screen
+          name="note-editor"
+          options={{ presentation: 'modal', title: 'New Note', headerShown: true, gestureEnabled: false }}
+        />
       </Stack>
       <SearchShortcut />
       <StatusBar style={barStyle} />

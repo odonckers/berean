@@ -28,6 +28,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import { ScaledSymbol } from '@/components/scaled-symbol';
 import { ScriptureText, UIText } from '@/components/text';
+import { TextButton } from '@/components/text-button';
 import { useBerean } from '@/design/theme';
 import {
   hairline,
@@ -50,6 +51,8 @@ import {
 } from '@/reader/pane-snap';
 import { rememberTab, rememberedTab } from '@/reader/session';
 import { type PaneStudy, type PaneTab, shownTabs } from '@/reader/verse-study';
+import { noteCount } from '@/notes/note-list';
+import { myNotesHeader } from '@/notes/verse-notes';
 
 export type { PaneTab };
 
@@ -64,6 +67,10 @@ const TAB_LABELS: Record<PaneTab, string> = {
 // Spec §4, Empty: the verse has no study content.
 const EMPTY_COPY = 'No study notes for this verse';
 const RESEARCH_COPY = "Research needs the study guide, which isn't installed.";
+const NO_NOTES_COPY = 'No notes on this verse';
+
+/** One of the verse's notes, as My notes lists it. */
+export type PaneNote = { id: string; title: string; date: string; snippet: string };
 
 // Spec §5: open is a spring (response 0.38 s, damping 0.9), close a spring
 // (0.30 s, damping 1.0).
@@ -137,6 +144,16 @@ type StudyPaneProps = {
    * to open at. Without it, the pane opens at the height it would.
    */
   fitOpen?: (wanted: number, lowest: number) => number;
+  /** The verse's notes, most recently modified first. */
+  notes: readonly PaneNote[];
+  /** Open at My notes, with no tab selected (a margin marker, Show notes). */
+  atNotes?: boolean;
+  /** Move screen reader focus to the first note (Show notes, a marker) rather than the header. */
+  focusNotes?: boolean;
+  /** Bumped to show My notes again in a pane already open on this verse. */
+  notesAsk?: number;
+  onNewNote: () => void;
+  onOpenNote: (id: string) => void;
 };
 
 /**
@@ -162,11 +179,19 @@ export function StudyPane({
   onResize,
   onLayout,
   fitOpen,
+  notes,
+  atNotes = false,
+  focusNotes = false,
+  notesAsk = 0,
+  onNewNote,
+  onOpenNote,
 }: StudyPaneProps) {
   const { look, scheme, colors, m3, studyPane } = useBerean();
   const reducedMotion = useReducedMotion();
   const { height: windowHeight, fontScale } = useWindowDimensions();
   const material = look === 'material';
+  // The footer's touch targets: 48dp Material, 44pt iOS look.
+  const footerTarget = material ? 48 : 44;
 
   // The tab row is built from the data. With no content there is no tab
   // row at all, and Research alone never counts as content.
@@ -176,29 +201,39 @@ export function StudyPane({
     const remembered = rememberedTab(pubKey);
     return shown.find((key) => key === remembered) ?? shown[0];
   });
-  const [active, setActive] = useState(openedOn);
-  const tab = shown.find((key) => key === active) ?? shown[0];
+  // My notes is a view of its own: opened there, no tab is selected, and a
+  // tab tapped switches back to its content.
+  const [active, setActive] = useState<PaneTab | 'myNotes' | undefined>(atNotes ? 'myNotes' : openedOn);
+  const showingNotes = active === 'myNotes';
+  const tab = showingNotes ? undefined : (shown.find((key) => key === active) ?? shown[0]);
   const select = (key: PaneTab) => {
     setActive(key);
     if (content.includes(key)) rememberTab(pubKey, key);
   };
-  const paneLabel = `Study pane, ${reference}${tab === undefined ? '' : `, ${TAB_LABELS[tab]}`}`;
+  const viewLabel = showingNotes ? 'My notes' : tab === undefined ? undefined : TAB_LABELS[tab];
+  const paneLabel = `Study pane, ${reference}${viewLabel === undefined ? '' : `, ${viewLabel}`}`;
+  const firstNoteRef = useRef<ComponentRef<typeof Text>>(null);
 
   // The pane remounts per verse, so this runs once per open.
   const headerRef = useRef<ComponentRef<typeof Text>>(null);
+  const [focusOnOpen] = useState(atNotes && focusNotes);
   useEffect(() => {
     if (!restored) {
-      const opened = openedOn === undefined ? '' : `, ${TAB_LABELS[openedOn]}`;
-      AccessibilityInfo.announceForAccessibility(`Study pane, ${reference}${opened}`);
+      const view = atNotes ? 'My notes' : openedOn === undefined ? undefined : TAB_LABELS[openedOn];
+      AccessibilityInfo.announceForAccessibility(`Study pane, ${reference}${view === undefined ? '' : `, ${view}`}`);
     }
-    const frame = requestAnimationFrame(() => moveAccessibilityFocus(headerRef.current));
+    const frame = requestAnimationFrame(() =>
+      moveAccessibilityFocus(focusOnOpen ? firstNoteRef.current : headerRef.current),
+    );
     return () => cancelAnimationFrame(frame);
-  }, [reference, restored, openedOn]);
+    // Once per open; atNotes only says how it opened.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reference, restored, openedOn, focusOnOpen]);
 
   // Spec §4, Empty: the pane stays short, sized to its one line and My
   // notes, measured once it lays out. It drags from there as usual, and
-  // closes from there.
-  const empty = tab === undefined;
+  // closes from there. My notes is never the Empty state.
+  const empty = tab === undefined && !showingNotes;
   const [short, setShort] = useState<number>();
   const lowest = short === undefined ? MIN_HEIGHT : Math.min(MIN_HEIGHT, short);
   const detents =
@@ -345,6 +380,23 @@ export function StudyPane({
     },
     [height, opacity],
   );
+
+  // My notes, from the footer or asked again for an open pane: no tab
+  // selected; a short (Empty) pane grows to the open height to list them.
+  const showNotes = (focus: boolean) => {
+    setActive('myNotes');
+    const open = openFraction(fontScale);
+    if (fractionRef.current < open) moveTo(Math.min(open, maxFraction?.get() ?? MAX_HEIGHT));
+    if (focus) requestAnimationFrame(() => moveAccessibilityFocus(firstNoteRef.current));
+  };
+  const askedNotes = useRef(notesAsk);
+  useEffect(() => {
+    if (askedNotes.current === notesAsk) return;
+    askedNotes.current = notesAsk;
+    showNotes(focusNotes);
+    // Only a new ask shows them.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notesAsk]);
 
   const resize = usePanGesture({
     // No resizing while the pane closes.
@@ -505,7 +557,7 @@ export function StudyPane({
         </View>
       </GestureDetector>
 
-      {tab !== undefined &&
+      {shown.length > 0 &&
         (material ? (
           <View
             accessibilityRole="tablist"
@@ -591,7 +643,44 @@ export function StudyPane({
           entering={empty ? undefined : tabFade}
           style={styles.items}
         >
-          {tab === undefined && <UIText secondary>{EMPTY_COPY}</UIText>}
+          {empty && <UIText secondary>{EMPTY_COPY}</UIText>}
+          {showingNotes && notes.length === 0 && (
+            <View style={styles.noNotes}>
+              <Text ref={firstNoteRef} style={[styles.noNotesText, { color: colors.textSecondary }]}>
+                {NO_NOTES_COPY}
+              </Text>
+              <TextButton title="New note" align="leading" onPress={onNewNote} />
+            </View>
+          )}
+          {showingNotes &&
+            notes.map((note, index) => (
+              <View key={note.id} style={styles.note}>
+                <View style={styles.noteHead}>
+                  <Text
+                    ref={index === 0 ? firstNoteRef : undefined}
+                    accessibilityLabel={`${note.title}, ${note.date}`}
+                    numberOfLines={2}
+                    style={[material ? styles.noteTitleMaterial : styles.noteTitleIos, styles.noteTitle, { color: colors.text }]}
+                  >
+                    {note.title}
+                  </Text>
+                  <UIText variant="caption" secondary {...iconProps}>
+                    {note.date}
+                  </UIText>
+                </View>
+                {note.snippet !== '' && (
+                  <ScriptureText variant="noteBody" numberOfLines={1} style={{ color: colors.textSecondary }}>
+                    {note.snippet}
+                  </ScriptureText>
+                )}
+                <TextButton
+                  title="Open note"
+                  align="leading"
+                  accessibilityLabel={`Open note, ${note.title}`}
+                  onPress={() => onOpenNote(note.id)}
+                />
+              </View>
+            ))}
           {tab === 'research' && <UIText secondary>{RESEARCH_COPY}</UIText>}
           {/* The core's strings as given, one step smaller than the
               reading text (spec §6); each label leads its text. */}
@@ -624,34 +713,52 @@ export function StudyPane({
         </Animated.View>
       </ScrollView>
 
-      {/* A sibling of the body, so it stays pinned while the body scrolls.
-          Not pressable yet: Add a note comes later. */}
+      {/* A sibling of the body, so it stays pinned while the body scrolls:
+          My notes (showing the verse's notes) and New note, each a full
+          48dp / 44pt target however the row shares its width. */}
       <View
         onLayout={(e) => measure('footer', e.nativeEvent.layout.height)}
         style={[
           styles.myNotes,
           {
-            minHeight: material ? 48 : 44,
+            minHeight: footerTarget,
             backgroundColor: material ? studyPane.materialFooter : studyPane.iosFooter,
             borderTopColor: separator,
           },
         ]}
       >
-        <UIText
-          accessibilityRole="header"
-          style={[
-            material ? styles.myNotesLabelMaterial : styles.myNotesLabelIos,
-            { color: colors.textSecondary },
-          ]}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`My notes, ${noteCount(notes.length)}`}
+          accessibilityState={{ selected: showingNotes }}
+          onPress={() => showNotes(false)}
+          style={({ pressed }) => [styles.myNotesButton, { minHeight: footerTarget, minWidth: footerTarget, opacity: pressed ? 0.6 : 1 }]}
         >
-          My notes
-        </UIText>
-        <ScaledSymbol
-          {...iconProps}
-          name={{ ios: 'pencil', android: 'edit' }}
-          size={material ? 20 : 17}
-          tintColor={colors.accent}
-        />
+          <UIText
+            style={[
+              material ? styles.myNotesLabelMaterial : styles.myNotesLabelIos,
+              { color: showingNotes ? colors.text : colors.textSecondary },
+            ]}
+          >
+            {myNotesHeader(notes.length)}
+          </UIText>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="New note"
+          onPress={onNewNote}
+          style={({ pressed }) => [styles.newNote, { minHeight: footerTarget, minWidth: footerTarget, opacity: pressed ? 0.6 : 1 }]}
+        >
+          <ScaledSymbol
+            {...iconProps}
+            name={{ ios: 'square.and.pencil', android: 'edit' }}
+            size={material ? 20 : 17}
+            tintColor={colors.accent}
+          />
+          <UIText style={[material ? styles.myNotesLabelMaterial : styles.myNotesLabelIos, { color: colors.accent }]}>
+            New note
+          </UIText>
+        </Pressable>
       </View>
     </Animated.View>
   );
@@ -749,9 +856,17 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginHorizontal: -spacing.lg,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
     borderTopWidth: hairline,
   },
+  myNotesButton: { justifyContent: 'center', flexShrink: 1 },
+  newNote: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingStart: spacing.sm },
+  note: { gap: spacing.xs },
+  noteHead: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
+  noteTitle: { flex: 1 },
+  noteTitleMaterial: { fontSize: 16, lineHeight: 24, fontWeight: '500' },
+  noteTitleIos: { fontSize: 15, lineHeight: 20, fontWeight: '600' },
+  noNotes: { gap: spacing.xs, alignItems: 'flex-start' },
+  noNotesText: { fontSize: 15, lineHeight: 20 },
   myNotesLabelMaterial: { fontSize: 14, lineHeight: 20, fontWeight: '500' },
   myNotesLabelIos: { fontSize: 13, lineHeight: 18, fontWeight: '600' },
 });

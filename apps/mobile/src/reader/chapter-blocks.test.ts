@@ -4,6 +4,7 @@ import { describe, test } from 'node:test';
 import type { ParagraphStyle } from 'berean-ffi-rn';
 
 import {
+  BADGE_TEXT,
   type Block,
   type CoreBlock,
   type Run,
@@ -13,6 +14,7 @@ import {
   numberBlock,
   numberOffset,
   numberSpan,
+  numberSpanText,
   numberedVerses,
   paneSplit,
   verseLabel,
@@ -153,9 +155,20 @@ describe('block segments', () => {
       separator: ' ',
       pad: String.fromCharCode(0x202f),
       label: '12',
+      badge: '',
       trailing: String.fromCharCode(0xa0),
     });
     assert.equal(numberSpan('1', false).separator, '');
+    assert.equal(numberSpan('4', true, '2').badge, '2');
+  });
+
+  test("a badge's count is never in the text, only its one placeholder", () => {
+    const nnbsp = String.fromCharCode(0x202f);
+    const nbsp = String.fromCharCode(0xa0);
+    assert.equal(numberSpanText(numberSpan('4', true)), ` ${nnbsp}4${nnbsp}${nbsp}`);
+    const badged = numberSpanText(numberSpan('4', true, '12'));
+    assert.equal(badged, ` ${nnbsp}4${nnbsp}${BADGE_TEXT}${nbsp}`);
+    assert.ok(!badged.includes('12'));
   });
 });
 
@@ -248,8 +261,7 @@ describe("where a verse's number is in its block", () => {
     .map((segment) => {
       if (segment.kind === 'space') return ' ';
       if (segment.kind !== 'number') return segment.text;
-      const span = numberSpan(segment.label, segment.separated);
-      return span.separator + span.pad + span.label + span.pad + span.trailing;
+      return numberSpanText(numberSpan(segment.label, segment.separated));
     })
     .join('');
   const pad = numberSpan('1', false).pad;
@@ -265,6 +277,22 @@ describe("where a verse's number is in its block", () => {
       assert.equal(drawn.slice(offset, offset + pad.length + label.length), pad + label);
       assert.equal(drawn[offset - 1], ' ');
     }
+  });
+
+  test('a notes badge moves the offsets after it', () => {
+    const badges = new Map([[1, '2']]);
+    const badged = blockSegments(runs)
+      .map((segment) => {
+        if (segment.kind === 'space') return ' ';
+        if (segment.kind !== 'number') return segment.text;
+        return numberSpanText(numberSpan(segment.label, segment.separated, badges.get(segment.verse)));
+      })
+      .join('');
+    assert.equal(numberOffset(runs, 1, badges), 0);
+    const offset = numberOffset(runs, 3, badges);
+    assert.ok(offset !== undefined);
+    assert.equal(badged.slice(offset, offset + pad.length + 2), `${pad}10`);
+    assert.equal(offset, (numberOffset(runs, 3) ?? 0) + BADGE_TEXT.length);
   });
 
   test('none for a verse the block does not number', () => {

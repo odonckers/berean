@@ -51,7 +51,8 @@
           }
         }
       ],
-      ["expo-navigation-bar", { "enforceContrast": false }]
+      ["expo-navigation-bar", { "enforceContrast": false }],
+      "./plugins/with-android-accent"
     ]
   }
 }

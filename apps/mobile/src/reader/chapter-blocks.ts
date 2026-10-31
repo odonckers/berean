@@ -111,21 +111,34 @@ const NARROW_NO_BREAK_SPACE = String.fromCharCode(0x202f);
 const NO_BREAK_SPACE = String.fromCharCode(0xa0);
 
 /**
+ * What a notes badge adds to its block's text. The badge is an inline View
+ * (so its count is not text a screen reader reads with the verse), and
+ * React Native puts one object replacement character in the text for it.
+ */
+export const BADGE_TEXT = String.fromCharCode(0xfffc);
+
+export type NumberSpan = { separator: string; pad: string; label: string; badge: string; trailing: string };
+
+/**
  * A verse number's span, in pieces: the separator from the run before (a
  * plain space, or none at the block's start), the pad either side of the
- * label inside its background, and the space after it. All of it is the
- * number's touch target.
+ * label inside its background, the notes count shown in the badge after
+ * it on compact layouts (empty without notes), and the space after it.
+ * All of it is the number's touch target.
  */
-export function numberSpan(
-  label: string,
-  separated: boolean,
-): { separator: string; pad: string; label: string; trailing: string } {
+export function numberSpan(label: string, separated: boolean, notes?: string): NumberSpan {
   return {
     separator: separated ? ' ' : '',
     pad: NARROW_NO_BREAK_SPACE,
     label,
+    badge: notes ?? '',
     trailing: NO_BREAK_SPACE,
   };
+}
+
+/** A number span's text as drawn: the badge, if any, is its one placeholder character. */
+export function numberSpanText(span: NumberSpan): string {
+  return [span.separator, span.pad, span.label, span.pad, span.badge === '' ? '' : BADGE_TEXT, span.trailing].join('');
 }
 
 /**
@@ -148,17 +161,22 @@ export function paneSplit(
 
 /**
  * Where a verse's number starts in its block's text, as drawn from
- * blockSegments and numberSpan: the offset of its fill, after the
- * separator. None if the block doesn't number the verse.
+ * blockSegments and numberSpan (with each verse's notes badge, if any):
+ * the offset of its fill, after the separator. None if the block doesn't
+ * number the verse.
  */
-export function numberOffset(runs: readonly Run[], verse: number): number | undefined {
+export function numberOffset(
+  runs: readonly Run[],
+  verse: number,
+  badges?: ReadonlyMap<number, string>,
+): number | undefined {
   let offset = 0;
   for (const segment of blockSegments(runs)) {
     if (segment.kind === 'space') offset += 1;
     else if (segment.kind === 'number') {
-      const span = numberSpan(segment.label, segment.separated);
+      const span = numberSpan(segment.label, segment.separated, badges?.get(segment.verse));
       if (segment.verse === verse) return offset + span.separator.length;
-      offset += [span.separator, span.pad, span.label, span.pad, span.trailing].join('').length;
+      offset += numberSpanText(span).length;
     } else offset += segment.text.length;
   }
   return undefined;
