@@ -28,7 +28,7 @@ function RootStack() {
         />
         <Stack.Screen
           name="note-editor"
-          options={{ presentation: 'modal', title: 'New Note', headerShown: true, gestureEnabled: false }}
+          options={{ presentation: 'modal', title: '', headerShown: true }}
         />
       </Stack>
       <SearchShortcut />

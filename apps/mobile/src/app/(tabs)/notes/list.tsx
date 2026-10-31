@@ -24,7 +24,7 @@ import {
   folderCounts,
 } from '@/notes/folders';
 import { ListRow, ListSection, SwipeRow } from '@/notes/list-rows';
-import { NoteReader } from '@/notes/note-reader';
+import { NoteEditor } from '@/notes/note-editor';
 import { notesColumns } from '@/notes/verse-notes';
 import {
   byModified,
@@ -345,7 +345,13 @@ export default function NoteListScreen() {
         {twoPane && (
           <View style={styles.detailPane}>
             {detailId !== undefined ? (
-              <NoteReader key={detailId} id={detailId} embedded onDeleted={() => setOpenId(undefined)} />
+              <NoteEditor
+                key={detailId}
+                id={detailId}
+                initialMode="read"
+                embedded
+                onDeleted={() => setOpenId(undefined)}
+              />
             ) : (
               <UIText secondary style={styles.message}>
                 No note selected.
