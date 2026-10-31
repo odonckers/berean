@@ -6,10 +6,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { UIText } from '@/components/text';
 import { TextButton } from '@/components/text-button';
-import { useBerean } from '@/design/theme';
+import { systemBarStyle, useBerean } from '@/design/theme';
 import { hairline, radii, spacing } from '@/design/tokens';
 import { type ChapterLocation, chapterCountLabel, chapterHeading } from '@/reader/bible-nav';
 import { moveAccessibilityFocus } from '@/reader/study-pane';
+import { ModalNavigationBarStyle } from '../../modules/berean-system-bars';
 
 type BiblePickerProps = {
   visible: boolean;
@@ -32,7 +33,7 @@ type BiblePickerProps = {
  * 21 chapters": inset grouped with a trailing count, an M3 two-line item).
  */
 export function BiblePicker({ visible, books, at, onPick, onClose }: BiblePickerProps) {
-  const { look, colors, m3, type } = useBerean();
+  const { look, scheme, colors, m3, type } = useBerean();
   const material = look === 'material';
   const target = material ? 48 : 44;
 
@@ -208,6 +209,7 @@ export function BiblePicker({ visible, books, at, onPick, onClose }: BiblePicker
       // before closing; the sheet closes.
       onRequestClose={material && chosen !== undefined ? back : onClose}
     >
+      <ModalNavigationBarStyle barStyle={systemBarStyle(scheme)} />
       <SafeAreaView style={[styles.root, { backgroundColor: background }]}>
         {header}
         {chosen === undefined ? bookList : chapterGrid}

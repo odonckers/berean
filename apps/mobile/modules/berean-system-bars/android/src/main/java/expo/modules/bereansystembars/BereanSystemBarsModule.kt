@@ -30,5 +30,12 @@ class BereanSystemBarsModule : Module() {
       // above that it keeps the legacy flag in sync for compat readers.
       WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightNavigationBars = dark
     }.runOnQueue(Queues.MAIN)
+
+    // The same, for the window of a Modal it is rendered in.
+    View(ModalNavigationBarStyleView::class) {
+      Prop("barStyle") { view: ModalNavigationBarStyleView, style: String ->
+        view.setBarStyle(style)
+      }
+    }
   }
 }

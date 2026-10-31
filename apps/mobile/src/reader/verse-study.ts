@@ -117,14 +117,17 @@ const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : 
  * A verse's study action, for screen readers: "Verse 3, opens study", with
  * what the core's markers count for it ("Verse 3, opens study, 2 cross
  * references, 1 footnote"); "Verse 3, closes study" while its study is open.
+ * `subject` names the verse where it says more than its number: "Verse 3,
+ * highlighted, yellow, opens study".
  */
 export function studyActionLabel(
   verse: number,
   counts: CoreStudyCounts | undefined,
   open: boolean,
+  subject = `Verse ${verse}`,
 ): string {
-  if (open) return `Verse ${verse}, closes study`;
-  const parts = [`Verse ${verse}, opens study`];
+  if (open) return `${subject}, closes study`;
+  const parts = [`${subject}, opens study`];
   if (counts !== undefined) {
     if (counts.studyNotes > 0) parts.push(count(counts.studyNotes, 'study note', 'study notes'));
     if (counts.crossRefs > 0) parts.push(count(counts.crossRefs, 'cross reference', 'cross references'));

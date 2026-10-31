@@ -24,6 +24,15 @@ import {
 
 export type Scheme = 'light' | 'dark';
 
+/**
+ * The system bars' content for a scheme: dark icons and buttons on the
+ * light scheme, light ones on the dark. The status bar, the navigation bar
+ * and every Modal's navigation bar use it.
+ */
+export function systemBarStyle(scheme: Scheme): 'dark' | 'light' {
+  return scheme === 'dark' ? 'light' : 'dark';
+}
+
 export type Berean = {
   look: Look;
   scheme: Scheme;
