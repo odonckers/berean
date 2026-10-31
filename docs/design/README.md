@@ -8,7 +8,7 @@ A spec's recommended direction stays **pending** until Owen decides on it in the
 | --- | --- |
 | [Berean design guide](berean-design-guide.md) | v3 with Notes section; approved direction (Oct 28, 2026), reference for all platforms |
 | [Inline study pane](inline-study-pane.md) | Decided: direction B, open questions resolved |
-| [Markdown notes, folders and tags (core FFI shapes)](markdown-notes.md) | Proposed; Wren decides in the PR |
+| [Markdown notes, folders and tags (core FFI shapes)](markdown-notes.md) | Decided by Wren (Oct 29, 2026) |
 | [Document blocks for publication articles (core FFI shapes)](document-blocks.md) | Decided by Wren (Oct 30, 2026); implementation follows |
 | [Bookmarks](bookmarks.md) | Approved Oct 30 2026; parity questions pending Echo |
 | [`.jwlibrary` backup: import and export](jwlibrary-backup.md) | Approved Oct 30 2026; parity questions pending Echo |
