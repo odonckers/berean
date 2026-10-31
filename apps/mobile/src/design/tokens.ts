@@ -12,6 +12,8 @@ export type ColorSet = {
   separator: string;
   /** A present link's underline (guide §7.1 Read). */
   linkUnderline: string;
+  /** Destructive actions in the iOS look (Delete Folder…, Delete). */
+  destructive: string;
 };
 
 export type ColorSetName = 'light' | 'dark' | 'sepia' | 'increaseContrast';
@@ -27,6 +29,7 @@ export const colorSets: Record<ColorSetName, ColorSet> = {
     accent: '#9B3F2A',
     separator: '#E6DCC2',
     linkUnderline: '#C9A493',
+    destructive: '#D70015',
   },
   dark: {
     surface: '#15120E',
@@ -36,10 +39,12 @@ export const colorSets: Record<ColorSetName, ColorSet> = {
     accent: '#E59A7C',
     separator: '#38312A',
     linkUnderline: '#734F40',
+    destructive: '#FF453A',
   },
   // Sepia and increaseContrast link underlines are derived pending Lumen:
   // sepia is its accent at light's blend; increaseContrast is the accent
-  // itself, so the underline keeps its contrast.
+  // itself, so the underline keeps its contrast. Both take light's
+  // destructive red.
   sepia: {
     surface: '#F0E2C4',
     surfaceRaised: '#F7EBD3',
@@ -48,6 +53,7 @@ export const colorSets: Record<ColorSetName, ColorSet> = {
     accent: '#8A3A22',
     separator: '#D8C39B',
     linkUnderline: '#BD8E73',
+    destructive: '#D70015',
   },
   increaseContrast: {
     surface: '#FBF7EC',
@@ -57,6 +63,7 @@ export const colorSets: Record<ColorSetName, ColorSet> = {
     accent: '#7A2E1C',
     separator: '#8B8275',
     linkUnderline: '#7A2E1C',
+    destructive: '#D70015',
   },
 };
 

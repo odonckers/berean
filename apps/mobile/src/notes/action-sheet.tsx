@@ -106,7 +106,15 @@ export function ActionSheet({ visible, title, items, anchor, onClose }: ActionSh
     ) : null;
 
   const row = (item: SheetItem, index: number, menu: boolean) => {
-    const ink = item.destructive && !menu ? (material ? m3.primary : colors.accent) : material ? m3.onSurface : colors.accent;
+    // Material marks a destructive sheet item with primary; the iOS look
+    // draws destructive items in the destructive red, as iOS does.
+    const ink = material
+      ? item.destructive && !menu
+        ? m3.primary
+        : m3.onSurface
+      : item.destructive
+        ? colors.destructive
+        : colors.accent;
     return (
       <Pressable
         key={item.key}
