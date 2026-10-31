@@ -82,33 +82,38 @@ export function UndoProvider({ children }: { children: ReactNode }) {
       <View style={styles.root}>
         {children}
         {pending !== undefined && (
-          <View
-            key={pending.id}
-            onLayout={(e) => setHeight(e.nativeEvent.layout.height + spacing.lg)}
-            accessible
-            accessibilityLabel={pending.label}
-            accessibilityActions={[
-              { name: 'activate', label: 'Undo' },
-              { name: 'undo', label: 'Undo' },
-            ]}
-            onAccessibilityAction={undo}
-            style={[
-              material ? styles.snackbar : styles.toast,
-              { bottom },
-              material
-                ? { backgroundColor: m3.onSurface }
-                : { backgroundColor: colors.surfaceRaised, shadowColor: colors.text },
-            ]}
-          >
-            <UIText style={[styles.label, { color: material ? m3.surface : colors.text }]}>{pending.label}</UIText>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Undo"
-              onPress={undo}
-              style={({ pressed }) => [styles.action, { minHeight: material ? 48 : 44, opacity: pressed ? 0.6 : 1 }]}
+          // The iOS toast sits in a row inset 16pt from each edge that
+          // centers it, so the capsule is as wide as its content and wraps
+          // its label before it reaches the insets.
+          <View key={pending.id} pointerEvents="box-none" style={[material ? styles.snackbarRow : styles.toastRow, { bottom }]}>
+            <View
+              onLayout={(e) => setHeight(e.nativeEvent.layout.height + spacing.lg)}
+              accessible
+              accessibilityLabel={pending.label}
+              accessibilityActions={[
+                { name: 'activate', label: 'Undo' },
+                { name: 'undo', label: 'Undo' },
+              ]}
+              onAccessibilityAction={undo}
+              style={[
+                material ? styles.snackbar : styles.toast,
+                material
+                  ? { backgroundColor: m3.onSurface }
+                  : { backgroundColor: colors.surfaceRaised, shadowColor: colors.text },
+              ]}
             >
-              <UIText style={[styles.actionLabel, { color: material ? inverseAccent : colors.accent }]}>Undo</UIText>
-            </Pressable>
+              <UIText style={[material ? styles.snackbarLabel : styles.toastLabel, { color: material ? m3.surface : colors.text }]}>
+                {pending.label}
+              </UIText>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Undo"
+                onPress={undo}
+                style={({ pressed }) => [styles.action, { minHeight: material ? 48 : 44, opacity: pressed ? 0.6 : 1 }]}
+              >
+                <UIText style={[styles.actionLabel, { color: material ? inverseAccent : colors.accent }]}>Undo</UIText>
+              </Pressable>
+            </View>
           </View>
         )}
       </View>
@@ -119,10 +124,8 @@ export function UndoProvider({ children }: { children: ReactNode }) {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   // M3 snackbar: 48dp min, extra-small corners, 16dp from the edges.
+  snackbarRow: { position: 'absolute', left: spacing.lg, right: spacing.lg },
   snackbar: {
-    position: 'absolute',
-    left: spacing.lg,
-    right: spacing.lg,
     minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
@@ -131,9 +134,10 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     elevation: 3,
   },
+  // iOS toast: 16pt from the edges at most, 480pt wide at most, else as
+  // wide as its content.
+  toastRow: { position: 'absolute', left: spacing.lg, right: spacing.lg, alignItems: 'center' },
   toast: {
-    position: 'absolute',
-    alignSelf: 'center',
     maxWidth: 480,
     minHeight: 44,
     flexDirection: 'row',
@@ -147,7 +151,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 4,
   },
-  label: { flexShrink: 1, flexGrow: 1 },
+  snackbarLabel: { flexShrink: 1, flexGrow: 1 },
+  // Shrinks (wraps) but never grows the capsule.
+  toastLabel: { flexShrink: 1 },
   action: { paddingHorizontal: spacing.md, justifyContent: 'center' },
   actionLabel: { fontWeight: '600' },
 });
