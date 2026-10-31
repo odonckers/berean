@@ -1,0 +1,653 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/odonckers/berean/docs/design/themes/tokens.schema.json",
+  "title": "Berean color theme tokens",
+  "description": "Platform-neutral color tokens for Berean's four themes. Read by the SwiftUI apps and the Expo app; nothing here goes in the Rust core. See README.md and themes-spec.md.",
+  "type": "object",
+  "required": [
+    "$schema",
+    "version",
+    "modes",
+    "defaults",
+    "appearances",
+    "roles",
+    "highlightFamilies",
+    "themes"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semver of this file. Major: a role, mode or key is removed or renamed. Minor: a role or field is added. Patch: values change."
+    },
+    "name": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "source": {
+      "type": "object"
+    },
+    "colorFormat": {
+      "type": "string"
+    },
+    "modes": {
+      "const": [
+        "light",
+        "dark",
+        "lightIC",
+        "darkIC"
+      ]
+    },
+    "modeNotes": {
+      "type": "object"
+    },
+    "defaults": {
+      "type": "object",
+      "required": [
+        "theme",
+        "accentSlot",
+        "appearance"
+      ],
+      "properties": {
+        "theme": {
+          "$ref": "#/$defs/themeId"
+        },
+        "accentSlot": {
+          "const": 1
+        },
+        "appearance": {
+          "const": "automatic"
+        }
+      },
+      "additionalProperties": false
+    },
+    "appearances": {
+      "const": [
+        "automatic",
+        "light",
+        "dark"
+      ]
+    },
+    "roles": {
+      "const": [
+        "background",
+        "surface",
+        "surfaceRaised",
+        "surfaceSunken",
+        "textPrimary",
+        "textSecondary",
+        "textTertiary",
+        "outline",
+        "separator",
+        "linkUnderline",
+        "accent",
+        "onAccent",
+        "destructive",
+        "noteMarker",
+        "selection",
+        "focusRing"
+      ]
+    },
+    "highlightFamilies": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "prefixItems": [
+        {
+          "$ref": "#/$defs/family",
+          "properties": {
+            "order": {
+              "const": 1
+            },
+            "key": {
+              "const": "yellow"
+            },
+            "name": {
+              "const": "Yellow"
+            },
+            "spokenName": {
+              "const": "Yellow highlight"
+            },
+            "tier": {
+              "const": "light"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/family",
+          "properties": {
+            "order": {
+              "const": 2
+            },
+            "key": {
+              "const": "green"
+            },
+            "name": {
+              "const": "Green"
+            },
+            "spokenName": {
+              "const": "Green highlight"
+            },
+            "tier": {
+              "const": "light"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/family",
+          "properties": {
+            "order": {
+              "const": 3
+            },
+            "key": {
+              "const": "blue"
+            },
+            "name": {
+              "const": "Blue"
+            },
+            "spokenName": {
+              "const": "Blue highlight"
+            },
+            "tier": {
+              "const": "deep"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/family",
+          "properties": {
+            "order": {
+              "const": 4
+            },
+            "key": {
+              "const": "pink"
+            },
+            "name": {
+              "const": "Pink"
+            },
+            "spokenName": {
+              "const": "Pink highlight"
+            },
+            "tier": {
+              "const": "light"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/family",
+          "properties": {
+            "order": {
+              "const": 5
+            },
+            "key": {
+              "const": "purple"
+            },
+            "name": {
+              "const": "Purple"
+            },
+            "spokenName": {
+              "const": "Purple highlight"
+            },
+            "tier": {
+              "const": "light"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/family",
+          "properties": {
+            "order": {
+              "const": 6
+            },
+            "key": {
+              "const": "orange"
+            },
+            "name": {
+              "const": "Orange"
+            },
+            "spokenName": {
+              "const": "Orange highlight"
+            },
+            "tier": {
+              "const": "deep"
+            }
+          }
+        }
+      ]
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "themes": {
+      "type": "object",
+      "required": [
+        "paper",
+        "sepia",
+        "stone",
+        "sage"
+      ],
+      "propertyNames": {
+        "$ref": "#/$defs/themeId"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/theme"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "themeId": {
+      "enum": [
+        "paper",
+        "sepia",
+        "stone",
+        "sage"
+      ]
+    },
+    "hex": {
+      "type": "string",
+      "pattern": "^#[0-9A-F]{6}$"
+    },
+    "oklch": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "type": "number",
+          "minimum": 0
+        },
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 360
+        }
+      ],
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "family": {
+      "type": "object",
+      "required": [
+        "order",
+        "key",
+        "name",
+        "spokenName",
+        "oklchHue",
+        "tier"
+      ],
+      "properties": {
+        "key": {
+          "$ref": "#/$defs/highlightKey"
+        },
+        "oklchHue": {
+          "type": "number"
+        },
+        "tier": {
+          "enum": [
+            "light",
+            "deep"
+          ]
+        },
+        "order": {
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "spokenName": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "highlight": {
+      "type": "object",
+      "required": [
+        "key",
+        "name",
+        "spokenName",
+        "hex",
+        "oklch"
+      ],
+      "properties": {
+        "key": {
+          "$ref": "#/$defs/highlightKey"
+        },
+        "name": {
+          "type": "string"
+        },
+        "spokenName": {
+          "type": "string"
+        },
+        "hex": {
+          "$ref": "#/$defs/hex"
+        },
+        "oklch": {
+          "$ref": "#/$defs/oklch"
+        }
+      },
+      "additionalProperties": false
+    },
+    "roleSet": {
+      "type": "object",
+      "required": [
+        "background",
+        "surface",
+        "surfaceRaised",
+        "surfaceSunken",
+        "textPrimary",
+        "textSecondary",
+        "textTertiary",
+        "outline",
+        "separator",
+        "linkUnderline",
+        "accent",
+        "onAccent",
+        "destructive",
+        "noteMarker",
+        "selection",
+        "focusRing",
+        "highlights"
+      ],
+      "properties": {
+        "highlights": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "prefixItems": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/highlight"
+                }
+              ],
+              "properties": {
+                "key": {
+                  "const": "yellow"
+                }
+              }
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/highlight"
+                }
+              ],
+              "properties": {
+                "key": {
+                  "const": "green"
+                }
+              }
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/highlight"
+                }
+              ],
+              "properties": {
+                "key": {
+                  "const": "blue"
+                }
+              }
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/highlight"
+                }
+              ],
+              "properties": {
+                "key": {
+                  "const": "pink"
+                }
+              }
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/highlight"
+                }
+              ],
+              "properties": {
+                "key": {
+                  "const": "purple"
+                }
+              }
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/highlight"
+                }
+              ],
+              "properties": {
+                "key": {
+                  "const": "orange"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/hex"
+      }
+    },
+    "accentMode": {
+      "type": "object",
+      "required": [
+        "hex",
+        "onAccent",
+        "oklch"
+      ],
+      "properties": {
+        "hex": {
+          "$ref": "#/$defs/hex"
+        },
+        "onAccent": {
+          "$ref": "#/$defs/hex"
+        },
+        "oklch": {
+          "$ref": "#/$defs/oklch"
+        }
+      },
+      "additionalProperties": false
+    },
+    "fourModes": {
+      "type": "object",
+      "required": [
+        "light",
+        "dark",
+        "lightIC",
+        "darkIC"
+      ],
+      "propertyNames": {
+        "enum": [
+          "light",
+          "dark",
+          "lightIC",
+          "darkIC"
+        ]
+      }
+    },
+    "m3": {
+      "type": "object",
+      "required": [
+        "primary",
+        "onPrimary",
+        "primaryContainer",
+        "onPrimaryContainer",
+        "secondaryContainer",
+        "onSecondaryContainer",
+        "surface",
+        "surfaceContainerLowest",
+        "surfaceContainerLow",
+        "surfaceContainer",
+        "surfaceContainerHigh",
+        "surfaceContainerHighest",
+        "onSurface",
+        "onSurfaceVariant",
+        "outline",
+        "outlineVariant",
+        "error",
+        "onError",
+        "scrim",
+        "scrimWarm"
+      ],
+      "properties": {
+        "scrim": {
+          "$ref": "#/$defs/rgba"
+        },
+        "scrimWarm": {
+          "$ref": "#/$defs/rgba"
+        }
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/hex"
+      }
+    },
+    "theme": {
+      "type": "object",
+      "required": [
+        "name",
+        "character",
+        "default",
+        "modes",
+        "accents",
+        "material3"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "character": {
+          "type": "string"
+        },
+        "default": {
+          "type": "boolean"
+        },
+        "modes": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/fourModes"
+            }
+          ],
+          "additionalProperties": {
+            "$ref": "#/$defs/roleSet"
+          }
+        },
+        "accents": {
+          "type": "object",
+          "required": [
+            "sharedOklch",
+            "slots"
+          ],
+          "properties": {
+            "sharedOklch": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/fourModes"
+                }
+              ],
+              "additionalProperties": {
+                "type": "object",
+                "required": [
+                  "L",
+                  "C"
+                ],
+                "properties": {
+                  "L": {
+                    "type": "number"
+                  },
+                  "C": {
+                    "type": "number"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "slots": {
+              "type": "array",
+              "minItems": 6,
+              "maxItems": 6,
+              "items": {
+                "type": "object",
+                "required": [
+                  "slot",
+                  "name",
+                  "modes"
+                ],
+                "properties": {
+                  "slot": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 6
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "flags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "modes": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/fourModes"
+                      }
+                    ],
+                    "additionalProperties": {
+                      "$ref": "#/$defs/accentMode"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "material3": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/fourModes"
+            }
+          ],
+          "additionalProperties": {
+            "$ref": "#/$defs/m3"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "highlightKey": {
+      "enum": [
+        "yellow",
+        "green",
+        "blue",
+        "pink",
+        "purple",
+        "orange"
+      ]
+    },
+    "rgba": {
+      "type": "string",
+      "pattern": "^rgba\\(\\d{1,3},\\d{1,3},\\d{1,3},(0|1|0?\\.\\d+)\\)$"
+    }
+  }
+}

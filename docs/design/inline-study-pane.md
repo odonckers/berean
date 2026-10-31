@@ -92,7 +92,7 @@ The breakpoints below are proposals, measured as the reader's own width (not the
 - **Liquid Glass goes on controls only.** The pane header controls (tab picker, close, dock) and any floating toolbar use system Liquid Glass components. The verse text and the pane body sit in the content layer on an opaque, standard background. They are never glass, as Apple's materials guidance directs.
 - **Separation without chrome.** The pane body uses a slightly offset background (secondary system grouped background) with hairline separators above and below. There are no shadows over the text.
 - **Typography.** The reader font and size carry into the pane. Study content is one step smaller than body text, and every style scales with Dynamic Type. Verse references in the pane are tappable links.
-- **Contrast.** Text meets at least 4.5:1 against the pane background in light, dark, and sepia themes, and at least 7:1 with Increase Contrast.
+- **Contrast.** Text meets at least 4.5:1 against the pane background in every theme and mode ([berean-design-guide.md](berean-design-guide.md) section 8, Themes), and at least 7:1 with Increase Contrast.
 
 ## 7. Accessibility
 
