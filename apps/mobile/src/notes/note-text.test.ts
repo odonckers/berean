@@ -8,6 +8,7 @@ import {
   blockText,
   inlineText,
   isMissing,
+  linkUnderline,
   missingLine,
   noteSnippet,
   spanStart,
@@ -100,6 +101,19 @@ describe('tags and links', () => {
       missingLine('Insight on the Scriptures, Vol. 2'),
       'Insight on the Scriptures, Vol. 2 is not on this device.',
     );
+  });
+
+  test('every link is underlined: solid in linkUnderline, dashed accent when missing', () => {
+    const colors = { linkUnderline: '#C9A493', accent: '#9B3F2A' };
+    const solid = { color: '#C9A493', style: 'solid' };
+    assert.deepEqual(linkUnderline(passage(false), colors), solid);
+    assert.deepEqual(linkUnderline(passage(true), colors), { color: '#9B3F2A', style: 'dashed' });
+    assert.deepEqual(
+      linkUnderline({ tag: 'Publication', inner: { location: { pubKey: 'it:0:0' }, missing: true } }, colors),
+      { color: '#9B3F2A', style: 'dashed' },
+    );
+    assert.deepEqual(linkUnderline({ tag: 'External', inner: { url: 'https://example.com' } }, colors), solid);
+    assert.deepEqual(linkUnderline({ tag: 'Invalid' }, colors), solid);
   });
 
   test('a span opens at its start', () => {

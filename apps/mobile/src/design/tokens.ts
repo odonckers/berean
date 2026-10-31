@@ -10,6 +10,8 @@ export type ColorSet = {
   textSecondary: string;
   accent: string;
   separator: string;
+  /** A present link's underline (guide §7.1 Read). */
+  linkUnderline: string;
 };
 
 export type ColorSetName = 'light' | 'dark' | 'sepia' | 'increaseContrast';
@@ -24,6 +26,7 @@ export const colorSets: Record<ColorSetName, ColorSet> = {
     textSecondary: '#5C544A',
     accent: '#9B3F2A',
     separator: '#E6DCC2',
+    linkUnderline: '#C9A493',
   },
   dark: {
     surface: '#15120E',
@@ -32,7 +35,11 @@ export const colorSets: Record<ColorSetName, ColorSet> = {
     textSecondary: '#A39A8B',
     accent: '#E59A7C',
     separator: '#38312A',
+    linkUnderline: '#734F40',
   },
+  // Sepia and increaseContrast link underlines are derived pending Lumen:
+  // sepia is its accent at light's blend; increaseContrast is the accent
+  // itself, so the underline keeps its contrast.
   sepia: {
     surface: '#F0E2C4',
     surfaceRaised: '#F7EBD3',
@@ -40,6 +47,7 @@ export const colorSets: Record<ColorSetName, ColorSet> = {
     textSecondary: '#66523D',
     accent: '#8A3A22',
     separator: '#D8C39B',
+    linkUnderline: '#BD8E73',
   },
   increaseContrast: {
     surface: '#FBF7EC',
@@ -48,6 +56,7 @@ export const colorSets: Record<ColorSetName, ColorSet> = {
     textSecondary: '#2E2821',
     accent: '#7A2E1C',
     separator: '#8B8275',
+    linkUnderline: '#7A2E1C',
   },
 };
 

@@ -132,6 +132,18 @@ export function isMissing(target: NoteLinkTarget): boolean {
   return (target.tag === 'Passage' || target.tag === 'Publication') && target.inner.missing;
 }
 
+/**
+ * How a link is underlined. Every link is, whatever its target: solid in
+ * the link underline color, or dashed in the full accent where its Bible or
+ * publication isn't on this device.
+ */
+export function linkUnderline(
+  target: NoteLinkTarget,
+  colors: { linkUnderline: string; accent: string },
+): { color: string; style: 'solid' | 'dashed' } {
+  return isMissing(target) ? { color: colors.accent, style: 'dashed' } : { color: colors.linkUnderline, style: 'solid' };
+}
+
 /** The single verse a passage span starts at, as the reader opens it. */
 export function spanStart(span: NoteSpan): { pubKey: string; book: number; chapter: number; verse?: number } | undefined {
   const { pubKey, book, chapter, verse } = span.start;

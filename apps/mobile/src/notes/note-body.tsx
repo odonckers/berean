@@ -13,6 +13,7 @@ import {
   type NoteLinkTarget,
   inlineText,
   isMissing,
+  linkUnderline,
   missingLine,
   tagLine,
 } from '@/notes/note-text';
@@ -33,9 +34,9 @@ const hidden = {
 
 /**
  * A note body as the core renders it, drawn in the reading serif (guide
- * §7.1 Read). Links keep the ink: a soft rust 1px underline for passages
- * and publications, dashed with a trailing download glyph where the Bible
- * or publication isn't on this device. Tapping one of those opens the
+ * §7.1 Read). Links keep the ink: a soft rust 1px underline (linkUnderline)
+ * for passages and publications, dashed in the accent with a trailing
+ * download glyph where the Bible or publication isn't on this device. Tapping one of those opens the
  * download row under its block, never a modal.
  */
 export function NoteBody({ blocks, onTask }: NoteBodyProps) {
@@ -180,9 +181,6 @@ function Inlines({ inlines, onMissing }: { inlines: readonly NoteInline[]; onMis
   });
 }
 
-/** The soft rust of a link's underline: the accent at about 45%, derived pending Lumen. */
-const softRust = (accent: string) => `${accent}73`;
-
 function linkPress(target: NoteLinkTarget, title: string, onMissing: (title: string) => void): (() => void) | undefined {
   if (isMissing(target)) return () => onMissing(title);
   switch (target.tag) {
@@ -211,13 +209,16 @@ function LinkText({
   const { colors } = useBerean();
   const onPress = linkPress(target, title, onMissing);
   const missing = isMissing(target);
-  // iOS draws the underline's color and dash; Android's underline follows
-  // the text color and is always solid, so the glyph carries "missing" there.
+  // Every link is underlined, pressable or not: the underline marks it as a
+  // link, not as tappable. React Native draws textDecorationColor and
+  // textDecorationStyle on both platforms (Android API 29+), so the dash
+  // and the color say "missing"; the glyph repeats it.
+  const underline = linkUnderline(target, colors);
   const style: TextStyle = {
     color: colors.text,
-    textDecorationLine: onPress ? 'underline' : 'none',
-    textDecorationColor: softRust(colors.accent),
-    textDecorationStyle: missing ? 'dashed' : 'solid',
+    textDecorationLine: 'underline',
+    textDecorationColor: underline.color,
+    textDecorationStyle: underline.style,
   };
   return (
     <Text
