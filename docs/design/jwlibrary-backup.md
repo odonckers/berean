@@ -13,7 +13,7 @@ Kerning's recommended default, **Merge**, is not built. Wren approved [userdata.
 | --- | --- |
 | `import_preview(path, progress, cancel)` → `ImportPreview { backup, current, folders, filed_notes, device_name, created }`. The counts are highlights, notes, tags, bookmarks and favorites. | The review screen can show real counts for both sides, before anything changes. |
 | `import_backup` **replaces everything** atomically. Cancel is honoured until the final swap. | Replace works now. All-or-nothing is guaranteed. |
-| One undo copy (`userData.prev.db`), via `undo_import() -> Bool` | "Restore previous library" already exists, after a Replace and for the most recent import only. S2 (keep two, Decision 2) needs a core change (Echo). |
+| Two snapshots (S2): `list_snapshots() -> [Snapshot]` (newest first, with `taken_at`, `reason`, counts, folders, size and the source backup's device name and date) and `restore_snapshot(id)`. `undo_import` is gone. | "Restore previous library" is `restore_snapshot(list_snapshots()[0].id)`, disabled when the list is empty; the chooser lists both. |
 | Import **clears Berean note folders**, which a JW backup doesn't have. Export **drops** them. | Both have to be said on screen (§3.4, §6). |
 | No per-category include, no merge, no duplicate policy | Merge, include toggles and the duplicates drill-in need a core row (Echo). See Decision 1. |
 | Playlists, media and `InputField` round-trip but aren't counted | No "Playlists" row; one static line instead (§3.2). |
@@ -80,7 +80,7 @@ Opening a file from outside goes straight to **Reading** (§3.2), skipping the p
 
 Berean takes a snapshot of the current library before **every** import (Replace now, Merge in Phase 2) and keeps the **last two**. When a third would be made, the oldest is pruned. Storage: up to two copies of `userData.db` and its media.
 
-**Core change for Echo:** the core today keeps only **one** undo copy (`userData.prev.db`, restored by `undo_import() -> Bool`). Keeping two snapshots, pruning the oldest, and restoring a chosen one is a core change, and Merge must snapshot too.
+**Core (S2, built):** `import_backup` keeps the replaced library as a snapshot and keeps the two newest; `list_snapshots()` lists them newest first and `restore_snapshot(id)` restores a chosen one. A restore first keeps the current library as a `Restore` snapshot, so it can be undone the same way (the confirmation copy changes accordingly). Merge must snapshot too when it lands.
 
 The restore UI:
 - After a successful import, a banner at the top of the Library tab says "Library replaced from backup" (or "Backup merged"), with **Restore Previous Library** and a close button. It stays until it's closed or the next import.

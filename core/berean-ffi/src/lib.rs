@@ -1825,6 +1825,53 @@ impl From<berean_core::userdata::ImportPreview> for ImportPreview {
     }
 }
 
+/// The FFI mirror of [`berean_core::userdata::SnapshotReason`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum SnapshotReason {
+    Replace,
+    Merge,
+    Restore,
+}
+
+impl From<berean_core::userdata::SnapshotReason> for SnapshotReason {
+    fn from(r: berean_core::userdata::SnapshotReason) -> Self {
+        use berean_core::userdata::SnapshotReason as R;
+        match r {
+            R::Replace => SnapshotReason::Replace,
+            R::Merge => SnapshotReason::Merge,
+            R::Restore => SnapshotReason::Restore,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::userdata::Snapshot`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct Snapshot {
+    pub id: String,
+    pub taken_at: String,
+    pub reason: SnapshotReason,
+    pub size_bytes: u64,
+    pub contents: ImportSummary,
+    pub folders: u32,
+    pub source_device_name: Option<String>,
+    pub source_created: Option<String>,
+}
+
+impl From<berean_core::userdata::Snapshot> for Snapshot {
+    fn from(s: berean_core::userdata::Snapshot) -> Self {
+        Snapshot {
+            id: s.id,
+            taken_at: s.taken_at,
+            reason: s.reason.into(),
+            size_bytes: s.size_bytes,
+            contents: s.contents.into(),
+            folders: s.folders,
+            source_device_name: s.source_device_name,
+            source_created: s.source_created,
+        }
+    }
+}
+
 /// The `berean://bible/...` URL of `span`; `Invalid` if it isn't a Bible
 /// passage within one book.
 #[uniffi::export]
@@ -2375,12 +2422,22 @@ impl UserData {
         .await
     }
 
-    /// Put back the data the last [`import_backup`](Self::import_backup)
-    /// replaced, dropping what it brought in. Returns `true` when the
-    /// previous data was restored, `false` when there is no undo copy (no
-    /// import yet, or it was already undone); there is one undo per import.
-    pub fn undo_import(&self) -> Result<bool, CoreError> {
-        Ok(self.inner.undo_import()?)
+    /// The snapshots of earlier libraries (taken before an import or a
+    /// restore replaced them), newest first; empty when there are none.
+    pub fn list_snapshots(&self) -> Result<Vec<Snapshot>, CoreError> {
+        Ok(self
+            .inner
+            .list_snapshots()?
+            .into_iter()
+            .map(Into::into)
+            .collect())
+    }
+
+    /// Put the snapshot `id` back in place of the current data, using it
+    /// up; the current data is kept as a new `Restore` snapshot. Unknown =>
+    /// `NotFound`.
+    pub fn restore_snapshot(&self, id: String) -> Result<(), CoreError> {
+        Ok(self.inner.restore_snapshot(&id)?)
     }
 }
 
@@ -3041,8 +3098,12 @@ mod tests {
 
         let other_dir = tempfile::tempdir().unwrap();
         let other = open_core(&other_dir).userdata();
-        // No import yet: nothing to undo.
-        assert!(!other.undo_import().unwrap());
+        // No import yet: no snapshots.
+        assert!(other.list_snapshots().unwrap().is_empty());
+        assert!(matches!(
+            other.restore_snapshot("20261031T111500Z".into()),
+            Err(CoreError::NotFound)
+        ));
         let prior = other.add_tag("Prior".into()).unwrap();
         // Cancelled: nothing imported.
         let cancelled = CancelToken::new();
@@ -3146,13 +3207,38 @@ mod tests {
             }]
         );
 
-        // Undo puts back the data from before the import, once.
-        assert!(other.undo_import().unwrap());
+        // The import kept the data from before it as a snapshot.
+        let snapshots = other.list_snapshots().unwrap();
+        assert_eq!(snapshots.len(), 1);
+        let taken = &snapshots[0];
+        assert_eq!(taken.reason, SnapshotReason::Replace);
+        assert_eq!(
+            taken.contents,
+            ImportSummary {
+                tags: 1,
+                ..ImportSummary::from(berean_core::userdata::ImportSummary::default())
+            }
+        );
+        assert_eq!(taken.folders, 0);
+        assert_eq!(taken.source_device_name.as_deref(), Some("Berean"));
+        assert_eq!(taken.source_created.as_ref(), Some(&preview.created));
+        assert!(taken.size_bytes > 0);
+
+        // Restoring it puts that data back, keeping the imported data as a
+        // `Restore` snapshot in its place.
+        other.restore_snapshot(taken.id.clone()).unwrap();
         assert_eq!(other.tags().unwrap(), [prior]);
         assert!(other.notes(NoteFilter::default()).unwrap().is_empty());
         assert!(other.favorites().unwrap().is_empty());
         assert!(other.bookmarks("w26:0:20260800".into()).unwrap().is_empty());
-        assert!(!other.undo_import().unwrap());
+        let snapshots = other.list_snapshots().unwrap();
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0].reason, SnapshotReason::Restore);
+        assert_eq!(snapshots[0].contents, one);
+        assert!(matches!(
+            other.restore_snapshot(taken.id.clone()),
+            Err(CoreError::NotFound)
+        ));
         assert_eq!(other.tags().unwrap().len(), 1);
     }
 

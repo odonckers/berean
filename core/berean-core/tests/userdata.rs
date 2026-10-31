@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 
 use berean_core::reader::{Location, LocationSpan};
 use berean_core::userdata::{
-    Bookmark, Highlight, HighlightColor, ImportPreview, ImportSummary, NoteFilter, Tag, TextRange,
-    UserData,
+    Bookmark, Highlight, HighlightColor, ImportPreview, ImportSummary, NoteFilter, Snapshot,
+    SnapshotReason, Tag, TextRange, UserData,
 };
 use berean_core::{CancelToken, Core, CoreError};
 use common::fixture;
@@ -1605,6 +1605,10 @@ type DataState = (
     Vec<String>,
 );
 
+/// A library's database contents and media: a [`DataState`] without the
+/// names in the data dir.
+type LibraryData = (Vec<(String, Vec<Vec<Value>>)>, Vec<(String, Vec<u8>)>);
+
 /// A core holding some data of its own, and a dir for backup files.
 struct Existing {
     env: Env,
@@ -1647,6 +1651,25 @@ impl Existing {
         self.ud()
             .import_backup(path, &no_progress, &CancelToken::new())
     }
+
+    fn snapshot_dir(&self, snapshot: &Snapshot) -> PathBuf {
+        self.env.data.join("snapshots").join(&snapshot.id)
+    }
+
+    /// The current library (the data dir's names change with snapshots).
+    fn data(&self) -> LibraryData {
+        let (db, media, _) = self.state();
+        (db, media)
+    }
+
+    /// The library kept in `snapshot`.
+    fn snapshot_data(&self, snapshot: &Snapshot) -> LibraryData {
+        let dir = self.snapshot_dir(snapshot);
+        (
+            contents(&dir.join("userData.db")),
+            media_contents(&dir.join("media")),
+        )
+    }
 }
 
 /// The files under `dir`, relative, with their bytes; empty if it's missing.
@@ -1683,18 +1706,21 @@ fn import_replaces_the_data_with_the_backup() {
     assert_eq!(ex.import(&file).unwrap(), SYNTHETIC_SUMMARY);
 
     // The database is the backup's, exactly, plus Berean's (empty) tables;
-    // the old one is kept.
+    // the old one is kept, as a snapshot.
     assert_eq!(jw_contents(&ex.env.userdata_db()), contents(&backup.db));
     assert_eq!(jw_schema(&ex.env.userdata_db()), schema(&backup.db));
     assert_eq!(
         media_contents(&ex.env.data.join("userData.media")),
         [("default_thumbnail.png".to_string(), blank_thumbnail())]
     );
+    let snapshots = ud.list_snapshots().unwrap();
+    assert_eq!(snapshots.len(), 1);
+    let kept = ex.snapshot_dir(&snapshots[0]);
     assert_eq!(
-        media_contents(&ex.env.data.join("userData.prev.media")),
+        media_contents(&kept.join("media")),
         [("old.png".to_string(), b"old media".to_vec())]
     );
-    assert!(ex.env.data.join("userData.prev.db").is_file());
+    assert_eq!(dir_names(&kept), ["media", "snapshot.json", "userData.db"]);
     assert!(!dir_names(&ex.env.data).iter().any(|n| n.starts_with('.')));
 
     // The typed reads see it.
@@ -1873,7 +1899,7 @@ fn bad_backups_are_rejected_without_touching_the_data() {
         let r = ex.import(file);
         assert!(r.as_ref().is_err_and(want), "{what}: {r:?}");
         assert_eq!(ex.state(), before, "{what}");
-        assert!(!ex.env.data.join("userData.prev.db").exists(), "{what}");
+        assert!(ex.ud().list_snapshots().unwrap().is_empty(), "{what}");
     };
     let corrupt = |e: &CoreError| matches!(e, CoreError::Corrupt);
     let invalid = |e: &CoreError| matches!(e, CoreError::Invalid(_));
@@ -1965,41 +1991,327 @@ fn bad_backups_are_rejected_without_touching_the_data() {
     assert_eq!(ex.import(&file).unwrap(), SYNTHETIC_SUMMARY);
 }
 
+impl Backup {
+    /// This backup with its manifest naming `device` and `created`.
+    fn with_source(mut self, device: &str, created: &str) -> Self {
+        self.manifest["userDataBackup"]["deviceName"] = device.into();
+        self.manifest["creationDate"] = created.into();
+        self
+    }
+}
+
+/// Whether the data dir is free of staging leftovers.
+fn no_hidden(dir: &Path) -> bool {
+    !dir_names(dir).iter().any(|n| n.starts_with('.'))
+}
+
 #[test]
-fn undo_restores_the_data_before_the_import() {
+fn import_keeps_the_replaced_data_as_a_snapshot() {
     let ex = Existing::new();
     let ud = ex.ud();
-    assert!(!ud.undo_import().unwrap());
-    let before = ex.state();
+    assert!(ud.list_snapshots().unwrap().is_empty());
+    let top = ud.create_folder("Kept", None).unwrap();
+    ud.create_folder("Sub", Some(top.id)).unwrap();
+    let before = ex.data();
     let file = ex.file("in.jwlibrary");
-    Backup::synthetic().write(&file);
+    Backup::synthetic()
+        .with_source("Phone", "2026-10-30T08:00:00Z")
+        .write(&file);
     ex.import(&file).unwrap();
-    assert_ne!(ex.state(), before);
 
-    assert!(ud.undo_import().unwrap());
-    assert_eq!(ex.state(), before);
-    assert_eq!(ud.tags().unwrap()[0].name, "Study");
-    assert_eq!(ud.notes(&NoteFilter::default()).unwrap().len(), 2);
-    // One undo only.
-    assert!(!ud.undo_import().unwrap());
-    assert_eq!(ex.state(), before);
+    let snapshots = ud.list_snapshots().unwrap();
+    assert_eq!(snapshots.len(), 1);
+    let s = &snapshots[0];
+    assert_eq!(s.reason, SnapshotReason::Replace);
+    assert_eq!(s.contents, POPULATED_SUMMARY);
+    assert_eq!(s.folders, 2);
+    assert_eq!(s.source_device_name.as_deref(), Some("Phone"));
+    assert_eq!(s.source_created.as_deref(), Some("2026-10-30T08:00:00Z"));
+    assert!(is_iso_utc(&s.taken_at), "{}", s.taken_at);
+    assert_eq!(s.id, s.taken_at.replace(['-', ':'], ""));
+    // The replaced files themselves, moved; the size is theirs.
+    assert_eq!(ex.snapshot_data(s), before);
+    let db_len = std::fs::metadata(ex.snapshot_dir(s).join("userData.db"))
+        .unwrap()
+        .len();
+    assert!(db_len > 0);
+    assert_eq!(s.size_bytes, db_len + b"old media".len() as u64);
+    assert!(no_hidden(&ex.env.data));
+}
 
-    // Two imports: undo goes back to the first one's data.
+#[test]
+fn three_imports_keep_the_two_newest_snapshots() {
+    let ex = Existing::new();
+    let file = ex.file("in.jwlibrary");
+    for device in ["A", "B", "C"] {
+        Backup::synthetic()
+            .with_source(device, "2026-10-30T08:00:00Z")
+            .write(&file);
+        ex.import(&file).unwrap();
+    }
+    let snapshots = ex.ud().list_snapshots().unwrap();
+    let devices: Vec<_> = snapshots
+        .iter()
+        .map(|s| s.source_device_name.as_deref())
+        .collect();
+    assert_eq!(devices, [Some("C"), Some("B")]);
+    assert!(snapshots.iter().all(|s| s.contents == SYNTHETIC_SUMMARY));
+    assert!(snapshots[0].taken_at >= snapshots[1].taken_at);
+    // The oldest is deleted, not just hidden.
+    assert_eq!(dir_names(&ex.env.data.join("snapshots")).len(), 2);
+    assert!(no_hidden(&ex.env.data));
+}
+
+#[test]
+fn restoring_a_snapshot_puts_its_data_back_and_keeps_the_current() {
+    let ex = Existing::new();
+    let ud = ex.ud();
+    let original = ex.data();
+    let file = ex.file("in.jwlibrary");
+    Backup::synthetic()
+        .with_source("A", "2026-10-29T08:00:00Z")
+        .write(&file);
     ex.import(&file).unwrap();
-    let after_first = ex.state();
+    let after_first = ex.data();
     let mut second = Backup::synthetic();
     second.alter("DELETE FROM ZzExtra;");
     second.media.clear();
-    second.write(&file);
+    second.with_source("B", "2026-10-30T08:00:00Z").write(&file);
     ex.import(&file).unwrap();
-    assert!(media_contents(&ex.env.data.join("userData.media")).is_empty());
-    assert!(ud.undo_import().unwrap());
-    // The first import's data and media; the undo used up its prev.
-    assert_eq!(ex.state().0, after_first.0);
-    assert_eq!(ex.state().1, after_first.1);
-    assert!(!ex.env.data.join("userData.prev.db").exists());
-    assert!(!ex.env.data.join("userData.prev.media").exists());
-    assert!(!ud.undo_import().unwrap());
+    let after_second = ex.data();
+    assert!(after_second.1.is_empty());
+
+    // [before B, before A]: each holds what the import replaced.
+    let snapshots = ud.list_snapshots().unwrap();
+    assert_eq!(snapshots.len(), 2);
+    assert_eq!(snapshots[0].source_device_name.as_deref(), Some("B"));
+    assert_eq!(snapshots[1].source_device_name.as_deref(), Some("A"));
+    assert_eq!(ex.snapshot_data(&snapshots[0]), after_first);
+    assert_eq!(ex.snapshot_data(&snapshots[1]), original);
+
+    // Restoring the older one brings back the data from before both
+    // imports, media included, and uses it up.
+    ud.restore_snapshot(&snapshots[1].id).unwrap();
+    assert_eq!(ex.data(), original);
+    assert_eq!(ud.tags().unwrap()[0].name, "Study");
+    assert_eq!(ud.notes(&NoteFilter::default()).unwrap().len(), 2);
+    assert!(!ex.snapshot_dir(&snapshots[1]).exists());
+    assert!(no_hidden(&ex.env.data));
+    // [Restore, before B]: the data the restore replaced is kept.
+    let now = ud.list_snapshots().unwrap();
+    assert_eq!(
+        now.iter().map(|s| s.reason).collect::<Vec<_>>(),
+        [SnapshotReason::Restore, SnapshotReason::Replace]
+    );
+    assert_eq!(now[1], snapshots[0]);
+    assert_eq!(now[0].contents, SYNTHETIC_SUMMARY);
+    assert_eq!(now[0].folders, 0);
+    assert_eq!(now[0].source_device_name, None);
+    assert_eq!(now[0].source_created, None);
+    assert_eq!(ex.snapshot_data(&now[0]), after_second);
+
+    // A restore is undone the same way, and writes still work.
+    ud.restore_snapshot(&now[0].id).unwrap();
+    assert_eq!(ex.data(), after_second);
+    assert_eq!(ud.list_snapshots().unwrap().len(), 2);
+    ud.add_tag("After").unwrap();
+    assert_eq!(fk_violations(&ex.env.userdata_db()), 0);
+}
+
+#[test]
+fn restoring_an_unknown_snapshot_is_not_found() {
+    let ex = Existing::new();
+    let ud = ex.ud();
+    let file = ex.file("in.jwlibrary");
+    Backup::synthetic().write(&file);
+    ex.import(&file).unwrap();
+    // A dir under `snapshots/` that isn't a whole snapshot.
+    let partial = ex.env.data.join("snapshots").join("20261031T000000Z");
+    std::fs::create_dir(&partial).unwrap();
+    std::fs::write(partial.join("snapshot.json"), b"{}").unwrap();
+    let real = &ud.list_snapshots().unwrap()[0];
+    let before = ex.state();
+    let escape = format!("../snapshots/{}", real.id);
+    let nested = format!("x/../{}", real.id);
+    for id in [
+        "20991231T000000Z",
+        "20261031T000000Z",
+        "",
+        ".",
+        "..",
+        escape.as_str(),
+        nested.as_str(),
+    ] {
+        let r = ud.restore_snapshot(id);
+        assert!(matches!(r, Err(CoreError::NotFound)), "{id:?}: {r:?}");
+        assert_eq!(ex.state(), before, "{id:?}");
+    }
+    assert_eq!(ud.list_snapshots().unwrap(), std::slice::from_ref(real));
+}
+
+#[test]
+fn crash_leftovers_are_not_snapshots() {
+    let ex = Existing::new();
+    let ud = ex.ud();
+    let file = ex.file("in.jwlibrary");
+    Backup::synthetic().write(&file);
+    ex.import(&file).unwrap();
+    let real = ud.list_snapshots().unwrap();
+    let real_dir = ex.snapshot_dir(&real[0]);
+    let snapshots = ex.env.data.join("snapshots");
+    // A dir with a database but no snapshot.json, one with only the json,
+    // one whose json isn't a snapshot's, and a staging dir holding a whole
+    // snapshot that was never renamed into place.
+    let db_only = snapshots.join("20991231T000000Z");
+    std::fs::create_dir(&db_only).unwrap();
+    std::fs::copy(real_dir.join("userData.db"), db_only.join("userData.db")).unwrap();
+    let json_only = snapshots.join("20991231T000001Z");
+    std::fs::create_dir(&json_only).unwrap();
+    std::fs::copy(
+        real_dir.join("snapshot.json"),
+        json_only.join("snapshot.json"),
+    )
+    .unwrap();
+    let bad_json = snapshots.join("20991231T000002Z");
+    std::fs::create_dir(&bad_json).unwrap();
+    std::fs::copy(real_dir.join("userData.db"), bad_json.join("userData.db")).unwrap();
+    std::fs::write(bad_json.join("snapshot.json"), b"{not json").unwrap();
+    let staging = ex.env.data.join(".userData-import.abc123").join("snapshot");
+    std::fs::create_dir_all(&staging).unwrap();
+    for name in ["userData.db", "snapshot.json"] {
+        std::fs::copy(real_dir.join(name), staging.join(name)).unwrap();
+    }
+
+    assert_eq!(ud.list_snapshots().unwrap(), real);
+    assert!(matches!(
+        ud.restore_snapshot("20991231T000000Z"),
+        Err(CoreError::NotFound)
+    ));
+    // Pruning counts whole snapshots only.
+    ex.import(&file).unwrap();
+    let after = ud.list_snapshots().unwrap();
+    assert_eq!(after.len(), 2);
+    assert_eq!(after[1], real[0]);
+}
+
+#[test]
+fn snapshot_ids_sort_by_time_suffixes_included() {
+    let ex = Existing::new();
+    let ud = ex.ud();
+    let file = ex.file("in.jwlibrary");
+    Backup::synthetic().write(&file);
+    ex.import(&file).unwrap();
+    let real = ud.list_snapshots().unwrap()[0].clone();
+    let real_dir = ex.snapshot_dir(&real);
+    for id in [
+        "20000101T000000Z",
+        "20000101T000000Z-2",
+        "20000101T000000Z-10",
+    ] {
+        let dir = ex.env.data.join("snapshots").join(id);
+        std::fs::create_dir(&dir).unwrap();
+        for name in ["userData.db", "snapshot.json"] {
+            std::fs::copy(real_dir.join(name), dir.join(name)).unwrap();
+        }
+    }
+    let ids = |list: Vec<Snapshot>| list.into_iter().map(|s| s.id).collect::<Vec<_>>();
+    assert_eq!(
+        ids(ud.list_snapshots().unwrap()),
+        [
+            real.id.as_str(),
+            "20000101T000000Z-10",
+            "20000101T000000Z-2",
+            "20000101T000000Z"
+        ]
+    );
+    // The next import keeps the two newest: its own and the real one.
+    ex.import(&file).unwrap();
+    let kept = ud.list_snapshots().unwrap();
+    assert_eq!(kept.len(), 2);
+    assert_eq!(kept[1].id, real.id);
+    assert_eq!(dir_names(&ex.env.data.join("snapshots")).len(), 2);
+}
+
+#[test]
+fn an_old_undo_copy_becomes_a_snapshot_on_open() {
+    let env = Env::new();
+    let ud = env.core().userdata();
+    populate(&ud);
+    ud.create_folder("Kept", None).unwrap();
+    drop(ud);
+    // What an older version left after an import: the library it replaced
+    // and its media, beside a newer library.
+    let prev = env.data.join("userData.prev.db");
+    std::fs::copy(env.userdata_db(), &prev).unwrap();
+    let prev_contents = contents(&prev);
+    let prev_media = env.data.join("userData.prev.media");
+    std::fs::create_dir_all(prev_media.join("sub")).unwrap();
+    std::fs::write(prev_media.join("sub").join("a.png"), b"prev media").unwrap();
+    // 2026-10-30T08:00:00Z.
+    let mtime = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_793_347_200);
+    std::fs::File::options()
+        .write(true)
+        .open(&prev)
+        .unwrap()
+        .set_modified(mtime)
+        .unwrap();
+    env.raw()
+        .execute_batch("DELETE FROM TagMap; DELETE FROM Note;")
+        .unwrap();
+
+    let ud = env.core().userdata();
+    let snapshots = ud.list_snapshots().unwrap();
+    assert_eq!(snapshots.len(), 1);
+    let s = &snapshots[0];
+    assert_eq!(s.id, "20261030T080000Z");
+    assert_eq!(s.taken_at, "2026-10-30T08:00:00Z");
+    assert_eq!(s.reason, SnapshotReason::Replace);
+    assert_eq!(s.contents, POPULATED_SUMMARY);
+    assert_eq!(s.folders, 1);
+    assert_eq!((&s.source_device_name, &s.source_created), (&None, &None));
+    let dir = env.data.join("snapshots").join(&s.id);
+    assert_eq!(contents(&dir.join("userData.db")), prev_contents);
+    assert_eq!(
+        media_contents(&dir.join("media")),
+        [("sub/a.png".to_string(), b"prev media".to_vec())]
+    );
+    assert!(!prev.exists());
+    assert!(!prev_media.exists());
+    assert!(no_hidden(&env.data));
+    // The current library is untouched.
+    assert!(ud.notes(&NoteFilter::default()).unwrap().is_empty());
+
+    // Opening again changes nothing; the snapshot restores.
+    drop(ud);
+    let ud = env.core().userdata();
+    assert_eq!(ud.list_snapshots().unwrap(), snapshots);
+    ud.restore_snapshot(&s.id).unwrap();
+    assert_eq!(ud.notes(&NoteFilter::default()).unwrap().len(), 2);
+    assert_eq!(ud.folders().unwrap().len(), 1);
+}
+
+#[test]
+fn an_unreadable_old_undo_copy_is_still_kept() {
+    let env = Env::new();
+    drop(env.core());
+    let prev = env.data.join("userData.prev.db");
+    let junk = b"not a database at all";
+    std::fs::write(&prev, junk).unwrap();
+
+    let ud = env.core().userdata();
+    let snapshots = ud.list_snapshots().unwrap();
+    assert_eq!(snapshots.len(), 1);
+    let s = &snapshots[0];
+    assert_eq!(s.reason, SnapshotReason::Replace);
+    assert_eq!(s.contents, ImportSummary::default());
+    assert_eq!(s.folders, 0);
+    assert_eq!(s.size_bytes, junk.len() as u64);
+    let dir = env.data.join("snapshots").join(&s.id);
+    assert_eq!(std::fs::read(dir.join("userData.db")).unwrap(), junk);
+    assert!(!prev.exists());
+    assert!(no_hidden(&env.data));
+    // The current library still works.
+    ud.add_tag("Study").unwrap();
 }
 
 #[test]
@@ -2122,21 +2434,23 @@ fn import_preview_counts_the_backup_and_the_current_data() {
         }
     );
     // Nothing changed: the database to the byte, the media, and the data
-    // dir (no staging dir left, no undo copy).
+    // dir (no staging dir left, no snapshot).
     assert_eq!(ex.db_bytes(), bytes);
     assert_eq!(ex.state(), before);
     assert!(!dir_names(&ex.env.data).iter().any(|n| n.starts_with('.')));
-    assert!(!ud.undo_import().unwrap());
+    assert!(ud.list_snapshots().unwrap().is_empty());
     assert_eq!(ud.folders().unwrap().len(), 3);
 
     // The import that follows brings what the preview said.
     assert_eq!(ex.import(&file).unwrap(), preview.backup);
     // A preview after it sees the imported data as current, with no
-    // folders; the undo copy is untouched by it.
+    // folders; the snapshot is untouched by it.
+    let snapshots = ud.list_snapshots().unwrap();
     let again = ex.preview(&file).unwrap();
     assert_eq!(again.current, SYNTHETIC_SUMMARY);
     assert_eq!((again.folders, again.filed_notes), (0, 0));
-    assert!(ud.undo_import().unwrap());
+    assert_eq!(ud.list_snapshots().unwrap(), snapshots);
+    ud.restore_snapshot(&snapshots[0].id).unwrap();
     let back = ud.notes(&NoteFilter::default()).unwrap();
     let back = back.iter().find(|n| n.id == filed.id).unwrap();
     assert_eq!(back.folder_id, Some(sub.id));
@@ -2291,7 +2605,7 @@ fn folder_tables_are_added_to_an_existing_jw_db() {
 }
 
 #[test]
-fn import_clears_folders_and_undo_brings_them_back() {
+fn import_clears_folders_and_restore_brings_them_back() {
     let ex = Existing::new();
     let ud = ex.ud();
     let top = ud.create_folder("Gospel of John", None).unwrap();
@@ -2319,8 +2633,12 @@ fn import_clears_folders_and_undo_brings_them_back() {
     let made = ud.create_folder("After import", None).unwrap();
     assert_eq!(made.position, 0);
 
-    // Undo puts the old file back, folders and filings included.
-    assert!(ud.undo_import().unwrap());
+    // Restoring the snapshot puts the old file back, folders and filings
+    // included.
+    let snapshots = ud.list_snapshots().unwrap();
+    assert_eq!(snapshots.len(), 1);
+    assert_eq!(snapshots[0].folders, 2);
+    ud.restore_snapshot(&snapshots[0].id).unwrap();
     assert_eq!(ud.folders().unwrap(), folders);
     let read = ud.notes(&NoteFilter::default()).unwrap();
     let back = read.iter().find(|n| n.id == note.id).unwrap();

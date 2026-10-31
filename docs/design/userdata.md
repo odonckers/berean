@@ -108,7 +108,8 @@ pub struct Bookmark { pub pub_key: String, pub slot: u8 /*0..=9*/, pub location:
 - **Bookmarks:** `bookmarks(pub_key) -> [Bookmark]`, `set_bookmark(pub_key, slot, location, title, snippet)`
   (replaces whatever is in the slot), `remove_bookmark(pub_key, slot)`.
 - **Backup:** `export_backup(path, progress, cancel)`, `import_backup(path, progress, cancel) -> ImportSummary{counts}`,
-  `undo_import() -> Bool` (sync; false when there is no undo copy).
+  `list_snapshots() -> [Snapshot]` (sync; newest first, empty when there are none) and `restore_snapshot(id)`
+  (sync; unknown id => `NotFound`). See §4.
 
 Changes from the proposal's text, flagged for approval:
 1. The highlight carries token offsets (`TextRange`), not just a `LocationSpan`.
@@ -131,8 +132,14 @@ locations. Each can get a row later.
     replaced. The import checks the zip, the manifest hash and the schema version, then copies the database to
     a temp file. It upgrades v14 → v16 there (the jwlManager recipe: add two columns, rebuild `Location`, add the
     new indexes), then runs `PRAGMA integrity_check` and `foreign_key_check`. Only then does it swap the file in
-    atomically, and it keeps the previous `userData.db` as `userData.prev.db`, so one undo is possible. Any
-    failure leaves the current data untouched.
+    atomically. Any failure leaves the current data untouched.
+  - **Snapshots** (S2): the swap moves the replaced `userData.db` and media into a snapshot,
+    `<data_dir>/snapshots/<id>/` (`userData.db`, `media/`, `snapshot.json` with the time, reason
+    `Replace`/`Merge`/`Restore`, counts, folders and the backup's device name and creation date). Nothing is
+    copied: the snapshot dir is built in a `.userData-*` staging dir and renamed into place in the same rolled-back
+    rename sequence. The two newest are kept. `restore_snapshot(id)` keeps the current library as a `Restore`
+    snapshot and moves `id` back in, using it up. An older version's `userData.prev.db` (and
+    `userData.prev.media/`) becomes one snapshot when the core opens.
   - **Merge**, as JWLMerge and jwlFusion do it, means remapping every id and deduplicating by Location, Guid,
     tag name and media hash, plus handling Slot collisions. It's a separate later row if Owen wants it.
 - **Accepted versions:** 14 and 16. Older versions (8 and below) and newer ones (17 and up) are rejected as
@@ -181,7 +188,7 @@ locations. Each can get a row later.
 
 1. Data model: **(A) mirror v16 in a separate `userData.db`** (vs B, C).
 2. Record shapes and CRUD as in §3, including **`TextRange` with token offsets** and **Favorites calls**.
-3. Import = **replace**, keeping one `userData.prev.db`. Merge is a later row.
+3. Import = **replace**, keeping one `userData.prev.db` (since S2: the two newest snapshots). Merge is a later row.
 4. Accept **v14 and v16**, refuse others, and preserve unknown tables and columns.
 5. Fixtures: the pinned public blank, synthetic CI backups, and **one private real export from Owen**.
 6. No new crates.

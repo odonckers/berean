@@ -268,7 +268,8 @@ impl Inner {
 impl Core {
     /// Open (creating if missing) the data and cache directories, open/create
     /// the core DB under `data_dir` and migrate it forward, and open/create
-    /// the user-data DB (`userData.db`) next to it.
+    /// the user-data DB (`userData.db`) next to it, first turning an undo
+    /// copy left by an older version (`userData.prev.db`) into a snapshot.
     pub fn open(
         data_dir: impl AsRef<Path>,
         cache_dir: impl AsRef<Path>,
@@ -280,6 +281,7 @@ impl Core {
 
         let mut conn = Connection::open(data_dir.join("user.sqlite"))?;
         migrations().to_latest(&mut conn)?;
+        userdata::migrate_prev(data_dir)?;
         let userdata = userdata::open(data_dir)?;
 
         let inner = Arc::new(Inner {

@@ -37,17 +37,37 @@
 //! `<data_dir>/userData.media/` by their names in the zip.
 //! [`UserData::export_backup`] writes one. [`UserData::import_backup`]
 //! replaces all the user data with one, as JW Library's restore does,
-//! keeping the previous database as `userData.prev.db` (and its media as
-//! `userData.prev.media/`) so that [`UserData::undo_import`] can put it back.
+//! keeping the library it replaces as a snapshot.
+//!
+//! # Snapshots
+//!
+//! A snapshot is a whole library kept aside, in
+//! `<data_dir>/snapshots/<id>/`: its `userData.db`, its `media/` (if it had
+//! any) and a `snapshot.json` saying when and why it was taken and what it
+//! holds. The id is the time it was taken in compact UTC
+//! (`20261031T111500Z`), with `-2`, `-3`… added when that name is taken, so
+//! ids sort by time. An import ([`SnapshotReason::Replace`]) and a restore
+//! ([`SnapshotReason::Restore`]) copy nothing: the current files are renamed
+//! into a snapshot dir built in a `.userData-*` staging dir, which is renamed
+//! into `snapshots/` in the same rename sequence that swaps the new files in,
+//! so a snapshot appears whole or not at all and a failure rolls everything
+//! back. [`UserData::list_snapshots`] skips any dir without `snapshot.json`
+//! or a database. The [`KEEP`] newest are kept: older ones are renamed out of
+//! `snapshots/` and deleted. [`UserData::restore_snapshot`] puts one back.
+//!
+//! Before snapshots, an import kept the previous library as
+//! `userData.prev.db` and `userData.prev.media/`; opening the core turns
+//! those into one snapshot (see [`migrate_prev`]).
 
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::types::Value;
-use rusqlite::{params, params_from_iter, Connection, OptionalExtension, Row};
+use rusqlite::{params, params_from_iter, Connection, OpenFlags, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tempfile::{NamedTempFile, TempDir};
@@ -66,9 +86,19 @@ pub(crate) const DB_FILE: &str = "userData.db";
 /// The directory under the data dir that holds a backup's media files.
 pub(crate) const MEDIA_DIR: &str = "userData.media";
 
-/// The previous database and media an import keeps, for one undo.
-const PREV_DB: &str = "userData.prev.db";
-const PREV_MEDIA: &str = "userData.prev.media";
+/// The directory under the data dir that holds the snapshots, one dir each.
+const SNAPSHOTS_DIR: &str = "snapshots";
+
+/// The file in a snapshot dir that describes it.
+const SNAPSHOT_META: &str = "snapshot.json";
+
+/// How many snapshots are kept: the newest, by id.
+const KEEP: usize = 2;
+
+/// The previous database and media an import kept before snapshots, for one
+/// undo; [`migrate_prev`] turns them into a snapshot.
+const LEGACY_PREV_DB: &str = "userData.prev.db";
+const LEGACY_PREV_MEDIA: &str = "userData.prev.media";
 
 /// The member of a backup that describes it.
 const MANIFEST: &str = "manifest.json";
@@ -115,7 +145,7 @@ pub(crate) fn db_path(data_dir: &Path) -> PathBuf {
 /// temporary name and renamed into place, so a failed creation leaves no
 /// half-made database behind. Foreign keys are enforced on the connection,
 /// and Berean's own tables are created if missing (every open, so also after
-/// an import or undo swaps the file). A file that isn't a database =>
+/// an import or restore swaps the file). A file that isn't a database =>
 /// `Corrupt`.
 pub(crate) fn open(data_dir: &Path) -> Result<Connection, CoreError> {
     let path = db_path(data_dir);
@@ -343,7 +373,7 @@ pub struct Bookmark {
 }
 
 /// What an import brought in, counted with the typed reads' rules.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ImportSummary {
     pub highlights: u64,
     pub notes: u64,
@@ -370,6 +400,51 @@ pub struct ImportPreview {
     /// When the backup was made: the manifest's `creationDate`, as given
     /// (ISO-8601, as JW Library and Berean write it).
     pub created: String,
+}
+
+/// Why a snapshot was taken.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SnapshotReason {
+    /// Before an import replaced the library.
+    Replace,
+    /// Before an import merged into the library (not taken yet).
+    Merge,
+    /// Before a restore of another snapshot replaced the library.
+    Restore,
+}
+
+/// A library kept aside, as [`UserData::list_snapshots`] lists it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Snapshot {
+    /// Its name under `snapshots/`: opaque, and sorts by time.
+    pub id: String,
+    /// When it was taken, ISO-8601 UTC (`2026-10-31T11:15:00Z`).
+    pub taken_at: String,
+    pub reason: SnapshotReason,
+    /// The database plus its media, read from disk when listed.
+    pub size_bytes: u64,
+    /// What it holds, counted as [`UserData::import_backup`] does.
+    pub contents: ImportSummary,
+    /// The Berean folders it holds.
+    pub folders: u32,
+    /// For a [`SnapshotReason::Replace`] snapshot, the device the imported
+    /// backup was made on, from its manifest.
+    pub source_device_name: Option<String>,
+    /// For a [`SnapshotReason::Replace`] snapshot, when the imported backup
+    /// was made: its manifest's `creationDate`, as given.
+    pub source_created: Option<String>,
+}
+
+/// A snapshot's `snapshot.json`: a [`Snapshot`] but what the dir gives.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SnapshotMeta {
+    taken_at: String,
+    reason: SnapshotReason,
+    contents: ImportSummary,
+    folders: u32,
+    source_device_name: Option<String>,
+    source_created: Option<String>,
 }
 
 /// The highest bookmark slot: JW gives each publication ten.
@@ -1345,10 +1420,34 @@ fn stage_backup(
     })
 }
 
+/// Make the renames `moves` lists (`from`, `to`, whether `from` must exist;
+/// a missing optional one is skipped) and return those made. If one fails,
+/// those made are reversed.
+fn rename_all(moves: &[(PathBuf, PathBuf, bool)]) -> Result<Vec<(&Path, &Path)>, CoreError> {
+    let mut done = Vec::new();
+    for (from, to, required) in moves {
+        if !required && !from.exists() {
+            continue;
+        }
+        if let Err(e) = std::fs::rename(from, to) {
+            undo_renames(done);
+            return Err(e.into());
+        }
+        done.push((from.as_path(), to.as_path()));
+    }
+    Ok(done)
+}
+
+/// Reverse the renames [`rename_all`] made, last first.
+fn undo_renames(done: Vec<(&Path, &Path)>) {
+    for (from, to) in done.into_iter().rev() {
+        let _ = std::fs::rename(to, from);
+    }
+}
+
 /// Close the user-data connection behind `conn`, make the renames `moves`
-/// lists (`from`, `to`, whether `from` must exist; a missing optional one
-/// is skipped), and reopen it. If a rename or the reopen fails, the renames
-/// made are reversed and the old database reopened.
+/// lists (as [`rename_all`] does), and reopen it. If a rename or the reopen
+/// fails, the renames made are reversed and the old database reopened.
 fn swap_files(
     data_dir: &Path,
     conn: &mut Connection,
@@ -1356,30 +1455,213 @@ fn swap_files(
 ) -> Result<(), CoreError> {
     // Dropping the old connection closes it, so its file can move.
     drop(std::mem::replace(conn, Connection::open_in_memory()?));
-    let mut done: Vec<(&Path, &Path)> = Vec::new();
-    let result = (|| {
-        for (from, to, required) in moves {
-            if !required && !from.exists() {
-                continue;
-            }
-            std::fs::rename(from, to)?;
-            done.push((from, to));
+    let done = match rename_all(moves) {
+        Ok(done) => done,
+        Err(e) => {
+            *conn = open(data_dir)?;
+            return Err(e);
         }
-        open(data_dir)
-    })();
-    match result {
+    };
+    match open(data_dir) {
         Ok(new) => {
             *conn = new;
             Ok(())
         }
         Err(e) => {
-            for (from, to) in done.into_iter().rev() {
-                let _ = std::fs::rename(to, from);
-            }
+            undo_renames(done);
             *conn = open(data_dir)?;
             Err(e)
         }
     }
+}
+
+/// `t` as ISO-8601 UTC to the second, as JW stores times.
+fn iso_utc(t: SystemTime) -> Result<String, CoreError> {
+    let secs = t
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() as i64);
+    Ok(Connection::open_in_memory()?.query_row(
+        "SELECT strftime('%Y-%m-%dT%H:%M:%SZ', ?1, 'unixepoch')",
+        [secs],
+        |r| r.get(0),
+    )?)
+}
+
+/// What the library on `conn` holds, and its Berean folders.
+fn library_counts(conn: &Connection) -> Result<(ImportSummary, u32), CoreError> {
+    let folders: i64 = conn.query_row("SELECT COUNT(*) FROM BereanFolder", [], |r| r.get(0))?;
+    Ok((summary(conn)?, to_u32(folders).unwrap_or(u32::MAX)))
+}
+
+/// The `snapshot.json` of a snapshot of the library on `conn`, taken now;
+/// `source` is the backup being imported, if any.
+fn current_snapshot_meta(
+    conn: &Connection,
+    reason: SnapshotReason,
+    source: Option<&Staged>,
+) -> Result<SnapshotMeta, CoreError> {
+    let (contents, folders) = library_counts(conn)?;
+    Ok(SnapshotMeta {
+        taken_at: iso_utc(SystemTime::now())?,
+        reason,
+        contents,
+        folders,
+        source_device_name: source.map(|s| s.device_name.clone()),
+        source_created: source.map(|s| s.created.clone()),
+    })
+}
+
+/// Whether `id` could name a snapshot: a plain name, not hidden, not a path.
+fn is_snapshot_name(id: &str) -> bool {
+    !id.is_empty() && !id.starts_with('.') && !id.contains(['/', '\\'])
+}
+
+/// An id's place in time order: its base and its suffix (1 for none), so
+/// `…Z-10` comes after `…Z-9`.
+fn id_order(id: &str) -> (&str, u32) {
+    match id.rsplit_once('-') {
+        Some((base, n)) => match n.parse() {
+            Ok(n) => (base, n),
+            Err(_) => (id, 1),
+        },
+        None => (id, 1),
+    }
+}
+
+/// The snapshot in the dir `path`, named `id`; `None` unless it is a whole
+/// one, with a database and a readable `snapshot.json`.
+fn read_snapshot(path: &Path, id: &str) -> Result<Option<Snapshot>, CoreError> {
+    let db = path.join(DB_FILE);
+    if !db.is_file() {
+        return Ok(None);
+    }
+    let Ok(bytes) = std::fs::read(path.join(SNAPSHOT_META)) else {
+        return Ok(None);
+    };
+    let Ok(meta) = serde_json::from_slice::<SnapshotMeta>(&bytes) else {
+        return Ok(None);
+    };
+    let media = path.join("media");
+    let mut size_bytes = db.metadata()?.len();
+    for name in media_files(&media)? {
+        size_bytes += media.join(name).metadata()?.len();
+    }
+    Ok(Some(Snapshot {
+        id: id.to_string(),
+        taken_at: meta.taken_at,
+        reason: meta.reason,
+        size_bytes,
+        contents: meta.contents,
+        folders: meta.folders,
+        source_device_name: meta.source_device_name,
+        source_created: meta.source_created,
+    }))
+}
+
+/// The whole snapshots under `data_dir`, newest first.
+fn read_snapshots(data_dir: &Path) -> Result<Vec<Snapshot>, CoreError> {
+    let dir = data_dir.join(SNAPSHOTS_DIR);
+    if !dir.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut out = Vec::new();
+    for entry in std::fs::read_dir(&dir)? {
+        let entry = entry?;
+        let Ok(id) = entry.file_name().into_string() else {
+            continue;
+        };
+        if is_snapshot_name(&id) && entry.file_type()?.is_dir() {
+            out.extend(read_snapshot(&entry.path(), &id)?);
+        }
+    }
+    out.sort_by(|a, b| id_order(&b.id).cmp(&id_order(&a.id)));
+    Ok(out)
+}
+
+/// Start a snapshot in `staging`: make `snapshots/` if missing, write `meta`
+/// into a new `snapshot/` dir in `staging`, and pick a free id. Returns that
+/// dir and the path it is to be renamed to.
+fn stage_snapshot(
+    data_dir: &Path,
+    staging: &Path,
+    meta: &SnapshotMeta,
+) -> Result<(PathBuf, PathBuf), CoreError> {
+    let snapshots = data_dir.join(SNAPSHOTS_DIR);
+    std::fs::create_dir_all(&snapshots)?;
+    let dir = staging.join("snapshot");
+    std::fs::create_dir(&dir)?;
+    let json = serde_json::to_vec(meta)
+        .map_err(|e| CoreError::Invalid(format!("snapshot metadata: {e}")))?;
+    let mut file = File::create(dir.join(SNAPSHOT_META))?;
+    file.write_all(&json)?;
+    file.sync_all()?;
+    let base: String = meta
+        .taken_at
+        .chars()
+        .filter(|c| !matches!(c, '-' | ':'))
+        .collect();
+    let mut id = base.clone();
+    let mut n = 1;
+    while snapshots.join(&id).exists() {
+        n += 1;
+        id = format!("{base}-{n}");
+    }
+    Ok((dir, snapshots.join(id)))
+}
+
+/// Delete all but the [`KEEP`] newest snapshots, each first renamed into a
+/// staging dir so it leaves the list at once. Best effort: what fails is
+/// left for the next prune.
+fn prune_snapshots(data_dir: &Path) {
+    let Ok(snapshots) = read_snapshots(data_dir) else {
+        return;
+    };
+    for old in snapshots.into_iter().skip(KEEP) {
+        let Ok(trash) = TempDir::with_prefix_in(".userData-prune.", data_dir) else {
+            return;
+        };
+        let from = data_dir.join(SNAPSHOTS_DIR).join(&old.id);
+        if std::fs::rename(from, trash.path().join("snapshot")).is_ok() {
+            let _ = trash.close();
+        }
+    }
+}
+
+/// Turn the previous library a pre-snapshot import kept
+/// (`userData.prev.db` and `userData.prev.media/`) into one
+/// [`SnapshotReason::Replace`] snapshot, taken at the database's mtime. Its
+/// counts are read with the file opened read-only; one that can't be read
+/// is still moved, with zero counts, never deleted. Nothing to migrate is a
+/// no-op, so this is safe to run again after an interruption. Run once, at
+/// core open.
+pub(crate) fn migrate_prev(data_dir: &Path) -> Result<(), CoreError> {
+    let prev = data_dir.join(LEGACY_PREV_DB);
+    if !prev.is_file() {
+        return Ok(());
+    }
+    let (contents, folders) = Connection::open_with_flags(&prev, OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(CoreError::from)
+        .and_then(|conn| library_counts(&conn))
+        .unwrap_or_default();
+    let meta = SnapshotMeta {
+        taken_at: iso_utc(prev.metadata()?.modified()?)?,
+        reason: SnapshotReason::Replace,
+        contents,
+        folders,
+        source_device_name: None,
+        source_created: None,
+    };
+    let staging = TempDir::with_prefix_in(".userData-migrate.", data_dir)?;
+    let (snap, to) = stage_snapshot(data_dir, staging.path(), &meta)?;
+    // The database moves last: while it is still in place, a rerun redoes
+    // the whole migration.
+    rename_all(&[
+        (data_dir.join(LEGACY_PREV_MEDIA), snap.join("media"), false),
+        (prev, snap.join(DB_FILE), true),
+        (snap, to, true),
+    ])?;
+    prune_snapshots(data_dir);
+    Ok(())
 }
 
 /// Handle to the user's notes, highlights, tags, favorites and bookmarks.
@@ -2305,7 +2587,9 @@ impl UserData {
     /// Replace all the user data with the `.jwlibrary` backup at `path`, as
     /// JW Library's restore does, and say what it holds. Schema v14 is
     /// upgraded to v16; tables and columns Berean doesn't know are kept.
-    /// The previous data is kept for one [`undo_import`](Self::undo_import).
+    /// The data it replaces is kept as a [`SnapshotReason::Replace`]
+    /// snapshot (see [`list_snapshots`](Self::list_snapshots)), and the
+    /// snapshots beyond the [`KEEP`] newest are deleted.
     /// Progress counts [`IMPORT_STEPS`] steps; cancel is honoured until the
     /// new data is swapped in, the last step.
     ///
@@ -2335,18 +2619,23 @@ impl UserData {
 
         cancel.check()?;
         let trash = staging.path();
-        swap_files(
-            dir,
-            &mut self.inner.userdata(),
-            &[
-                (dir.join(PREV_DB), trash.join("old.prev.db"), false),
-                (dir.join(PREV_MEDIA), trash.join("old.prev.media"), false),
-                (dir.join(DB_FILE), dir.join(PREV_DB), true),
-                (dir.join(MEDIA_DIR), dir.join(PREV_MEDIA), false),
-                (trash.join(DB_FILE), dir.join(DB_FILE), true),
-                (trash.join("media"), dir.join(MEDIA_DIR), true),
-            ],
-        )?;
+        {
+            let mut conn = self.inner.userdata();
+            let meta = current_snapshot_meta(&conn, SnapshotReason::Replace, Some(&staged))?;
+            let (snap, to) = stage_snapshot(dir, trash, &meta)?;
+            swap_files(
+                dir,
+                &mut conn,
+                &[
+                    (dir.join(DB_FILE), snap.join(DB_FILE), true),
+                    (dir.join(MEDIA_DIR), snap.join("media"), false),
+                    (trash.join(DB_FILE), dir.join(DB_FILE), true),
+                    (trash.join("media"), dir.join(MEDIA_DIR), true),
+                    (snap, to, true),
+                ],
+            )?;
+            prune_snapshots(dir);
+        }
         progress.on_progress(IMPORT_STEPS, IMPORT_STEPS);
         Ok(staged.summary)
     }
@@ -2397,29 +2686,41 @@ impl UserData {
         })
     }
 
-    /// Put back the data the last [`import_backup`](Self::import_backup)
-    /// replaced, dropping what it brought in, and say whether it did. There
-    /// is one undo: after it, or before any import, there is no undo copy
-    /// and this returns `false`, changing nothing.
-    pub fn undo_import(&self) -> Result<bool, CoreError> {
+    /// The snapshots, newest first; empty when there are none.
+    pub fn list_snapshots(&self) -> Result<Vec<Snapshot>, CoreError> {
+        // Under the lock, so an import or restore can't move them meanwhile.
+        let _conn = self.inner.userdata();
+        read_snapshots(&self.inner.data_dir)
+    }
+
+    /// Put the snapshot `id` back in place of the current data, using it
+    /// up. The current data is kept first as a [`SnapshotReason::Restore`]
+    /// snapshot, so the count stays the same and a restore can be undone the
+    /// same way. Nothing is copied: it is one rename sequence, rolled back
+    /// on failure. An id that isn't a whole snapshot => `NotFound`.
+    pub fn restore_snapshot(&self, id: &str) -> Result<(), CoreError> {
         let dir = &self.inner.data_dir;
-        // Checked under the lock, so an import can't land in between.
         let mut conn = self.inner.userdata();
-        if !dir.join(PREV_DB).is_file() {
-            return Ok(false);
+        let from = dir.join(SNAPSHOTS_DIR).join(id);
+        if !is_snapshot_name(id) || read_snapshot(&from, id)?.is_none() {
+            return Err(CoreError::NotFound);
         }
-        let staging = TempDir::with_prefix_in(".userData-undo.", dir)?;
-        let trash = staging.path();
+        let meta = current_snapshot_meta(&conn, SnapshotReason::Restore, None)?;
+        // Dropping `staging` deletes the used-up snapshot's dir.
+        let staging = TempDir::with_prefix_in(".userData-restore.", dir)?;
+        let (snap, to) = stage_snapshot(dir, staging.path(), &meta)?;
+        let restored = staging.path().join("restored");
         swap_files(
             dir,
             &mut conn,
             &[
-                (dir.join(DB_FILE), trash.join(DB_FILE), true),
-                (dir.join(MEDIA_DIR), trash.join("media"), false),
-                (dir.join(PREV_DB), dir.join(DB_FILE), true),
-                (dir.join(PREV_MEDIA), dir.join(MEDIA_DIR), false),
+                (from, restored.clone(), true),
+                (dir.join(DB_FILE), snap.join(DB_FILE), true),
+                (dir.join(MEDIA_DIR), snap.join("media"), false),
+                (restored.join(DB_FILE), dir.join(DB_FILE), true),
+                (restored.join("media"), dir.join(MEDIA_DIR), false),
+                (snap, to, true),
             ],
-        )?;
-        Ok(true)
+        )
     }
 }
