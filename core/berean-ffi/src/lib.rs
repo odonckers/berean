@@ -1836,6 +1836,75 @@ pub fn publication_url(location: Location) -> Result<String, CoreError> {
     Ok(berean_core::notes::publication_url(&location.into())?)
 }
 
+/// The FFI mirror of [`berean_core::notes::SourceSpan`]: half-open, in
+/// UTF-16 code units.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct SourceSpan {
+    pub start: u32,
+    pub end: u32,
+    pub kind: SpanKind,
+}
+
+impl From<berean_core::notes::SourceSpan> for SourceSpan {
+    fn from(s: berean_core::notes::SourceSpan) -> Self {
+        SourceSpan {
+            start: s.start,
+            end: s.end,
+            kind: s.kind.into(),
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::notes::SpanKind`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum SpanKind {
+    HeadingMarker,
+    EmphasisMarker,
+    StrongMarker,
+    StrikeMarker,
+    CodeMarker,
+    Code,
+    LinkBracket,
+    LinkUrl,
+    ListMarker,
+    TaskMarker,
+    QuoteMarker,
+    Rule,
+    Tag,
+}
+
+impl From<berean_core::notes::SpanKind> for SpanKind {
+    fn from(k: berean_core::notes::SpanKind) -> Self {
+        use berean_core::notes::SpanKind as K;
+        match k {
+            K::HeadingMarker => SpanKind::HeadingMarker,
+            K::EmphasisMarker => SpanKind::EmphasisMarker,
+            K::StrongMarker => SpanKind::StrongMarker,
+            K::StrikeMarker => SpanKind::StrikeMarker,
+            K::CodeMarker => SpanKind::CodeMarker,
+            K::Code => SpanKind::Code,
+            K::LinkBracket => SpanKind::LinkBracket,
+            K::LinkUrl => SpanKind::LinkUrl,
+            K::ListMarker => SpanKind::ListMarker,
+            K::TaskMarker => SpanKind::TaskMarker,
+            K::QuoteMarker => SpanKind::QuoteMarker,
+            K::Rule => SpanKind::Rule,
+            K::Tag => SpanKind::Tag,
+        }
+    }
+}
+
+/// The syntax ranges of a note's Markdown source, for the Write view: flat,
+/// never overlapping, sorted by start, in UTF-16 code units. No database;
+/// never fails.
+#[uniffi::export]
+pub fn markdown_spans(markdown: String) -> Vec<SourceSpan> {
+    berean_core::notes::markdown_spans(&markdown)
+        .into_iter()
+        .map(Into::into)
+        .collect()
+}
+
 /// The FFI mirror of [`berean_core::notes::Block`].
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
 pub enum Block {
@@ -3399,5 +3468,23 @@ mod tests {
             publication_url(span.start),
             Err(CoreError::Invalid(_))
         ));
+    }
+
+    #[test]
+    fn markdown_spans_through_ffi() {
+        let span = |start, end, kind| SourceSpan { start, end, kind };
+        // "😀" is two UTF-16 units, so everything after it shifts by two.
+        assert_eq!(
+            markdown_spans("## 😀 [a](u) #t".into()),
+            [
+                span(0, 2, SpanKind::HeadingMarker),
+                span(6, 7, SpanKind::LinkBracket),
+                span(8, 10, SpanKind::LinkBracket),
+                span(10, 11, SpanKind::LinkUrl),
+                span(11, 12, SpanKind::LinkBracket),
+                span(13, 15, SpanKind::Tag),
+            ]
+        );
+        assert_eq!(markdown_spans(String::new()), []);
     }
 }
