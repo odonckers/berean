@@ -117,6 +117,7 @@ export function NoteEditor({
   const [pinned, setPinned] = useState<Selection>();
   const focused = useIsFocused();
   const [toolsHeight, setToolsHeight] = useState(0);
+  const [bodyHeight, setBodyHeight] = useState(0);
   const writing = found && mode === 'write';
   const suggestion = useReferenceSuggestion(writing ? draft.content : '', selection);
   // The Write field holding focus. Blur comes before the next field's
@@ -288,6 +289,8 @@ export function NoteEditor({
     keyboardFromWindowBottom: keyboardBottom(keyboard, safe.bottom, Platform.OS === 'android'),
     bodyGapFromWindowBottom: bodyGap.gap,
     dockedInset: insets.bottom,
+    bodyHeight,
+    toolsHeight,
   });
   // In Write the scroll view ends at the tools' top, so scrolling to the
   // caret brings its line above the bar rather than behind it.
@@ -299,6 +302,7 @@ export function NoteEditor({
     bottomInset: insets.bottom,
     writeEnd: spacing.xl,
     readEnd: spacing.xxxl,
+    bodyHeight,
   });
   const contentTop = insets.top + spacing.lg;
 
@@ -343,7 +347,13 @@ export function NoteEditor({
         <Stack.Screen options={{ title: '', ...headerOptions }} />
       )}
       {/* Surface behind the tools too, where the scroll view now stops short. */}
-      <View ref={bodyViewRef} onLayout={bodyGap.measure} style={[styles.body, { backgroundColor: colors.surface }]}>
+      <View
+        ref={bodyViewRef}
+        onLayout={(e) => {
+          bodyGap.measure();
+          setBodyHeight(e.nativeEvent.layout.height);
+        }}
+        style={[styles.body, { backgroundColor: colors.surface }]}>
         <ScrollView
           ref={scrollRef}
           style={{ backgroundColor: colors.surface, marginBottom: frame.frameBottom }}
