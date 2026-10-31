@@ -12,7 +12,7 @@ A spec's recommended direction stays **pending** until Owen decides on it in the
 | [Document blocks for publication articles (core FFI shapes)](document-blocks.md) | Decided by Wren (Oct 30, 2026); implementation follows |
 | [Bookmarks](bookmarks.md) | Approved Oct 30 2026; parity questions pending Echo |
 | [`.jwlibrary` backup: import and export](jwlibrary-backup.md) | Approved Oct 30 2026; parity questions pending Echo |
-| Studyspace infinite canvas | Planned |
+| [Studyspace canvas: feel findings and specs](studyspace-findings.md) | Draft (Oct 31, 2026): Kerning & Co. findings with Wren's rulings; open items pending Iris and Owen |
 | Omnisearch | Planned |
 | Note hyperlinks with inline previews | Planned |
 | Liquid Glass and platform fidelity guide | Planned |
