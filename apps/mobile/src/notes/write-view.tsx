@@ -16,10 +16,6 @@ import { useSyntaxSpans } from '@/notes/use-syntax-spans';
 
 const mono = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
 
-// A folded link target's size against the body's: the guide's ⋯ chip is
-// 0.62em, and the target is longer than one ⋯, so it goes smaller.
-const foldedScale = 0.4;
-
 // The body's sides as Android's theme pads a TextInput given no padding
 // (the EditText background's 4dp inset), for the caret mirror to wrap
 // alike. iOS pads none.
@@ -53,10 +49,11 @@ type WriteViewProps = {
  * such, code in mono, #tags in the accent. A '# Title' heading the body
  * starts with stays as written; Read hides it.
  *
- * A link target folds while the selection is outside it. The field's
- * children are its text, so the target can't be swapped for the guide's ⋯
- * without changing the note: it stays, drawn small and dimmed, and the
- * reader reads the real Markdown.
+ * A link's target shows in full, at the body's size, dimmed like the other
+ * markers. The styling depends only on the text, never on the caret or the
+ * selection: Android applies a change of spans alone in place, without a
+ * relayout, and a caret-driven restyle left lines undrawn. iOS draws the
+ * same, so both read the real Markdown alike.
  */
 export function WriteView({
   draft,
@@ -72,12 +69,9 @@ export function WriteView({
 }: WriteViewProps) {
   const { colors, m3, type } = useBerean();
   const spans = useSyntaxSpans(draft.content);
-  // The body's selection while it has focus, for folding link targets.
+  // The body's selection while it has focus, for the caret mirror only.
   const [bodySelection, setBodySelection] = useState<Selection>();
-  const segments = useMemo(
-    () => styledSegments(draft.content, spans, bodySelection),
-    [draft.content, spans, bodySelection],
-  );
+  const segments = useMemo(() => styledSegments(draft.content, spans), [draft.content, spans]);
 
   // How each kind of syntax looks. Markers keep the body's weight and slant
   // inside bold or italic text, as in the guide.
@@ -110,7 +104,6 @@ export function WriteView({
     2: type.reading.sectionHeading,
     3: styles.minorHeading,
   };
-  const foldedStyle: TextStyle = { fontSize: (type.reading.noteBody.fontSize ?? 15) * foldedScale };
 
   const segmentStyle = (segment: StyledSegment) => [
     segment.heading && headingStyles[segment.heading],
@@ -118,7 +111,6 @@ export function WriteView({
     segment.emphasis && styles.emphasis,
     segment.strike && styles.strike,
     segment.kind && kindStyles[segment.kind],
-    segment.folded && foldedStyle,
   ];
 
   return (

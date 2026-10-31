@@ -150,7 +150,7 @@ describe('styledSegments', () => {
       { text: '[', kind: 'linkBracket' },
       { text: 'John 1:9' },
       { text: '](', kind: 'linkBracket' },
-      { text: 'berean://bible/asv/john/1/9', kind: 'linkUrl', folded: true },
+      { text: 'berean://bible/asv/john/1/9', kind: 'linkUrl' },
       { text: ')', kind: 'linkBracket' },
       { text: ' ' },
       { text: '#grace', kind: 'tag' },
@@ -198,7 +198,7 @@ describe('styledSegments', () => {
     const segments = styledSegments(text, spans);
     assert.deepEqual(segments, [
       { text: '[John 1:9](', kind: 'linkBracket' },
-      { text: 'berean://x)', kind: 'linkUrl', folded: true },
+      { text: 'berean://x)', kind: 'linkUrl' },
     ]);
     assert.equal(joined(segments), text);
   });
@@ -219,98 +219,24 @@ describe('styledSegments', () => {
   });
 });
 
-describe('link target folding', () => {
-  const text = 'In [John 1:9](berean://bible/asv/john/1/9), the light';
-  const spans: SourceSpan[] = [
-    spanOf(text, '[', 'linkBracket'),
-    spanOf(text, '](', 'linkBracket'),
-    spanOf(text, 'berean://', 'linkUrl'),
-    spanOf(text, ')', 'linkBracket'),
-  ];
-  // The ](url) part, which the caret enters to unfold the target.
-  const opens = text.indexOf('](');
-  const closes = text.indexOf(')') + 1;
-
-  const target = (segments: StyledSegment[]) => segments.find((s) => s.kind === 'linkUrl');
-  const foldedAt = (start: number, end = start) => target(styledSegments(text, spans, { start, end }))?.folded === true;
-
-  test('folded while the field has no selection', () => {
-    assert.equal(target(styledSegments(text, spans))?.folded, true);
-  });
-
-  test('folded while the caret is elsewhere, or at the link’s edges', () => {
-    assert.equal(foldedAt(0), true);
-    assert.equal(foldedAt(text.length), true);
-    assert.equal(foldedAt(opens), true, 'caret at the end of the link text');
-    assert.equal(foldedAt(closes), true, 'caret just after the link');
-  });
-
-  test('unfolds once the caret enters it', () => {
-    assert.equal(foldedAt(opens + 1), false, 'between ] and (');
-    assert.equal(foldedAt(text.indexOf('john')), false, 'inside the target');
-    assert.equal(foldedAt(closes - 1), false, 'before the )');
-  });
-
-  test('unfolds for a selection across it, either way round', () => {
-    assert.equal(foldedAt(0, text.length), false);
-    assert.equal(foldedAt(text.length, 0), false);
-    assert.equal(foldedAt(0, opens), true, 'a selection that stops before it');
-  });
-
-  test('folding never changes the text', () => {
-    for (const caret of [undefined, { start: 0, end: 0 }, { start: opens + 3, end: opens + 3 }]) {
-      assert.equal(joined(styledSegments(text, spans, caret)), text);
-    }
-  });
-
-  test('the caret changes only folded: same cuts, kinds and marks inside or outside the link', () => {
-    // A size or structure change with the caret re-flows the field, and Android leaves lines undrawn.
-    const note = '# Light\nSee **[John 1:9](berean://x)** and `code`';
-    const noteSpans: SourceSpan[] = [
-      spanOf(note, '#', 'headingMarker'),
-      spanOf(note, '**', 'strongMarker'),
-      spanOf(note, '[', 'linkBracket'),
-      spanOf(note, '](', 'linkBracket'),
-      spanOf(note, 'berean://x', 'linkUrl'),
-      spanOf(note, ')', 'linkBracket'),
-      spanOf(note, '**', 'strongMarker', note.indexOf(')')),
-      spanOf(note, '`', 'codeMarker'),
-      spanOf(note, 'code', 'code'),
-      spanOf(note, '`', 'codeMarker', note.indexOf('code')),
+describe('link targets', () => {
+  test('a target is a plain dimmed run with its full URL, from the text alone', () => {
+    // No caret or selection goes in: Android leaves lines undrawn after a caret-driven restyle.
+    const text = 'In [John 1:9](berean://bible/asv/john/1/9), the light';
+    const spans: SourceSpan[] = [
+      spanOf(text, '[', 'linkBracket'),
+      spanOf(text, '](', 'linkBracket'),
+      spanOf(text, 'berean://bible/asv/john/1/9', 'linkUrl'),
+      spanOf(text, ')', 'linkBracket'),
     ];
-    const unfoldedShape = (selection?: { start: number; end: number }) =>
-      styledSegments(note, noteSpans, selection).map(({ folded: _folded, ...rest }) => rest);
-    const outside = unfoldedShape();
-    const inside = note.indexOf('berean://x') + 3;
-    assert.equal(
-      styledSegments(note, noteSpans, { start: inside, end: inside }).find((s) => s.kind === 'linkUrl')?.folded,
-      undefined,
+    assert.equal(styledSegments.length, 2, 'takes only the text and its spans');
+    const segments = styledSegments(text, spans);
+    assert.deepEqual(
+      segments.find((s) => s.kind === 'linkUrl'),
+      { text: 'berean://bible/asv/john/1/9', kind: 'linkUrl' },
     );
-    for (let caret = 0; caret <= note.length; caret++) {
-      assert.deepEqual(unfoldedShape({ start: caret, end: caret }), outside, `caret at ${caret}`);
-    }
-  });
-
-  test('each link folds on its own', () => {
-    const two = '[a](x://1) [b](x://2)';
-    const twoSpans: SourceSpan[] = [
-      spanOf(two, '[', 'linkBracket'),
-      spanOf(two, '](', 'linkBracket'),
-      spanOf(two, 'x://1', 'linkUrl'),
-      spanOf(two, ')', 'linkBracket'),
-      spanOf(two, '[', 'linkBracket', 5),
-      spanOf(two, '](', 'linkBracket', 5),
-      spanOf(two, 'x://2', 'linkUrl'),
-      spanOf(two, ')', 'linkBracket', 5),
-    ];
-    const caret = two.indexOf('x://2') + 1;
-    const folded = styledSegments(two, twoSpans, { start: caret, end: caret })
-      .filter((s) => s.kind === 'linkUrl')
-      .map((s) => [s.text, s.folded === true]);
-    assert.deepEqual(folded, [
-      ['x://1', true],
-      ['x://2', false],
-    ]);
+    assert.deepEqual(styledSegments(text, spans), segments, 'the same runs every time');
+    assert.equal(joined(segments), text);
   });
 });
 

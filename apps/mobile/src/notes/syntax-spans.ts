@@ -24,16 +24,12 @@ export type SyntaxKind =
 /** A range of the source, in UTF-16 offsets (what JS strings index by), end exclusive. */
 export type SourceSpan = { start: number; end: number; kind: SyntaxKind };
 
-/** The body field's selection, in UTF-16 offsets; start may be after end. */
-export type Selection = { start: number; end: number };
-
 /** A heading's level as Read draws it: 1, 2, or 3 and deeper. */
 export type HeadingLevel = 1 | 2 | 3;
 
 /**
  * A run of the source to draw: its syntax kind, if any, and what it sits
  * inside (a heading's line, between strong, emphasis or strike markers).
- * A folded run is a link target the selection is outside of.
  */
 export type StyledSegment = {
   text: string;
@@ -42,7 +38,6 @@ export type StyledSegment = {
   strong?: true;
   emphasis?: true;
   strike?: true;
-  folded?: true;
 };
 
 // The core's SpanKind is a number, its place in the enum. Keyed by that
@@ -142,47 +137,18 @@ function contentRanges(text: string, spans: readonly SourceSpan[]): Content[] {
 }
 
 /**
- * Where a link target unfolds: from the bracket just before it ("](") to the
- * one just after (")"), or the target alone without them.
- */
-function revealRange(spans: readonly SourceSpan[], i: number): { start: number; end: number } {
-  const before = spans[i - 1];
-  const after = spans[i + 1];
-  return {
-    start: before?.kind === 'linkBracket' ? before.start : spans[i].start,
-    end: after?.kind === 'linkBracket' ? after.end : spans[i].end,
-  };
-}
-
-/**
  * The text cut into runs that cover it exactly once, in order: each span's
  * run with its kind, plain runs between, each marked with the heading,
  * strong, emphasis or strike it sits inside. Spans are taken by start; a
  * span past the text is clipped to it, one overlapping an earlier span
  * keeps only its part after it, and an empty or invalid span is dropped.
  *
- * A link target is folded unless the selection is inside its reveal range
- * (an edge doesn't count, so a caret just after the link keeps it folded).
- * Without a selection (the field isn't focused) every target is folded.
+ * The runs depend on the text and its spans alone, never on the caret or
+ * the selection, so moving the caret never restyles the field.
  */
-export function styledSegments(
-  text: string,
-  spans: readonly SourceSpan[],
-  selection?: Selection,
-): StyledSegment[] {
+export function styledSegments(text: string, spans: readonly SourceSpan[]): StyledSegment[] {
   const sorted = normalized(text, spans);
   const content = contentRanges(text, sorted);
-
-  const unfolded = new Set<SourceSpan>();
-  if (selection !== undefined) {
-    const lo = Math.min(selection.start, selection.end);
-    const hi = Math.max(selection.start, selection.end);
-    sorted.forEach((span, i) => {
-      if (span.kind !== 'linkUrl') return;
-      const reveal = revealRange(sorted, i);
-      if (lo < reveal.end && hi > reveal.start) unfolded.add(span);
-    });
-  }
 
   const cuts = new Set([0, text.length]);
   for (const r of [...sorted, ...content]) {
@@ -206,7 +172,6 @@ export function styledSegments(
       if ('heading' in r) segment.heading = r.heading;
       else segment[r.mark] = true;
     }
-    if (span?.kind === 'linkUrl' && !unfolded.has(span)) segment.folded = true;
     segments.push(segment);
   }
   return segments;
