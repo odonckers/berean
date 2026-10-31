@@ -61,7 +61,7 @@ export function ListSection({ title, children }: { title?: string; children: Rea
 type ListRowProps = {
   label: string;
   icon?: SymbolName;
-  /** Trailing supporting text: a count. */
+  /** Trailing supporting text on the title line: a count, a date. */
   detail?: string;
   /** A second line under the label. */
   children?: ReactNode;
@@ -142,16 +142,36 @@ export function ListRow({
         ]}
       >
         <View style={styles.text}>
-          <UIText numberOfLines={2} style={{ color: labelColor }}>
-            {label}
-          </UIText>
+          {/* The detail and ⋮ trail the title line only (guide §7.1), so at
+              large text the title wraps across the row and the lines under
+              it run full width. */}
+          <View style={styles.titleLine}>
+            <UIText style={[styles.label, { color: labelColor }]}>{label}</UIText>
+            {detail !== undefined && (
+              <UIText secondary style={[styles.detail, material && { color: m3.onSurfaceVariant }]} {...hidden}>
+                {detail}
+              </UIText>
+            )}
+            {material && onMenu !== undefined && (
+              <Pressable
+                ref={menuRef}
+                accessibilityRole="button"
+                accessibilityLabel={menuLabel ?? `More actions for ${label}`}
+                onPress={openMenu}
+                hitSlop={0}
+                style={({ pressed }) => [styles.menuButton, { opacity: pressed ? 0.6 : 1 }]}
+              >
+                <ScaledSymbol
+                  name={{ ios: 'ellipsis', android: 'more_vert' }}
+                  size={24}
+                  tintColor={m3.onSurfaceVariant}
+                  {...hidden}
+                />
+              </Pressable>
+            )}
+          </View>
           {children}
         </View>
-        {detail !== undefined && (
-          <UIText secondary style={material && { color: m3.onSurfaceVariant }} {...hidden}>
-            {detail}
-          </UIText>
-        )}
         {chevron && !material && (
           <ScaledSymbol
             name={{ ios: 'chevron.right', android: 'chevron_right' }}
@@ -159,23 +179,6 @@ export function ListRow({
             tintColor={colors.textSecondary}
             {...hidden}
           />
-        )}
-        {material && onMenu !== undefined && (
-          <Pressable
-            ref={menuRef}
-            accessibilityRole="button"
-            accessibilityLabel={menuLabel ?? `More actions for ${label}`}
-            onPress={openMenu}
-            hitSlop={0}
-            style={({ pressed }) => [styles.menuButton, { opacity: pressed ? 0.6 : 1 }]}
-          >
-            <ScaledSymbol
-              name={{ ios: 'ellipsis', android: 'more_vert' }}
-              size={24}
-              tintColor={m3.onSurfaceVariant}
-              {...hidden}
-            />
-          </Pressable>
         )}
       </View>
     </Pressable>
@@ -268,7 +271,20 @@ const styles = StyleSheet.create({
     paddingEnd: spacing.lg,
   },
   text: { flex: 1, gap: 2 },
-  menuButton: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center', marginEnd: -spacing.md },
+  titleLine: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+  label: { flex: 1 },
+  detail: { flexShrink: 0 },
+  // The 48dp target reaches past the title line rather than heightening it,
+  // so the preview sits right under the title; the glyph centers on its
+  // first line.
+  menuButton: {
+    minWidth: 48,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginEnd: -spacing.md,
+    marginVertical: -spacing.md,
+  },
   swipeActions: { flexDirection: 'row' },
   swipeAction: {
     width: 76,
