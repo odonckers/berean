@@ -163,6 +163,7 @@ database errors.
 | Call | Sync/async | Notes |
 |---|---|---|
 | `render_markdown(markdown: &str) -> Result<Vec<Block>, CoreError>` | sync | Pure parse plus one installed-pubs query. Never fails on bad Markdown (CommonMark has no syntax errors); errors come only from the database. Cheap: pulldown-cmark parses tens of KB in well under a millisecond, so it's fine on the JS thread. The UI calls it on note open and when switching to Read. |
+| `markdown_spans(markdown: &str) -> Vec<SourceSpan>` | sync | Free function, no database, never fails. Styled ranges of the source for the Write view, from the same parser as `render_markdown`. Offsets are UTF-16 code units, half-open. Cheap enough to call on every keystroke. See Q7. |
 | `passage_url(span: &LocationSpan) -> Result<String, CoreError>` | sync | Free function. `Invalid` if the span isn't a Bible passage within one book. |
 | `publication_url(location: &Location) -> Result<String, CoreError>` | sync | Free function. `Invalid` if the location isn't a publication location. The UI builds the Markdown `[text](url)` itself; `text` is the reference shown to the user. |
 | `set_task(note_id: &str, index: u32, checked: bool) -> Result<(), CoreError>` | sync | Rewrites the nth task marker (`[ ]` / `[x]`) in the stored Markdown, using pulldown-cmark source offsets. Everything else stays byte-identical. `NotFound` for an unknown note; `Invalid` if `index` is out of range. See Q8. |
@@ -292,6 +293,39 @@ end, kind }>` with UTF-16 offsets (what `NSString` and JS strings use), from the
 the same syntax. It's a follow-up Holding board row (Core: markdown_spans for note editor syntax ranges, owner
 Echo), not in this row's first implementation PR. It must land before Expo 6 and Kiwi's notes editor.
 
+*Q7 shape.*
+
+```rust
+/// One styled range of a note's Markdown source, for the Write view.
+/// `start..end` is half-open, in UTF-16 code units (what JS strings and
+/// NSString/NSRange use), never splitting a surrogate pair.
+pub struct SourceSpan { pub start: u32, pub end: u32, pub kind: SpanKind }
+
+pub enum SpanKind {
+    // Content ranges: the whole construct, delimiters included.
+    Heading { level: u8 },   // ATX or setext, 1..=6
+    Strong,
+    Emphasis,
+    Strikethrough,
+    Code,                    // inline code span, backticks included
+    CodeBlock,               // fenced or indented, fences included
+    Link,                    // [text](url), [text][ref], <autolink>; images too
+    Quote,                   // a block quote
+    Tag,                     // an inline #tag, exactly the ranges inline tag sync uses
+    // Syntax ranges: the punctuation the Write view dims. Leaves; they never contain other spans.
+    LinkDestination,         // the URL inside a link's source, when it appears verbatim
+    ListMarker,              // "-", "*", "+", "1." / "1)"
+    TaskMarker,              // "[ ]", "[x]"
+    Rule,                    // a thematic break line
+    Syntax,                  // every other delimiter: "#"s, "**", "_", "~~", backticks, fences, ">", "[", "](", ")", "\\" escapes, setext underlines
+}
+```
+
+- Order: by `start` ascending, then `end` descending (outer before inner), so the UI can apply them in order.
+  Content spans may nest (`Strong` inside `Link` inside `Quote`); syntax spans are leaves.
+- Offsets are `u32`: a plain `number` in TS via ubrn (`u64` would become `bigint`). Notes are far below 4G
+  units.
+
 **Q8. Tappable checkboxes in the Read view (`set_task`).** **Decided:** include `set_task` in this row. The
 shape (`Task.index`) is already in the tree.
 
@@ -308,7 +342,8 @@ the call is async). No stateful preview handle.
 - Berean-native backup that keeps folders (Holding row).
 - Merge import.
 - Write-view spans: `markdown_spans` is a follow-up Holding row (Core: markdown_spans for note editor syntax
-  ranges, owner Echo). It must land before Expo 6 and Kiwi's notes editor (Q7).
+  ranges, owner Echo), now specified in Q7 and implemented in its own PR. It must land before Expo 6 and
+  Kiwi's notes editor.
 - Tables.
 
 ## 10. Implementation PR plan (after Wren decides)
