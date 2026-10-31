@@ -1,4 +1,5 @@
 import { Stack } from 'expo-router';
+import { Platform } from 'react-native';
 
 import { useBerean } from '@/design/theme';
 import { useStackOptions } from '@/design/use-stack-options';
@@ -8,12 +9,12 @@ import { UndoProvider } from '@/notes/undo-bar';
 export default function NotesLayout() {
   const screenOptions = useStackOptions();
   const { look } = useBerean();
-  // The iOS look draws its own back button: the native one is Android's
-  // arrow on Android.
+  // The iOS look on Android draws its own back button: the native one there
+  // is Android's arrow. Real iOS keeps the native one and its long-press menu.
   const back =
-    look === 'material'
-      ? null
-      : { headerBackVisible: false, headerLeft: ({ label }: { label?: string }) => <IosBackButton label={label} /> };
+    look === 'ios' && Platform.OS === 'android'
+      ? { headerBackVisible: false, headerLeft: ({ label }: { label?: string }) => <IosBackButton label={label} /> }
+      : null;
   return (
     // Undo floats over the whole stack, so it stays put while you move on.
     <UndoProvider>
