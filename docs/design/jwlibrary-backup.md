@@ -96,9 +96,9 @@ The restore UI:
 | Schema newer than 16 | `Invalid` | "This backup is from a newer version. Update Berean to import it." | OK (and Open App Store / Play Store in release builds) |
 | Schema older than 14 | `Invalid` | "This backup is from an older version of JW Library. Back up again from an updated JW Library, then import that file." | OK |
 | Interrupted or cancelled before the swap, or an I/O failure | `Cancelled` / `Io` | "Import stopped. Nothing was changed." | **Retry**, Close |
-| Out of storage | `Io` (the disk-full cause) | "Not enough storage to import this backup. Free up about 120 MB and try again." | Retry, Close |
+| Out of storage | `StorageFull` | "Not enough storage to import this backup. Free up about 120 MB and try again." | Retry, Close |
 
-Echo: out-of-storage currently arrives as a string inside `Io`. A distinct variant (or a stable code) would let the apps tell it apart reliably.
+The core reports out of storage as `StorageFull` for both import and export, whether it comes from a full disk during extract, SQLite's `SQLITE_FULL`, the zip write, or the final rename.
 
 ## 4. Export
 
@@ -110,7 +110,7 @@ Echo: out-of-storage currently arrives as a string inside `Io`. A distinct varia
 
 - **Progress:** a small sheet (a dialog in Material) with "Creating backup…", a determinate bar from `EXPORT_STEPS`, and **Cancel**. Cancel removes the partial file, since the core writes the file whole or not at all.
 - **Before sharing:** one footnote line under the progress or success: "Folders aren't included. JW Library doesn't have folders." It shows only when the user has folders.
-- **Errors:** "Couldn't create the backup." with **Retry**. Out of storage gets its own message: "Not enough storage to create the backup. Free up about 40 MB and try again."
+- **Errors:** "Couldn't create the backup." with **Retry**. Out of storage (`StorageFull`) gets its own message: "Not enough storage to create the backup. Free up about 40 MB and try again."
 - **Success:** on Mac, the save panel closing is the success, plus a "Backup saved" toast. On mobile, the share sheet is the success, with no extra screen.
 
 ## 5. Form factors

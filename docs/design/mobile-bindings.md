@@ -79,7 +79,7 @@ Every method throws `CoreError` on failure. All of them are synchronous except `
 Free functions: `coreVersion()` and `userDbSchema()`.
 
 **Records:** `PublicationSummary`, `DownloadPlan`, `HttpRequest`, `CatalogFilter`, `Language`, `TocEntry`, `ParagraphAnchor`, `Document`, `VerseAnchor`, `BibleChapter`, `Location`, `LocationSpan`.
-**Enums:** `PubKind` (Bible, Book, Brochure, Watchtower, Awake, Index, MeetingWorkbook, Other) and `CoreError` (NotFound, Corrupt, Io, Cancelled, Migration, Invalid).
+**Enums:** `PubKind` (Bible, Book, Brochure, Watchtower, Awake, Index, MeetingWorkbook, Other) and `CoreError` (NotFound, Corrupt, Io, StorageFull, Cancelled, Migration, Invalid).
 
 ## 4. Type mapping
 

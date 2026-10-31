@@ -38,6 +38,10 @@ pub enum CoreError {
     Corrupt,
     #[error("io error: {0}")]
     Io(String),
+    /// The device ran out of space (or a storage quota was hit). The
+    /// operation wrote nothing that lasts; the user can free space and retry.
+    #[error("storage is full")]
+    StorageFull,
     #[error("operation cancelled")]
     Cancelled,
     #[error("migration error: {0}")]
@@ -48,7 +52,11 @@ pub enum CoreError {
 
 impl From<std::io::Error> for CoreError {
     fn from(e: std::io::Error) -> Self {
-        CoreError::Io(e.to_string())
+        use std::io::ErrorKind;
+        match e.kind() {
+            ErrorKind::StorageFull | ErrorKind::QuotaExceeded => CoreError::StorageFull,
+            _ => CoreError::Io(e.to_string()),
+        }
     }
 }
 
@@ -64,6 +72,9 @@ impl From<rusqlite::Error> for CoreError {
                 ) =>
             {
                 CoreError::Corrupt
+            }
+            rusqlite::Error::SqliteFailure(err, _) if err.code == ErrorCode::DiskFull => {
+                CoreError::StorageFull
             }
             other => CoreError::Invalid(other.to_string()),
         }
@@ -401,5 +412,89 @@ mod tests {
         // Any migration failure surfaces as CoreError::Migration.
         let err: CoreError = rusqlite_migration::Error::FileLoad("boom".to_string()).into();
         assert!(matches!(err, CoreError::Migration(_)));
+    }
+
+    #[test]
+    fn storage_full_display() {
+        assert_eq!(CoreError::StorageFull.to_string(), "storage is full");
+    }
+
+    #[test]
+    fn io_out_of_space_maps_to_storage_full() {
+        use std::io::{Error, ErrorKind};
+        let err: CoreError = Error::from(ErrorKind::StorageFull).into();
+        assert!(matches!(err, CoreError::StorageFull), "got {err:?}");
+        let err: CoreError = Error::from(ErrorKind::QuotaExceeded).into();
+        assert!(matches!(err, CoreError::StorageFull), "got {err:?}");
+        let err: CoreError = Error::from(ErrorKind::PermissionDenied).into();
+        assert!(matches!(err, CoreError::Io(_)), "got {err:?}");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn writing_to_dev_full_is_storage_full() {
+        use std::io::Write;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .open("/dev/full")
+            .unwrap();
+        // ENOSPC comes back on the write (or, if buffered, the flush).
+        let err = file
+            .write_all(&[0u8; 4096])
+            .and_then(|()| file.flush())
+            .and_then(|()| file.sync_all())
+            .unwrap_err();
+        let err: CoreError = err.into();
+        assert!(matches!(err, CoreError::StorageFull), "got {err:?}");
+    }
+
+    #[test]
+    fn sqlite_full_maps_to_storage_full() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA max_page_count = 16; CREATE TABLE t (b BLOB);")
+            .unwrap();
+        let mut err = None;
+        for _ in 0..1000 {
+            if let Err(e) = conn.execute("INSERT INTO t VALUES (zeroblob(4096))", []) {
+                err = Some(e);
+                break;
+            }
+        }
+        let err = err.expect("the page cap should fill the database");
+        assert_eq!(err.sqlite_error_code(), Some(rusqlite::ErrorCode::DiskFull));
+        let err: CoreError = err.into();
+        assert!(matches!(err, CoreError::StorageFull), "got {err:?}");
+    }
+
+    #[test]
+    fn sqlite_corrupt_and_constraint_keep_their_mapping() {
+        use rusqlite::ffi;
+        let err: CoreError =
+            rusqlite::Error::SqliteFailure(ffi::Error::new(ffi::SQLITE_CORRUPT), None).into();
+        assert!(matches!(err, CoreError::Corrupt), "got {err:?}");
+        let err: CoreError =
+            rusqlite::Error::SqliteFailure(ffi::Error::new(ffi::SQLITE_CONSTRAINT), None).into();
+        assert!(matches!(err, CoreError::Invalid(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn zip_write_io_error_keeps_its_kind() {
+        use std::io::{Error, ErrorKind};
+        use zip::result::ZipError;
+        let err = userdata::zip_write_error(ZipError::Io(Error::from(ErrorKind::StorageFull)));
+        assert!(matches!(err, CoreError::StorageFull), "got {err:?}");
+        let err = userdata::zip_write_error(ZipError::FileNotFound);
+        assert!(matches!(err, CoreError::Io(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn persist_into_missing_dir_is_io_not_storage_full() {
+        let dir = tempfile::tempdir().unwrap();
+        let tmp = tempfile::NamedTempFile::new_in(dir.path()).unwrap();
+        let err = tmp
+            .persist(dir.path().join("missing").join("file"))
+            .map_err(|e| CoreError::from(e.error))
+            .unwrap_err();
+        assert!(matches!(err, CoreError::Io(_)), "got {err:?}");
     }
 }
