@@ -25,6 +25,13 @@
 //! Numbers, not names, so a link works in any UI language. `http`, `https`
 //! and `mailto` links are external; any other URL, or a malformed `berean://`
 //! one, is [`LinkTarget::Invalid`].
+//!
+//! The Write view styles the source itself with [`markdown_spans`], from the
+//! same parse.
+
+mod spans;
+
+pub use spans::{markdown_spans, SourceSpan, SpanKind};
 
 use std::iter::Peekable;
 use std::ops::Range;
@@ -321,10 +328,15 @@ struct Parsed {
     tags: Vec<Range<usize>>,
 }
 
+/// The Markdown note bodies are: CommonMark with strikethrough and task
+/// lists.
+fn options() -> Options {
+    Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS
+}
+
 fn parse(markdown: &str, installed: &dyn Fn(&str) -> bool) -> Parsed {
-    let options = Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
     let mut builder = Builder {
-        events: Parser::new_ext(markdown, options)
+        events: Parser::new_ext(markdown, options())
             .into_offset_iter()
             .peekable(),
         source: markdown,
