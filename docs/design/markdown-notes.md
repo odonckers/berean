@@ -229,6 +229,13 @@ CREATE TABLE IF NOT EXISTS BereanNoteFolder (
 CREATE INDEX IF NOT EXISTS IX_BereanNoteFolder_FolderId ON BereanNoteFolder (FolderId);
 ```
 
+The same file also holds Studyspace's `BereanWorkspace` (its viewport is the camera centre and zoom) and
+`BereanCanvasItem` (a workspace's cards: top-left frames, a cascading FK to `Note`, and each passage or excerpt
+card's reader state, a verse or paragraph URL plus a UTF-16 `ReaderCharOffset`, and a `LastUsedAt` timestamp,
+like `Note.LastModified`, bumped on add, read and touch, so link reuse picks the most recently used card); see
+`userdata_berean.sql`.
+Export drops them too.
+
 - **Side table, not a `FolderId` column on JW's `Note`** (recommended, Q2):
   - JW's tables stay byte-for-byte JW v16.
   - Export is two `DROP TABLE`s on the copy.
