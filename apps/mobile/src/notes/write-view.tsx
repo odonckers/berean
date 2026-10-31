@@ -1,11 +1,18 @@
-import { type Ref, type RefObject, useMemo } from 'react';
-import { StyleSheet, Text, TextInput, type TextInputInstance, type TextStyle } from 'react-native';
+import { type Ref, type RefObject, useMemo, useState } from 'react';
+import { Platform, StyleSheet, Text, TextInput, type TextInputInstance, type TextStyle } from 'react-native';
 
 import { useBerean } from '@/design/theme';
 import { spacing } from '@/design/tokens';
 import { type Selection } from '@/notes/format-edits';
 import { type Draft } from '@/notes/note-draft';
-import { type SyntaxKind, styledSegments, useSyntaxSpans } from '@/notes/syntax-spans';
+import { type HeadingLevel, type StyledSegment, type SyntaxKind, styledSegments } from '@/notes/syntax-spans';
+import { useSyntaxSpans } from '@/notes/use-syntax-spans';
+
+const mono = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
+
+// A folded link target's size against the body's: the guide's ⋯ chip is
+// 0.62em, and the target is longer than one ⋯, so it goes smaller.
+const foldedScale = 0.4;
 
 type WriteViewProps = {
   draft: Draft;
@@ -27,8 +34,14 @@ type WriteViewProps = {
  * A note in Write (guide §7.1): the title as the first line, H1-like in the
  * reading serif, semibold (Lumen: Note.Title, plain text, no '#'), then the
  * Markdown source, its syntax styled from the core's spans: markers dimmed
- * but visible. Plain until the core reports spans. A '# Title' heading the
- * body starts with stays as written; Read hides it.
+ * but visible, headings at Read's sizes, bold, italic and struck text as
+ * such, code in mono, #tags in the accent. A '# Title' heading the body
+ * starts with stays as written; Read hides it.
+ *
+ * A link target folds while the selection is outside it. The field's
+ * children are its text, so the target can't be swapped for the guide's ⋯
+ * without changing the note: it stays, drawn small and dimmed, and the
+ * reader reads the real Markdown.
  */
 export function WriteView({
   draft,
@@ -40,29 +53,56 @@ export function WriteView({
   selection,
   onSelectionChange,
 }: WriteViewProps) {
-  const { colors, type } = useBerean();
+  const { colors, m3, type } = useBerean();
   const spans = useSyntaxSpans(draft.content);
-  const segments = useMemo(() => styledSegments(draft.content, spans), [draft.content, spans]);
+  // The body's selection while it has focus, for folding link targets.
+  const [bodySelection, setBodySelection] = useState<Selection>();
+  const segments = useMemo(
+    () => styledSegments(draft.content, spans, bodySelection),
+    [draft.content, spans, bodySelection],
+  );
 
-  // How each kind of syntax looks.
+  // How each kind of syntax looks. Markers keep the body's weight and slant
+  // inside bold or italic text, as in the guide.
   const kindStyles = useMemo((): Record<SyntaxKind, TextStyle | undefined> => {
-    const dimmed = { color: colors.textSecondary };
+    const dimmed: TextStyle = {
+      color: colors.textSecondary,
+      fontWeight: '400',
+      fontStyle: 'normal',
+      textDecorationLine: 'none',
+    };
     return {
       headingMarker: dimmed,
       emphasisMarker: dimmed,
       strongMarker: dimmed,
       strikeMarker: dimmed,
       codeMarker: dimmed,
-      code: undefined,
+      code: { ...styles.code, backgroundColor: m3.surfaceContainer },
       linkBracket: dimmed,
       linkUrl: dimmed,
       listMarker: dimmed,
       taskMarker: dimmed,
       quoteMarker: dimmed,
       rule: dimmed,
-      tag: undefined,
+      tag: { color: colors.accent },
     };
-  }, [colors]);
+  }, [colors, m3]);
+
+  const headingStyles: Record<HeadingLevel, TextStyle> = {
+    1: type.reading.chapterHeading,
+    2: type.reading.sectionHeading,
+    3: styles.minorHeading,
+  };
+  const foldedStyle: TextStyle = { fontSize: (type.reading.noteBody.fontSize ?? 15) * foldedScale };
+
+  const segmentStyle = (segment: StyledSegment) => [
+    segment.heading && headingStyles[segment.heading],
+    segment.strong && styles.strong,
+    segment.emphasis && styles.emphasis,
+    segment.strike && styles.strike,
+    segment.kind && kindStyles[segment.kind],
+    segment.folded && foldedStyle,
+  ];
 
   return (
     <>
@@ -89,9 +129,15 @@ export function WriteView({
         ref={bodyRef}
         onChangeText={(content) => onChange({ ...draft, content })}
         onFocus={() => onFieldFocus?.('body', true)}
-        onBlur={() => onFieldFocus?.('body', false)}
+        onBlur={() => {
+          setBodySelection(undefined);
+          onFieldFocus?.('body', false);
+        }}
         selection={selection}
-        onSelectionChange={(e) => onSelectionChange?.(e.nativeEvent.selection)}
+        onSelectionChange={(e) => {
+          setBodySelection(e.nativeEvent.selection);
+          onSelectionChange?.(e.nativeEvent.selection);
+        }}
         multiline
         placeholder="Write in Markdown"
         placeholderTextColor={colors.textSecondary}
@@ -101,7 +147,7 @@ export function WriteView({
         style={[type.reading.noteBody, styles.content, { color: colors.text }]}
       >
         {segments.map((segment, i) => (
-          <Text key={i} style={segment.kind && kindStyles[segment.kind]}>
+          <Text key={i} style={segmentStyle(segment)}>
             {segment.text}
           </Text>
         ))}
@@ -114,4 +160,10 @@ const styles = StyleSheet.create({
   // No rule under it: the first line of the note, not a form field.
   title: { minHeight: 48, paddingVertical: spacing.sm },
   content: { minHeight: 240, paddingVertical: spacing.sm },
+  // As Read draws them (note-body).
+  minorHeading: { fontWeight: '600', fontSize: 17, lineHeight: 24 },
+  strong: { fontWeight: '700' },
+  emphasis: { fontStyle: 'italic' },
+  strike: { textDecorationLine: 'line-through' },
+  code: { fontFamily: mono, fontSize: 14 },
 });
