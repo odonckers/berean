@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { type FormatBarFrame, type FormatBarState, formatBarBottom, formatBarPlacement } from './format-bar-placement.ts';
+import {
+  type FormatBarFrame,
+  type FormatBarState,
+  formatBarBottom,
+  formatBarPlacement,
+  type ScrollFrameState,
+  scrollFrame,
+} from './format-bar-placement.ts';
 
 const state = (over: Partial<FormatBarState>): FormatBarState => ({
   writing: true,
@@ -63,5 +70,38 @@ describe('format bar bottom', () => {
 
   test('hidden: nothing', () => {
     assert.equal(formatBarBottom(frame({ placement: 'hidden', keyboardFromWindowBottom: 342, dockedInset: 48 })), 0);
+  });
+});
+
+const scroll = (over: Partial<ScrollFrameState>): ScrollFrameState => ({
+  writing: true,
+  placement: 'keyboard',
+  toolsBottom: 0,
+  toolsHeight: 0,
+  bottomInset: 0,
+  writeEnd: 24,
+  readEnd: 48,
+  ...over,
+});
+
+describe('scroll frame', () => {
+  test('Write above the keyboard: the frame ends at the tools, a little room after the last line', () => {
+    const above = { toolsBottom: 214, toolsHeight: 52, bottomInset: 48 };
+    assert.deepEqual(scrollFrame(scroll(above)), { frameBottom: 266, paddingBottom: 24 });
+  });
+
+  test('Write docked: the frame ends at the tools over the system bars', () => {
+    const docked = { placement: 'docked', toolsBottom: 48, toolsHeight: 52, bottomInset: 48 } as const;
+    assert.deepEqual(scrollFrame(scroll(docked)), { frameBottom: 100, paddingBottom: 24 });
+  });
+
+  test('Write with the tools hidden: the whole body, padded clear of the system bars', () => {
+    const hidden = { placement: 'hidden', toolsHeight: 52, bottomInset: 48 } as const;
+    assert.deepEqual(scrollFrame(scroll(hidden)), { frameBottom: 0, paddingBottom: 72 });
+  });
+
+  test('Read: the whole body, with more room after the last line', () => {
+    const read = { writing: false, placement: 'hidden', bottomInset: 48 } as const;
+    assert.deepEqual(scrollFrame(scroll(read)), { frameBottom: 0, paddingBottom: 96 });
   });
 });

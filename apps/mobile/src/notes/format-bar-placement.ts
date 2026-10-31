@@ -60,3 +60,45 @@ export function formatBarBottom({
       return 0;
   }
 }
+
+export type ScrollFrameState = {
+  /** In Write, rather than Read. */
+  writing: boolean;
+  placement: FormatBarPlacement;
+  /** formatBarBottom's answer. */
+  toolsBottom: number;
+  /** The suggestion and the bar together, as laid out. */
+  toolsHeight: number;
+  /** The safe area's bottom inset. */
+  bottomInset: number;
+  /** Room after the last line in Write, and in Read. */
+  writeEnd: number;
+  readEnd: number;
+};
+
+export type ScrollFrame = {
+  /** How far above the editor's bottom the scroll view's frame ends. */
+  frameBottom: number;
+  /** The content's own padding below the last line. */
+  paddingBottom: number;
+};
+
+/**
+ * With the tools up, the scroll view ends at their top instead of padding
+ * under them: scrolling to the caret only keeps it inside the scroll
+ * view's bounds, so bounds running behind the bar (and the keyboard,
+ * Android being edge to edge) let the caret's line hide there.
+ */
+export function scrollFrame({
+  writing,
+  placement,
+  toolsBottom,
+  toolsHeight,
+  bottomInset,
+  writeEnd,
+  readEnd,
+}: ScrollFrameState): ScrollFrame {
+  if (!writing) return { frameBottom: 0, paddingBottom: bottomInset + readEnd };
+  if (placement === 'hidden') return { frameBottom: 0, paddingBottom: bottomInset + writeEnd };
+  return { frameBottom: toolsBottom + toolsHeight, paddingBottom: writeEnd };
+}

@@ -262,6 +262,34 @@ describe('link target folding', () => {
     }
   });
 
+  test('the caret changes only folded: same cuts, kinds and marks inside or outside the link', () => {
+    // A size or structure change with the caret re-flows the field, and Android leaves lines undrawn.
+    const note = '# Light\nSee **[John 1:9](berean://x)** and `code`';
+    const noteSpans: SourceSpan[] = [
+      spanOf(note, '#', 'headingMarker'),
+      spanOf(note, '**', 'strongMarker'),
+      spanOf(note, '[', 'linkBracket'),
+      spanOf(note, '](', 'linkBracket'),
+      spanOf(note, 'berean://x', 'linkUrl'),
+      spanOf(note, ')', 'linkBracket'),
+      spanOf(note, '**', 'strongMarker', note.indexOf(')')),
+      spanOf(note, '`', 'codeMarker'),
+      spanOf(note, 'code', 'code'),
+      spanOf(note, '`', 'codeMarker', note.indexOf('code')),
+    ];
+    const unfoldedShape = (selection?: { start: number; end: number }) =>
+      styledSegments(note, noteSpans, selection).map(({ folded: _folded, ...rest }) => rest);
+    const outside = unfoldedShape();
+    const inside = note.indexOf('berean://x') + 3;
+    assert.equal(
+      styledSegments(note, noteSpans, { start: inside, end: inside }).find((s) => s.kind === 'linkUrl')?.folded,
+      undefined,
+    );
+    for (let caret = 0; caret <= note.length; caret++) {
+      assert.deepEqual(unfoldedShape({ start: caret, end: caret }), outside, `caret at ${caret}`);
+    }
+  });
+
   test('each link folds on its own', () => {
     const two = '[a](x://1) [b](x://2)';
     const twoSpans: SourceSpan[] = [

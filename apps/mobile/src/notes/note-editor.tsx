@@ -31,7 +31,7 @@ import { changeNotes, findNote, makeReferencer, useNotesRead } from '@/notes/dat
 import { folderTrail, noteMetaLine } from '@/notes/folders';
 import { FormatBar } from '@/notes/format-bar';
 import { FORMAT_BAR_DOCK_DELAY_MS, FORMAT_BAR_WHEN_KEYBOARD_CLOSED } from '@/notes/format-bar-config';
-import { formatBarBottom, formatBarPlacement } from '@/notes/format-bar-placement';
+import { formatBarBottom, formatBarPlacement, scrollFrame } from '@/notes/format-bar-placement';
 import { applyFormat, type EditState, type FormatAction, insertLink, replaceRange, type Selection } from '@/notes/format-edits';
 import { ModeSwitch, type NoteMode } from '@/notes/mode-switch';
 import { NoteAppBar } from '@/notes/note-app-bar';
@@ -291,6 +291,17 @@ export function NoteEditor({
     bodyGapFromWindowBottom: bodyGap.gap,
     dockedInset: insets.bottom,
   });
+  // In Write the scroll view ends at the tools' top, so scrolling to the
+  // caret brings its line above the bar rather than behind it.
+  const frame = scrollFrame({
+    writing: mode === 'write',
+    placement,
+    toolsBottom,
+    toolsHeight,
+    bottomInset: insets.bottom,
+    writeEnd: spacing.xl,
+    readEnd: spacing.xxxl,
+  });
 
   return (
     <>
@@ -304,18 +315,15 @@ export function NoteEditor({
       ) : (
         <Stack.Screen options={{ title: '', ...headerOptions }} />
       )}
-      <View ref={bodyViewRef} onLayout={bodyGap.measure} style={styles.body}>
+      {/* Surface behind the tools too, where the scroll view now stops short. */}
+      <View ref={bodyViewRef} onLayout={bodyGap.measure} style={[styles.body, { backgroundColor: colors.surface }]}>
         <ScrollView
-          style={{ backgroundColor: colors.surface }}
+          style={{ backgroundColor: colors.surface, marginBottom: frame.frameBottom }}
           keyboardShouldPersistTaps="handled"
           contentInsetAdjustmentBehavior="automatic"
           contentContainerStyle={{
             paddingTop: insets.top + spacing.lg,
-            // In Write the last line scrolls clear of the tools, wherever they sit.
-            paddingBottom:
-              mode === 'write'
-                ? (showTools ? toolsBottom + toolsHeight : insets.bottom) + spacing.xl
-                : insets.bottom + spacing.xxxl,
+            paddingBottom: frame.paddingBottom,
             paddingLeft: insets.left + spacing.lg,
             paddingRight: insets.right + spacing.lg,
           }}
