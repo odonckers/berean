@@ -1,6 +1,6 @@
-import { SymbolView } from 'expo-symbols';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { ScaledSymbol } from '@/components/scaled-symbol';
 import { UIText } from '@/components/text';
 import { useBerean } from '@/design/theme';
 import { radii, spacing } from '@/design/tokens';
@@ -16,7 +16,8 @@ type FilterChipProps = {
  * A filter chip. Material look: an M3 filter chip, a 32dp visual inside a
  * 48dp touch target, outlined when off and filled with a leading check when
  * on. iOS look: a filled capsule at least 44pt tall, accent-filled when on.
- * Heights are minimums so scaled text grows the chip instead of clipping.
+ * Heights are minimums so scaled text grows the chip instead of clipping;
+ * the check scales with the text too and never shrinks for a long label.
  */
 export function FilterChip({ label, selected, onPress, accessibilityLabel }: FilterChipProps) {
   const { look, colors, m3 } = useBerean();
@@ -46,9 +47,10 @@ export function FilterChip({ label, selected, onPress, accessibilityLabel }: Fil
           ]}
         >
           {selected && (
-            <SymbolView
+            <ScaledSymbol
               name={{ ios: 'checkmark', android: 'check' }}
               size={CHECK_SIZE}
+              style={styles.check}
               tintColor={m3.onSecondaryContainer}
               accessible={false}
               importantForAccessibility="no-hide-descendants"
@@ -106,8 +108,9 @@ const styles = StyleSheet.create({
     borderRadius: radii.materialChip,
     borderWidth: 1,
   },
+  check: { flexShrink: 0 },
   // M3 label large.
-  materialLabel: { fontSize: 14, lineHeight: 20, fontWeight: '500' },
+  materialLabel: { flexShrink: 1, fontSize: 14, lineHeight: 20, fontWeight: '500' },
   iosChip: {
     minHeight: IOS_TARGET,
     minWidth: IOS_TARGET,
