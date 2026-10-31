@@ -11,8 +11,8 @@ import { undoDuration, undoMessages } from '@/notes/undo';
 type Pending = { id: number; label: string; onUndo: () => void };
 
 type UndoContextValue = {
-  /** Offer Undo for "<subject> deleted". */
-  show: (subject: string, onUndo: () => void) => void;
+  /** Offer Undo for "<subject> deleted" (Material) or Deleted “<name>” (iOS look). */
+  show: (subject: string, name: string, onUndo: () => void) => void;
   /** The bar's height while it shows, 0 otherwise: a FAB rises by this. */
   height: number;
 };
@@ -38,12 +38,15 @@ export function UndoProvider({ children }: { children: ReactNode }) {
   const [height, setHeight] = useState(0);
   const nextId = useRef(0);
 
-  const show = useCallback((subject: string, onUndo: () => void) => {
-    const { label, announcement } = undoMessages(subject);
-    nextId.current += 1;
-    setPending({ id: nextId.current, label, onUndo });
-    AccessibilityInfo.announceForAccessibility(announcement);
-  }, []);
+  const show = useCallback(
+    (subject: string, name: string, onUndo: () => void) => {
+      const { label, announcement } = undoMessages(look, subject, name);
+      nextId.current += 1;
+      setPending({ id: nextId.current, label, onUndo });
+      AccessibilityInfo.announceForAccessibility(announcement);
+    },
+    [look],
+  );
 
   // Each new offer restarts the clock; the newest replaces the last.
   useEffect(() => {

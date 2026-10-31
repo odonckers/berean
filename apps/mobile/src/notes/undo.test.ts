@@ -11,10 +11,17 @@ describe('undo', () => {
     assert.equal(undoDuration(true), 16_000);
   });
 
-  test('label and announcement', () => {
-    assert.deepEqual(undoMessages('Folder'), {
+  test('Material: the snackbar says what kind of thing went', () => {
+    assert.deepEqual(undoMessages('material', 'Folder', 'Signs'), {
       label: 'Folder deleted',
       announcement: 'Folder deleted. Undo available.',
+    });
+  });
+
+  test('iOS look: the toast names it, in curly quotes', () => {
+    assert.deepEqual(undoMessages('ios', 'Folder', 'Signs'), {
+      label: 'Deleted “Signs”',
+      announcement: 'Deleted “Signs”. Undo available.',
     });
   });
 });

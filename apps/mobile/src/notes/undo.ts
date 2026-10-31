@@ -10,7 +10,15 @@ export function undoDuration(screenReaderOn: boolean): number {
   return screenReaderOn ? UNDO_SCREEN_READER_MS : UNDO_MS;
 }
 
-/** What the bar shows and what is announced as it appears. */
-export function undoMessages(subject: string): { label: string; announcement: string } {
-  return { label: `${subject} deleted`, announcement: `${subject} deleted. Undo available.` };
+/**
+ * What the bar shows and what is announced as it appears (guide §7.1).
+ * Material: "Folder deleted"; iOS look: Deleted “Signs”, naming what went.
+ */
+export function undoMessages(
+  look: 'ios' | 'material',
+  subject: string,
+  name: string,
+): { label: string; announcement: string } {
+  const label = look === 'material' ? `${subject} deleted` : `Deleted “${name}”`;
+  return { label, announcement: `${label}. Undo available.` };
 }

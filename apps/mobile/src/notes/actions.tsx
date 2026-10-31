@@ -125,7 +125,7 @@ export function useFolderActions(folders: readonly Folder[]) {
         onPress: () => {
           try {
             const deleted = userdata().deleteFolder(folder.id);
-            undo.show('Folder', () =>
+            undo.show('Folder', folder.name, () =>
               reportError(changeNotes(() => userdata().restoreFolder(deleted)), 'Couldn’t restore the folder'),
             );
           } catch (e) {
