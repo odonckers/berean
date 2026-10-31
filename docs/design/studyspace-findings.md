@@ -55,7 +55,7 @@ The core model is Echo's (`echo/studyspace`); the full write-up with sources is 
 | Items | `{ id, workspace_id, kind, x, y, w, h, z }`. x,y is the **top-left** corner. `z` is an integer, and bring-to-front sets max+1. No rotation in v1. Recommended validation: 24 ≤ w,h ≤ 8192 | Core |
 | Content bounds | Apps compute them from `items()` for fit-all and the soft edges | Apps |
 | Reader card | `anchor` = core `Location` (a verse, or a paragraph id) at the top visible line, plus `char_offset` in **UTF-16 code units** into the core's plain text for that block. Clamp to the block length on restore; if the anchor is gone, use the nearest earlier block. Two cards of one publication keep separate state | Core |
-| `last_used_at` (**proposed**, pending Wren) | A column on the canvas item, exposed as `CanvasItem.last_used_at`. Set when the item is added; bumped by `set_reader_state` and by a new `touch_item(item_id)` on focus or note-link reuse (§6.6) | Core (Echo) |
+| `last_used_at` (decided, Wren) | A column on the canvas item, exposed as `CanvasItem.last_used_at`. Set when the item is added; bumped by `set_reader_state` and by a new `touch_item(item_id)` on focus or note-link reuse (§6.6). Approved and in Echo's core PR | Core (Echo) |
 | Not persisted | Focus, `preFocusViewport`, `moved_while_focused` | App session state |
 | On their own row | `selection` and `study_pane` per reader card (Echo's separate row) | Core, later |
 | Annotations | Reuse `userdata::TextRange` (JW word tokens). Pencil styles are on row …FCK8U (§6.7) | Core, later |
@@ -255,7 +255,7 @@ Direction A, **tap to focus**, was picked over B (hand-off at the scroll ends, w
 
 ### 6.5 Note links: open or reuse — [frame 08](studyspace-frames/08-note-link-open-vs-reuse.png)
 
-Links in notes are underlined. (Underline means link; see §10, item 1.) Tapping a scripture link in a note on the canvas:
+Links in notes are underlined. (Underline means link. A Pencil underline is a thick coloured stroke, distinct from that; §11.) Tapping a scripture link in a note on the canvas:
 
 | Case | Result |
 | --- | --- |
@@ -273,7 +273,7 @@ Links in notes are underlined. (Underline means link; see §10, item 1.) Tapping
 | --- | --- |
 | `anchor` + `char_offset` | The core `Location` of the block at the top visible line, plus a UTF-16 offset into the core's plain text for that block. Never a page or pixel. Saved when a scroll **settles**, not per frame. Restored by reflowing to the anchor, so it survives text-size changes and resizes |
 | Missing anchor | After a publication update: clamp the offset to the block's length, and if the block is gone, use the nearest earlier block |
-| **`last_used_at`** (**proposed**) | Persisted timestamp, the tie-break in §6.5(b). Echo's plan, pending Wren's ok: a column on the canvas item (`CanvasItem.last_used_at`), set when the card is added, bumped by `set_reader_state` (so when the **text scroll settles**) and by a new `touch_item(item_id)` when the card is **focused** (including opening the full-screen reader from it on a phone) or **reused by a note link** |
+| **`last_used_at`** (decided, Wren) | Persisted timestamp, the tie-break in §6.5(b). A column on the canvas item (`CanvasItem.last_used_at`), set when the card is added, bumped by `set_reader_state` (so when the **text scroll settles**) and by a new `touch_item(item_id)` when the card is **focused** (including opening the full-screen reader from it on a phone) or **reused by a note link**. Approved and in Echo's core PR |
 | Separate state | Two cards of the same publication each keep their own anchor and `last_used_at` |
 | Selection and study pane | `selection: Option<LocationSpan>` and `study_pane: Option<{ tab, verse }>`, on Echo's separate row |
 | Not saved | Focus, `preFocusViewport`, `moved_while_focused` |
@@ -377,15 +377,12 @@ Links in notes are underlined. (Underline means link; see §10, item 1.) Tapping
 
 | # | Item | For | Board row |
 | --- | --- | --- | --- |
-| 1 | **Underline as an annotation style** conflicts with "underlines are only for links" (guide §7.2, frame 08). Proposal: draw Pencil underlines as a thick colour stroke under the text, visibly different from the thin link underline, and say "Underlined, yellow" | Owen via Wren | …FCK8U |
-| 2 | **Android haptic** constant for snapping, and whether long press on Android uses 500 ms or the system 400 ms for custom recognizers | Otter | Expo 7 |
-| 3 | **Studyspace in backups:** whether `.jwlibrary` export carries workspaces and cameras. Parked with the backup work. Lumen recommends yes; JW Library ignores unknown tables | Owen (when backups resume) | …FCPpc |
-| 4 | **Connectors** | Owen | …FCK6w |
-| 5 | **Pinned card layouts** (Compact / Snippet / Full) | Lumen, after v1 | `PVTI_lAHOALCvmc4BpDa0zhFCM8I` |
-| 6 | **Pencil annotation storage** (§6.7) and `selection` / `study_pane` | Echo | …FCK8U; Echo's own row |
-| 7 | **Measure on device:** the 0.998 `rawValue` on current iOS, web and Windows trackpad momentum, and the rubber-band 0.55 constant | Kiwi, Otter | Expo 7 |
-| 8 | **`last_used_at` on the canvas item** (Echo's plan: set on add, bumped by `set_reader_state` and `touch_item`) | Wren | Expo 7 |
-| 9 | **Unverified app facts** in §1: Scrintal, MarginNote 4 and Allume numbers, Miro's content-dependent minimum, and Figma's tap-vs-hold Space | Iris / Magpie | — |
+| 1 | **Android haptic** constant for snapping, and whether long press on Android uses 500 ms or the system 400 ms for custom recognizers | Otter | Expo 7 |
+| 2 | **Studyspace in backups:** whether `.jwlibrary` export carries workspaces and cameras. Parked with the backup work. Lumen recommends yes; JW Library ignores unknown tables | Owen (when backups resume) | …FCPpc |
+| 3 | **Pinned card layouts** (Compact / Snippet / Full) | Lumen, after v1 | `PVTI_lAHOALCvmc4BpDa0zhFCM8I` |
+| 4 | **Pencil annotation storage** (§6.7) and `selection` / `study_pane` | Echo | …FCK8U; Echo's own row |
+| 5 | **Measure on device:** the 0.998 `rawValue` on current iOS, web and Windows trackpad momentum, and the rubber-band 0.55 constant | Kiwi, Otter | Expo 7 |
+| 6 | **Unverified app facts** in §1: Scrintal, MarginNote 4 and Allume numbers, Miro's content-dependent minimum, and Figma's tap-vs-hold Space | Iris / Magpie | — |
 
 ## 11. Decisions
 
@@ -403,7 +400,7 @@ Links in notes are underlined. (Underline means link; see §10, item 1.) Tapping
 | 10 | Zoom-out minimum 10%; only fit-all may go to 2% | Wren, 2:08 PM |
 | 11 | Studyspace in backups: parked with the backup work | Wren, 2:08 PM (row …FCPpc) |
 | 12 | Camera = centre + scale per workspace; reader anchor = `Location` + UTF-16 `char_offset`; items at the top-left, integer z, no rotation | Echo adopted (Lumen's proposal over Iris's centre origin and height fraction) |
-| 13 | `last_used_at` per reader card, as a column on the canvas item, bumped on add, `set_reader_state` and `touch_item` | **Proposed**: Lumen asked; Echo planned it; pending Wren |
+| 13 | `last_used_at` per reader card, as a column on the canvas item, bumped on add, `set_reader_state` and `touch_item` | Wren (approved; in Echo's core PR) |
 | 14 | Pinch settle B: soft detents at 100% and fit-all only; steps for ⌘+ / ⌘− only | Kerning & Co. (Iris); adopted by Lumen |
 | 15 | Rubber band in log zoom, d = 0.5 octave; Reduce Motion settle 150 ms | Kerning & Co. (opinion); adopted by Lumen |
 | 16 | Marquee picks what it touches; Pencil lasso picks what it encloses; Material phone Select mode by long press or overflow | Kerning & Co. (opinion); adopted by Lumen |
@@ -414,6 +411,7 @@ Links in notes are underlined. (Underline means link; see §10, item 1.) Tapping
 | 21 | Double tap / double click on empty canvas only, toggling 100% at the point ↔ fit-all on every device; taps on cards stay instant. Replaces the phone-only card ↔ fit-all toggle and "next zoom step" | Iris, 2:24 PM |
 | 22 | Minimum reader card size as a formula (32 characters + padding × header + 5 lines at 1.5× + padding) | Iris, 2:24 PM |
 | 23 | Workspace switch: 150 ms cross-fade for everyone, at the saved camera; announce name and card count | Iris, 2:24 PM |
+| 24 | Pencil underline annotations draw as a thick coloured stroke, clearly distinct from a link underline | Wren |
 
 ## 12. References
 
