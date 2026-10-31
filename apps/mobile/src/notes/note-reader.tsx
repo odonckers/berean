@@ -93,15 +93,16 @@ export function NoteReader({ id, embedded = false, onDeleted, fill }: NoteReader
       <Pressable
         ref={moreRef}
         accessibilityRole="button"
-        accessibilityLabel="More actions"
+        accessibilityLabel={material ? 'More actions' : `More actions for ${noteTitle(note)}`}
         onPress={openMore}
         style={({ pressed }) => [
           styles.iconButton,
           { minWidth: material ? 48 : 44, minHeight: material ? 48 : 44, opacity: pressed ? 0.6 : 1 },
         ]}
       >
+        {/* iOS look: ellipsis.circle, Material Symbols' circled dots on Android. */}
         <ScaledSymbol
-          name={{ ios: 'ellipsis.circle', android: 'more_vert' }}
+          name={material ? { ios: 'ellipsis.circle', android: 'more_vert' } : { ios: 'ellipsis.circle', android: 'pending' }}
           size={22}
           tintColor={material ? m3.onSurfaceVariant : colors.accent}
         />
