@@ -28,3 +28,35 @@ export function formatBarPlacement({
   if (fieldFocused || whenKeyboardClosed === 'show') return 'docked';
   return 'hidden';
 }
+
+export type FormatBarFrame = {
+  placement: FormatBarPlacement;
+  /** How far the keyboard's top is from the window's bottom (keyboardBottom in palette-frame.ts). */
+  keyboardFromWindowBottom: number;
+  /** How far the editor's bottom edge is from the window's bottom: a tab bar or the navigation bar below it. */
+  bodyGapFromWindowBottom: number;
+  /** The bar's offset docked at the editor's bottom, over the system bars. */
+  dockedInset: number;
+};
+
+/**
+ * The tools' `bottom` inside the editor. The keyboard is measured from the
+ * window's bottom but the editor may end above it (Android's native tab bar
+ * and navigation bar), so whatever lies below the editor comes off; a
+ * keyboard shorter than that leaves the bar at the editor's bottom.
+ */
+export function formatBarBottom({
+  placement,
+  keyboardFromWindowBottom,
+  bodyGapFromWindowBottom,
+  dockedInset,
+}: FormatBarFrame): number {
+  switch (placement) {
+    case 'keyboard':
+      return Math.max(0, keyboardFromWindowBottom - bodyGapFromWindowBottom);
+    case 'docked':
+      return dockedInset;
+    case 'hidden':
+      return 0;
+  }
+}

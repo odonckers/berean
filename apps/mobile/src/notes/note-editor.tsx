@@ -1,5 +1,5 @@
 import { router, Stack, useIsFocused } from 'expo-router';
-import { type ComponentRef, useEffect, useRef, useState } from 'react';
+import { type ComponentRef, type RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   type ColorValue,
@@ -14,7 +14,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaFrame, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useEditorModeShortcuts } from '../../modules/berean-shortcuts';
 import { keyboardBottom } from '@/components/palette-frame';
@@ -31,7 +31,7 @@ import { changeNotes, findNote, makeReferencer, useNotesRead } from '@/notes/dat
 import { folderTrail, noteMetaLine } from '@/notes/folders';
 import { FormatBar } from '@/notes/format-bar';
 import { FORMAT_BAR_DOCK_DELAY_MS, FORMAT_BAR_WHEN_KEYBOARD_CLOSED } from '@/notes/format-bar-config';
-import { formatBarPlacement } from '@/notes/format-bar-placement';
+import { formatBarBottom, formatBarPlacement } from '@/notes/format-bar-placement';
 import { applyFormat, type EditState, type FormatAction, insertLink, replaceRange, type Selection } from '@/notes/format-edits';
 import { ModeSwitch, type NoteMode } from '@/notes/mode-switch';
 import { NoteAppBar } from '@/notes/note-app-bar';
@@ -108,6 +108,7 @@ export function NoteEditor({
   const moreRef = useRef<ComponentRef<typeof Pressable>>(null);
   const safe = useSafeAreaInsets();
   const bodyRef = useRef<TextInputInstance>(null);
+  const bodyViewRef = useRef<ComponentRef<typeof View>>(null);
   const titleRef = useRef<TextInputInstance>(null);
   // The body's selection as the field reports it, and one set by an edit
   // from the bar until the field reports it back.
@@ -131,6 +132,7 @@ export function NoteEditor({
     whenKeyboardClosed: FORMAT_BAR_WHEN_KEYBOARD_CLOSED,
   });
   const showTools = placement !== 'hidden';
+  const bodyGap = useGapBelow(bodyViewRef, keyboard);
 
   // The soft keyboard closed with a field still focused (Android's Back
   // does that): let go of the field, so the bar hides instead of docking
@@ -279,9 +281,16 @@ export function NoteEditor({
         ...(stay ? { headerBackVisible: false, headerLeft: undefined, headerTitleAlign: 'center' as const } : null),
       };
 
-  // Above the soft keyboard, else docked over the system bars.
-  const toolsBottom =
-    placement === 'keyboard' ? keyboardBottom(keyboard, safe.bottom, Platform.OS === 'android') : insets.bottom;
+  // Above the soft keyboard, else docked over the system bars. The
+  // keyboard's top is measured from the window's bottom, the tools from
+  // the body's, which ends above the tab bar and the navigation bar on
+  // Android.
+  const toolsBottom = formatBarBottom({
+    placement,
+    keyboardFromWindowBottom: keyboardBottom(keyboard, safe.bottom, Platform.OS === 'android'),
+    bodyGapFromWindowBottom: bodyGap.gap,
+    dockedInset: insets.bottom,
+  });
 
   return (
     <>
@@ -295,15 +304,18 @@ export function NoteEditor({
       ) : (
         <Stack.Screen options={{ title: '', ...headerOptions }} />
       )}
-      <View style={styles.body}>
+      <View ref={bodyViewRef} onLayout={bodyGap.measure} style={styles.body}>
         <ScrollView
           style={{ backgroundColor: colors.surface }}
           keyboardShouldPersistTaps="handled"
           contentInsetAdjustmentBehavior="automatic"
           contentContainerStyle={{
             paddingTop: insets.top + spacing.lg,
+            // In Write the last line scrolls clear of the tools, wherever they sit.
             paddingBottom:
-              insets.bottom + (mode === 'write' ? keyboard + (showTools ? toolsHeight : 0) + spacing.xl : spacing.xxxl),
+              mode === 'write'
+                ? (showTools ? toolsBottom + toolsHeight : insets.bottom) + spacing.xl
+                : insets.bottom + spacing.xxxl,
             paddingLeft: insets.left + spacing.lg,
             paddingRight: insets.right + spacing.lg,
           }}
@@ -377,6 +389,23 @@ function useDockedFocus(fieldFocused: boolean, keyboard: number): boolean {
     return () => clearTimeout(timer);
   }, [fieldFocused, keyboard]);
   return docked;
+}
+
+/**
+ * How far a view's bottom edge is from the window's bottom: on Android the
+ * native tab bar and the navigation bar lie below the editor's body. Taken
+ * again on layout (`measure`, for onLayout) and when the keyboard opens or
+ * closes.
+ */
+function useGapBelow(ref: RefObject<ComponentRef<typeof View> | null>, keyboard: number): { gap: number; measure: () => void } {
+  const frame = useSafeAreaFrame();
+  const windowBottom = frame.y + frame.height;
+  const [gap, setGap] = useState(0);
+  const measure = useCallback(() => {
+    ref.current?.measureInWindow((_x, y, _width, height) => setGap(Math.max(0, windowBottom - (y + height))));
+  }, [ref, windowBottom]);
+  useEffect(() => measure(), [measure, keyboard]);
+  return { gap, measure };
 }
 
 const styles = StyleSheet.create({
