@@ -83,7 +83,9 @@ The core model is Echo's (`echo/studyspace`); the full write-up with sources is 
 | Trackpad (Mac, iPad) | Two-finger scroll | Pinch, or ⌘-scroll, around the **cursor** | **No added inertia**: AppKit sends momentum events, and we apply them 1:1 |
 | Mouse | Wheel scrolls; Space+drag pans | ⌘-scroll around the cursor | — |
 | Keyboard (canvas focused, nothing selected) | Arrows pan; ⇧+arrows pan farther, scaled by zoom (Figma) | ⌘+ / ⌘− step; ⌘0 to 100%; ⇧1 fit all; ⇧2 fit selection (Heptabase) | Ctrl replaces ⌘ on Android |
-| Double tap (touch) or double click (Mac, pointer) on **empty canvas** | — | Toggles between **100% at the tap point** and **fit-all**, on every device | **Taps on cards stay instant**: no double-tap delay, because double tap means nothing on a card. No "next zoom step" on double tap; steps stay on ⌘+ / ⌘− (⌘0 = 100%, ⇧1 = fit-all). Settles with `.smooth` |
+| Double tap (touch) or double click (Mac, pointer) on **empty canvas** | — | Toggles between **100% at the tap point** and **fit-all**, on every device | **Body taps stay instant** (no double-tap delay). The one exception is a double-tap on a card's **header** on tablet, which opens the side split (§8) and doesn't delay body taps. No "next zoom step" on double tap; steps stay on ⌘+ / ⌘− (⌘0 = 100%, ⇧1 = fit-all). Settles with `.smooth` |
+
+**Target lock.** Every gesture picks its target when it starts and keeps it until it ends. A pan or fling that starts on the canvas stays a canvas pan even if a card slides under the finger or pointer. Trackpad momentum is part of that same gesture.
 
 All zoom maths runs in **log space**: interpolation, the rubber band, the detent window and the step midpoints. Store scale as linear f64.
 
@@ -117,7 +119,7 @@ The 0.55 curve is community-measured from UIScrollView, not documented by Apple 
 | --- | --- | --- |
 | SwiftUI (iOS, iPadOS) and the Expo **iOS look** | **0.998 per ms** (UIKit `.normal`, per React Native's docs; Apple doesn't print the value). `v(t) = v0 · 0.998^t` | SwiftUI: the scroll view's normal deceleration where we use one, otherwise the formula. Expo: apply the formula directly in a Reanimated worklet. **Don't use `withDecay` with defaults**: it decays as `exp(−(1−d)·t·0.1)` and travels about 10× farther (4,991 pt instead of 499 pt for a 1000 pt/s fling) |
 | Expo **Material look** (Android) | **Native Android fling**, about **0.985** (React Native's Android mapping; the AOSP OverScroller is a spline, not geometric) | Use the platform fling so it feels like every other Android list. **Lumen's decision** |
-| Mac, iPad trackpad, mouse wheel | No added inertia | System momentum events only |
+| Mac, iPad trackpad, mouse wheel | No added inertia | System momentum events only. Momentum stays with the gesture that started it (§3.2), so it keeps panning the canvas even if a card slides under the pointer |
 
 - **Projected rest:** `projectedRest(v) = (v / 1000) · r / (1 − r)` with v in pt/s and r the per-ms rate (WWDC18 803). At 0.998, a 1000 pt/s fling travels 499 pt.
 - Compute the rest point at release and check it against the soft bounds. If it lands past them, the fling runs into the rubber band and springs back. Never stop dead at the edge.
@@ -199,7 +201,7 @@ A reader card is a live publication window on the canvas. You read in place, and
 
 ### 6.1 Focus — [frame 05](studyspace-frames/05-reader-focus.png)
 
-Direction A, **tap to focus**, was picked over B (hand-off at the scroll ends, where momentum causes accidental pans) and C (cooperative gestures like Google Maps' `gestureHandling: "cooperative"`: one finger for the card and two for the canvas, which breaks two-finger pan on the Mac). Wren ruled it on tablet and Mac. On phones, tapping opens the full-screen reader instead (§8).
+Direction A, **tap to focus**, has the whole studio behind it (Hinge agrees). Wren ruled it on tablet and Mac. It was picked over B (hand-off at the scroll ends, where momentum causes accidental pans) and over C (one-finger card scroll, the cooperative model like Google Maps' `gestureHandling: "cooperative"`, which breaks two-finger pan on the Mac). Pebble's middle option was also rejected: cards at least **320 pt wide on screen** scroll directly and smaller cards pan, with tap to focus kept for keyboard, VoiceOver and Switch Control. Plain tap to focus is simpler, and a resting Mac pointer can't hijack scroll. On phones, a tap skips focus and opens the full-screen reader (§8).
 
 | Input | Enter focus | Leave focus |
 | --- | --- | --- |
@@ -212,7 +214,7 @@ Direction A, **tap to focus**, was picked over B (hand-off at the scroll ends, w
 | State | Behaviour |
 | --- | --- |
 | Unfocused | Thin 1 pt border (line grey). Text is live but static and reflows at the reader's text size. One-finger drag, two-finger trackpad scroll and the wheel **pan the canvas**; the card never captures them |
-| Focused | **3 pt accent outline** (#9B3F2A light, #E59A7C dark) plus a **Done** button (iOS look: Liquid Glass button, 44 × 44 pt hit; Material: tonal text button, 48 dp hit). Not colour alone. The card takes scroll input. VoiceOver and TalkBack value: "focused" |
+| Focused | **3 pt accent outline** (#9B3F2A light, #E59A7C dark) plus a **Done** button (iOS look: Liquid Glass button, 44 × 44 pt hit; Material: tonal text button, 48 dp hit). Not colour alone. The card takes scroll input. **Space+drag still pans the canvas** and **pinch still zooms it**. VoiceOver and TalkBack value: "focused" |
 | Scroll ends | Text rubber-bands at the first and last verse (iOS bounce; Android 12+ stretch overscroll). **No hand-off** to the canvas when the text ends (like CSS `overscroll-behavior: contain`) |
 | Paging | Space and ⇧Space page within the focused card |
 | Focus zoom | If the canvas is **below 100%**, focusing zooms to 100% (card text = reader size) and centres the card, with `.smooth`. If it's **already at 100% or more**, it only pans the card into view. A card **taller than the view** aligns its top just under the toolbar. Reduce Motion: cross-fade |
@@ -351,19 +353,19 @@ Links in notes are underlined. (Underline means link. A Pencil underline is a th
 | Role | View and arrange | The full canvas | The full canvas |
 | Pan / zoom | One finger pans; pinch at the focal point; max 400% | Fingers pan and pinch; max 800% | Two-finger scroll pans; pinch or ⌘-scroll at the cursor; Space+drag; max 800% |
 | Inertia | iOS 0.998/ms; Material native fling (§3.5) | Same | None added |
-| Opening a card | **Tap opens it full screen** (note editor, or the full-screen reader with the normal pane). No editing at small zoom | Tap focuses a reader card; tap into note text to edit | Click focuses; ⌘-click opens a publication in the main reader or a new window |
+| Opening a card | **Tap skips focus and opens it full screen** (note editor, or the full-screen reader with the normal pane). **Back to Studyspace** returns to the exact canvas viewport. No editing at small zoom | Tap focuses a reader card; tap into note text to edit. **Expand**, or a double-tap on the header, opens the card in the existing side split (1/3, 1/2, 2/3) with the canvas still visible | Click focuses; ⌘-click opens a publication in the main reader or a new window. **Open in New Window** (card menu and File menu; also iPad Stage Manager) shares the card's reading position |
 | Moving cards | Long press lifts | Long press, or drag a selected card; second finger constrains | Drag after 4 pt |
 | Selection | Select mode (§7.1); no lasso, no marquee | Touch-and-hold marquee; Pencil lasso | Drag marquee; ⇧-click |
 | Pencil / stylus | — | Inks only with the ink tool on; text annotations on a focused reader card | — |
 | Workspaces | Title menu | Collapsible sidebar | Sidebar + window per workspace |
-| Android | Same split by window size class. Stylus by touch tool type. Ctrl shortcuts | Same | — |
+| Android | Same split by window size class. **Foldables:** unfolded acts like a tablet, folded like a phone. Stylus by touch tool type. Ctrl shortcuts | Same | — |
 
 ## 9. Accessibility
 
 | Area | Requirement |
 | --- | --- |
 | **List view** (required) | Each workspace has a List view in reading order (top to bottom, then left to right), with Move, Open and Show in reader actions. It's the full alternative to the canvas |
-| VoiceOver and TalkBack | Cards are elements labelled by type and title ("Note, Hope in Romans 8"; "Romans 8, publication"). Reader cards have a **Read** custom action (it focuses the card). Announce "Reading Romans 8, verse 28" on focus and "Left Romans 8" on exit. Three-finger scroll pages a focused card. Announce snaps, adds ("Added Romans 8 to Workspace 2") and workspace switches ("Workspace 2, 14 cards"). Selected and focused are spoken values |
+| VoiceOver and TalkBack | Cards are elements labelled by type and title ("Note, Hope in Romans 8"; "Romans 8, publication"). Reader cards have a **Read** custom action (it focuses the card). Announce "Reading Romans 8, verse 28" on focus and "Left Romans 8" on exit. Three-finger scroll pages a focused card. Announce snaps, adds ("Added Romans 8 to Workspace 2") and workspace switches ("Workspace 2, 14 cards"). Selected and focused are spoken values. With either on, panning goes through the list view and rotor actions |
 | Switch Control | Read and Done are visible buttons, never hidden gestures |
 | Keyboard | Tab / ⇧Tab path through cards, Return to open or focus, Esc to leave or clear, Space / ⇧Space to page a focused card, a keyboard marquee, ⌘A, arrows to nudge or pan, zoom keys (§3.2), ⌘⇧[ / ] for workspaces. Shortcuts work only when the canvas has focus and no card is being edited (while editing, Space types) |
 | Reduce Motion | Direct manipulation stays 1:1. Pinch settle is a 150 ms ease. Automatic camera moves (fit, focus zoom, Go to Existing Card, Omnisearch pan) cross-fade or jump. Workspace switches are already a 150 ms cross-fade. Highlights are static and removed without a fade |
@@ -408,10 +410,14 @@ Links in notes are underlined. (Underline means link. A Pencil underline is a th
 | 18 | Inertia: 0.998/ms in SwiftUI and the iOS look, applied as a formula in Expo (not `withDecay` defaults); native fling (~0.985) in the Material look | **Lumen** (with Pebble's correction) |
 | 19 | Docked study pane always allowed on the canvas; no tear-off in v1 | Kerning & Co. (opinion); adopted by Lumen |
 | 20 | Body text scales with zoom to an 11 pt floor (scaled at accessibility sizes); titles never shrink; below the floor the card drops a level | Iris, Oct 31 2:24 PM |
-| 21 | Double tap / double click on empty canvas only, toggling 100% at the point ↔ fit-all on every device; taps on cards stay instant. Replaces the phone-only card ↔ fit-all toggle and "next zoom step" | Iris, 2:24 PM |
+| 21 | Double tap / double click on empty canvas only, toggling 100% at the point ↔ fit-all on every device; body taps stay instant. Replaces the phone-only card ↔ fit-all toggle and "next zoom step". Exception: a tablet header double-tap opens the side split (§8) and doesn't delay body taps | Iris, 2:24 PM |
 | 22 | Minimum reader card size as a formula (32 characters + padding × header + 5 lines at 1.5× + padding) | Iris, 2:24 PM |
 | 23 | Workspace switch: 150 ms cross-fade for everyone, at the saved camera; announce name and card count | Iris, 2:24 PM |
 | 24 | Pencil underline annotations draw as a thick coloured stroke, clearly distinct from a link underline | Wren |
+| 25 | A gesture picks its target when it starts and keeps it until it ends. A canvas pan or fling stays a canvas pan if a card slides under the finger or pointer; trackpad momentum is part of that gesture | Kerning & Co. (Pebble and Hinge) |
+| 26 | Tap to focus has the whole studio behind it. While a card is focused, Space+drag still pans the canvas and pinch still zooms it. On phones a tap skips focus and opens the full-screen reader | Wren (Hinge agrees) |
+| 27 | Rejected: cards at least 320 pt wide on screen scroll directly and smaller cards pan, with tap to focus kept for keyboard, VoiceOver and Switch Control (Pebble's middle option). Plain tap to focus is simpler, and a resting Mac pointer can't hijack scroll. One-finger card scroll (option C) was also rejected | Kerning & Co. (Pebble and Hinge) |
+| 28 | Phone: Back to Studyspace returns to the exact canvas viewport. Tablet: Expand, or a header double-tap, opens the existing side split (1/3, 1/2, 2/3) with the canvas still visible. Mac and iPad Stage Manager: Open in New Window, in the card menu and the File menu, shares the card's reading position. Foldables: unfolded like a tablet, folded like a phone. VoiceOver or TalkBack: pan through the list view and rotor actions | Kerning & Co. (Pebble and Hinge) |
 
 ## 12. References
 
