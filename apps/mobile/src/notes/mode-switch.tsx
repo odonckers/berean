@@ -73,6 +73,8 @@ export function ModeSwitch({ mode, onChange }: ModeSwitchProps) {
               </View>
             ) : (
               <View
+                // Unselected it has no background, so Fabric would flatten it and the thumb it becomes later loses its radius.
+                collapsable={false}
                 style={[
                   styles.iosSegment,
                   selected && { backgroundColor: studyPane.segmentThumb },

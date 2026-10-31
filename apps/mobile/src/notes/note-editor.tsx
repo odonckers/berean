@@ -31,7 +31,7 @@ import { useNoteActions } from '@/notes/actions';
 import { changeNotes, findNote, makeReferencer, useNotesRead } from '@/notes/data';
 import { folderTrail, noteMetaLine } from '@/notes/folders';
 import { FormatBar } from '@/notes/format-bar';
-import { FORMAT_BAR_DOCK_DELAY_MS, FORMAT_BAR_WHEN_KEYBOARD_CLOSED } from '@/notes/format-bar-config';
+import { FORMAT_BAR_DOCK_DELAY_MS } from '@/notes/format-bar-config';
 import { caretRevealOffset, formatBarBottom, formatBarPlacement, scrollFrame } from '@/notes/format-bar-placement';
 import { applyFormat, type EditState, type FormatAction, insertLink, replaceRange, type Selection } from '@/notes/format-edits';
 import { ModeSwitch, type NoteMode } from '@/notes/mode-switch';
@@ -125,13 +125,10 @@ export function NoteEditor({
   const onFieldFocus = (field: 'title' | 'body', on: boolean) =>
     setFocusedField((current) => (on ? field : current === field ? undefined : current));
   const fieldFocused = writing && focusedField !== undefined;
-  const docked = useDockedFocus(fieldFocused, keyboard);
-  const placement = formatBarPlacement({
-    writing,
-    fieldFocused: docked,
-    keyboardHeight: keyboard,
-    whenKeyboardClosed: FORMAT_BAR_WHEN_KEYBOARD_CLOSED,
-  });
+  // The bar and the suggestion are the body's: the title keeps the soft
+  // keyboard up, but not them.
+  const bodyFocused = useDockedFocus(writing && focusedField === 'body', keyboard);
+  const placement = formatBarPlacement({ writing, bodyFocused, keyboardHeight: keyboard });
   const showTools = placement !== 'hidden';
   const bodyGap = useGapBelow(bodyViewRef, keyboard);
 
@@ -419,22 +416,28 @@ export function NoteEditor({
 }
 
 /**
- * Whether a Write field has held focus with no soft keyboard for a moment:
- * a hardware keyboard, by formatBarPlacement's rule. The soft keyboard
- * opens a beat after the focus, so docking waits FORMAT_BAR_DOCK_DELAY_MS
- * rather than flash the bar at the bottom first; moving between the title
- * and the body blurs one before focusing the other, so letting go waits a
- * little too. The soft keyboard opening undocks at once.
+ * Whether the body holds focus, as formatBarPlacement takes it. With no
+ * soft keyboard, only once it has for a moment: a hardware keyboard. The
+ * soft keyboard opens a beat after the focus, so docking waits
+ * FORMAT_BAR_DOCK_DELAY_MS rather than flash the bar at the bottom first;
+ * the soft keyboard opening undocks at once. Either way letting go waits a
+ * little, so a bar button's tap blurring the body a moment doesn't flash
+ * the bar; moving to the title hides it after that.
  */
-function useDockedFocus(fieldFocused: boolean, keyboard: number): boolean {
+function useDockedFocus(bodyFocused: boolean, keyboard: number): boolean {
   const [docked, setDocked] = useState(false);
+  const [held, setHeld] = useState(false);
   useEffect(() => {
-    const next = fieldFocused && keyboard === 0;
+    const next = bodyFocused && keyboard === 0;
     const delay = next ? FORMAT_BAR_DOCK_DELAY_MS : keyboard > 0 ? 0 : 150;
     const timer = setTimeout(() => setDocked(next), delay);
     return () => clearTimeout(timer);
-  }, [fieldFocused, keyboard]);
-  return docked;
+  }, [bodyFocused, keyboard]);
+  useEffect(() => {
+    const timer = setTimeout(() => setHeld(bodyFocused), bodyFocused ? 0 : 150);
+    return () => clearTimeout(timer);
+  }, [bodyFocused]);
+  return keyboard > 0 ? held : docked;
 }
 
 /**

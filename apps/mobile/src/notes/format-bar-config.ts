@@ -35,13 +35,7 @@ export const FORMAT_BUTTONS: Record<FormatAction, FormatButton> = {
 };
 
 /**
- * With no Write field focused and no keyboard: hide the bar (Lumen), or
- * keep it docked at the bottom. Fed to formatBarPlacement.
- */
-export const FORMAT_BAR_WHEN_KEYBOARD_CLOSED: 'hide' | 'show' = 'hide';
-
-/**
- * How long a field keeps focus with no soft keyboard before the bar docks:
+ * How long the body keeps focus with no soft keyboard before the bar docks:
  * the soft keyboard opens a moment after the focus, and the bar shouldn't
  * flash at the bottom on its way above it.
  */

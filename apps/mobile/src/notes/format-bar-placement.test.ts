@@ -14,32 +14,35 @@ import {
 
 const state = (over: Partial<FormatBarState>): FormatBarState => ({
   writing: true,
-  fieldFocused: false,
+  bodyFocused: false,
   keyboardHeight: 0,
-  whenKeyboardClosed: 'hide',
   ...over,
 });
 
 describe('format bar placement', () => {
-  test('soft keyboard up: above it', () => {
-    assert.equal(formatBarPlacement(state({ fieldFocused: true, keyboardHeight: 300 })), 'keyboard');
+  test('the body focused, soft keyboard up: above it', () => {
+    assert.equal(formatBarPlacement(state({ bodyFocused: true, keyboardHeight: 300 })), 'keyboard');
   });
 
-  test('a field focused with no soft keyboard (a hardware keyboard): docked at the bottom', () => {
-    assert.equal(formatBarPlacement(state({ fieldFocused: true })), 'docked');
+  test('the body focused with no soft keyboard (a hardware keyboard): docked at the bottom', () => {
+    assert.equal(formatBarPlacement(state({ bodyFocused: true })), 'docked');
   });
 
-  test('no field focused and no keyboard: hidden', () => {
+  test('the title focused, soft keyboard up: hidden, the bar is the body’s', () => {
+    assert.equal(formatBarPlacement(state({ bodyFocused: false, keyboardHeight: 300 })), 'hidden');
+  });
+
+  test('the title focused with no soft keyboard (a hardware keyboard): hidden, not docked', () => {
+    assert.equal(formatBarPlacement(state({ bodyFocused: false })), 'hidden');
+  });
+
+  test('nothing focused and no keyboard: hidden', () => {
     assert.equal(formatBarPlacement(state({})), 'hidden');
   });
 
-  test('the knob keeps it docked with the keyboard closed', () => {
-    assert.equal(formatBarPlacement(state({ whenKeyboardClosed: 'show' })), 'docked');
-  });
-
   test('never in Read', () => {
-    assert.equal(formatBarPlacement(state({ writing: false, fieldFocused: true, keyboardHeight: 300 })), 'hidden');
-    assert.equal(formatBarPlacement(state({ writing: false, whenKeyboardClosed: 'show' })), 'hidden');
+    assert.equal(formatBarPlacement(state({ writing: false, bodyFocused: true, keyboardHeight: 300 })), 'hidden');
+    assert.equal(formatBarPlacement(state({ writing: false, bodyFocused: true })), 'hidden');
   });
 });
 
