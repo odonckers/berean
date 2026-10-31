@@ -204,7 +204,7 @@ Inline tag sync:
 | `import_preview(path, progress: ProgressSink, cancel: CancelToken) -> ImportPreview` | async (`run_on_thread`) | Runs the same checks as `import_backup` (zip, manifest hash, schema 14/16, integrity, foreign keys) in a temp dir, then discards it. A preview that passes means the import will pass, unless the file changes. Same errors as `import_backup`. |
 | `export_backup` | async | Signature unchanged. Drops the Berean tables from the `VACUUM INTO` copy before hashing, so the file JW sees is pure v16. |
 | `import_backup` | async | Unchanged. The swapped-in JW database has no Berean tables, so folders are cleared (they're recreated empty on open). |
-| `undo_import` | sync | Unchanged. It brings the folders back, because `userData.prev.db` is the whole old file. |
+| `list_snapshots` / `restore_snapshot(id)` | sync | Replaced `undo_import` (S2). A restore brings the folders back, because a snapshot is the whole old file. |
 
 With the preview the UI shows: "This replaces all your notes, highlights, tags, bookmarks and favorites
 (N notes…) and clears your M folders", and only then calls `import_backup`.
