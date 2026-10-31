@@ -13,7 +13,11 @@ export default function NotesLayout() {
   // is Android's arrow. Real iOS keeps the native one and its long-press menu.
   const back =
     look === 'ios' && Platform.OS === 'android'
-      ? { headerBackVisible: false, headerLeft: ({ label }: { label?: string }) => <IosBackButton label={label} /> }
+      ? {
+          headerBackVisible: false,
+          headerTitleAlign: 'center' as const,
+          headerLeft: ({ label }: { label?: string }) => <IosBackButton label={label} />,
+        }
       : null;
   return (
     // Undo floats over the whole stack, so it stays put while you move on.
