@@ -1,3 +1,4 @@
+import { isLoaded } from 'expo-font';
 import { Fragment, type ReactNode, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, type TextStyle, View } from 'react-native';
 
@@ -13,6 +14,7 @@ import {
   type NoteLinkTarget,
   inlineText,
   isMissing,
+  linkGlyph,
   linkUnderline,
   missingLine,
   tagLine,
@@ -195,6 +197,25 @@ function linkPress(target: NoteLinkTarget, title: string, onMissing: (title: str
   }
 }
 
+// The link glyphs. On Android, Material Symbols' format_paragraph and
+// menu_book, from the font expo-symbols registers (by this family name)
+// before any symbol draws; on iOS, or before that font is in, a pilcrow and
+// a book in the system fonts.
+const symbolsFont = 'MaterialSymbols_400Regular';
+
+function materialGlyphs(): boolean {
+  return Platform.OS === 'android' && isLoaded(symbolsFont);
+}
+
+function glyphFont(): string | undefined {
+  return materialGlyphs() ? symbolsFont : undefined;
+}
+
+function glyphText(kind: 'passage' | 'publication'): string {
+  if (materialGlyphs()) return kind === 'passage' ? '' : '';
+  return kind === 'passage' ? '¶' : '\u{1F56E}';
+}
+
 function LinkText({
   target,
   title,
@@ -206,7 +227,7 @@ function LinkText({
   onMissing: (title: string) => void;
   children: ReactNode;
 }) {
-  const { colors } = useBerean();
+  const { colors, type } = useBerean();
   const onPress = linkPress(target, title, onMissing);
   const missing = isMissing(target);
   // Every link is underlined, pressable or not: the underline marks it as a
@@ -220,14 +241,38 @@ function LinkText({
     textDecorationColor: underline.color,
     textDecorationStyle: underline.style,
   };
+  // The leading glyph is drawn as text, so it paints with the words. On
+  // RN 0.88 Android (Fabric, prebuilt AAR) a post-mount Fabric state update
+  // re-sets a Text's spannable (ReactTextViewManager.updateExtraData ->
+  // ReactTextView.setText -> TextView.nullLayouts), and ReactTextView.onDraw
+  // skips CanvasEffectSpans (ReactUnderlineSpan) while getLayout() is null,
+  // so the underline can be missing on first paint; the glyph is the link
+  // cue that doesn't depend on it. See /workspace/expo6b-findings.md
+  // (upstream issue pending). External and invalid links have no glyph.
+  const glyph = linkGlyph(target, colors);
   return (
     <Text
       accessibilityRole={onPress ? 'link' : undefined}
+      accessibilityLabel={glyph ? title : undefined}
       accessibilityHint={missing ? 'Not on this device' : undefined}
       onPress={onPress}
       suppressHighlighting={false}
       style={style}
     >
+      {glyph && (
+        <Text
+          style={{
+            fontFamily: glyphFont(),
+            fontSize: 0.7 * (type.reading.noteBody.fontSize ?? 15),
+            color: glyph.color,
+            textDecorationLine: 'none',
+          }}
+        >
+          {/* A narrow no-break space at the glyph's size: a gap of about
+              3px that never breaks the glyph from the first word. */}
+          {glyphText(glyph.kind) + ' '}
+        </Text>
+      )}
       {children}
       {missing && <Text style={{ color: colors.accent, textDecorationLine: 'none' }}>{' ↓'}</Text>}
     </Text>

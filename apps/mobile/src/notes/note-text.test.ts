@@ -8,6 +8,7 @@ import {
   blockText,
   inlineText,
   isMissing,
+  linkGlyph,
   linkUnderline,
   missingLine,
   noteSnippet,
@@ -114,6 +115,20 @@ describe('tags and links', () => {
     );
     assert.deepEqual(linkUnderline({ tag: 'External', inner: { url: 'https://example.com' } }, colors), solid);
     assert.deepEqual(linkUnderline({ tag: 'Invalid' }, colors), solid);
+  });
+
+  test('a passage leads with a pilcrow, a publication with a book; grey when missing', () => {
+    const colors = { accent: '#9B3F2A', textSecondary: '#6B625A' };
+    const publication = (missing: boolean): NoteLinkTarget => ({
+      tag: 'Publication',
+      inner: { location: { pubKey: 'it:0:0' }, missing },
+    });
+    assert.deepEqual(linkGlyph(passage(false), colors), { kind: 'passage', color: '#9B3F2A' });
+    assert.deepEqual(linkGlyph(passage(true), colors), { kind: 'passage', color: '#6B625A' });
+    assert.deepEqual(linkGlyph(publication(false), colors), { kind: 'publication', color: '#9B3F2A' });
+    assert.deepEqual(linkGlyph(publication(true), colors), { kind: 'publication', color: '#6B625A' });
+    assert.equal(linkGlyph({ tag: 'External', inner: { url: 'https://example.com' } }, colors), undefined);
+    assert.equal(linkGlyph({ tag: 'Invalid' }, colors), undefined);
   });
 
   test('a span opens at its start', () => {

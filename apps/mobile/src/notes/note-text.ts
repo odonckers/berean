@@ -144,6 +144,22 @@ export function linkUnderline(
   return isMissing(target) ? { color: colors.accent, style: 'dashed' } : { color: colors.linkUnderline, style: 'solid' };
 }
 
+/**
+ * The glyph that leads a link (guide §7.1): a pilcrow for a passage, a book
+ * for a publication, in the accent, or the secondary text color where it
+ * isn't on this device. External and invalid links have none.
+ */
+export function linkGlyph(
+  target: NoteLinkTarget,
+  colors: { accent: string; textSecondary: string },
+): { kind: 'passage' | 'publication'; color: string } | undefined {
+  if (target.tag !== 'Passage' && target.tag !== 'Publication') return undefined;
+  return {
+    kind: target.tag === 'Passage' ? 'passage' : 'publication',
+    color: target.inner.missing ? colors.textSecondary : colors.accent,
+  };
+}
+
 /** The single verse a passage span starts at, as the reader opens it. */
 export function spanStart(span: NoteSpan): { pubKey: string; book: number; chapter: number; verse?: number } | undefined {
   const { pubKey, book, chapter, verse } = span.start;
