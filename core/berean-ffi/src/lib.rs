@@ -91,6 +91,8 @@ pub enum CoreError {
     Corrupt,
     #[error("io error: {0}")]
     Io(String),
+    #[error("storage is full")]
+    StorageFull,
     #[error("operation cancelled")]
     Cancelled,
     #[error("migration error: {0}")]
@@ -106,6 +108,7 @@ impl From<berean_core::CoreError> for CoreError {
             C::NotFound => CoreError::NotFound,
             C::Corrupt => CoreError::Corrupt,
             C::Io(m) => CoreError::Io(m),
+            C::StorageFull => CoreError::StorageFull,
             C::Cancelled => CoreError::Cancelled,
             C::Migration(m) => CoreError::Migration(m),
             C::Invalid(m) => CoreError::Invalid(m),
@@ -2439,6 +2442,13 @@ mod tests {
             dir.path().join("cache").display().to_string(),
         )
         .unwrap()
+    }
+
+    #[test]
+    fn storage_full_crosses_the_ffi() {
+        let err = CoreError::from(berean_core::CoreError::StorageFull);
+        assert!(matches!(err, CoreError::StorageFull), "got {err:?}");
+        assert_eq!(err.to_string(), "storage is full");
     }
 
     #[test]

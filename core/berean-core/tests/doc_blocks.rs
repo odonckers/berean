@@ -1035,6 +1035,7 @@ fn outcome(result: &Result<Resolved, CoreError>) -> &'static str {
         Err(CoreError::NotFound) => "NotFound",
         Err(CoreError::Corrupt) => "Corrupt",
         Err(CoreError::Io(_)) => "Io",
+        Err(CoreError::StorageFull) => "StorageFull",
         Err(CoreError::Cancelled) => "Cancelled",
         Err(CoreError::Migration(_)) => "Migration",
     }

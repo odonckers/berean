@@ -128,8 +128,7 @@ pub(crate) fn open(data_dir: &Path) -> Result<Connection, CoreError> {
             let conn = Connection::open(tmp.path())?;
             conn.execute_batch(&format!("BEGIN;\n{SCHEMA_V16}\nCOMMIT;"))?;
         }
-        tmp.persist(&path)
-            .map_err(|e| CoreError::Io(e.to_string()))?;
+        tmp.persist(&path).map_err(|e| CoreError::from(e.error))?;
     }
     let conn = Connection::open(&path)?;
     conn.execute_batch("PRAGMA foreign_keys = ON;")?;
@@ -1179,8 +1178,8 @@ fn summary(conn: &Connection) -> Result<ImportSummary, CoreError> {
     })
 }
 
-/// A read error from a zip member: damaged data is `Corrupt`, anything else
-/// (a full disk, say) `Io`.
+/// A read error from a zip member: damaged data is `Corrupt`, a full disk
+/// `StorageFull`, anything else `Io`.
 fn zip_read_error(e: std::io::Error) -> CoreError {
     use std::io::ErrorKind;
     match e.kind() {
@@ -1188,6 +1187,15 @@ fn zip_read_error(e: std::io::Error) -> CoreError {
             CoreError::Corrupt
         }
         _ => e.into(),
+    }
+}
+
+/// A write error from the export zip: an io failure keeps its kind (so a full
+/// disk is `StorageFull`), anything else is `Io`.
+pub(crate) fn zip_write_error(e: zip::result::ZipError) -> CoreError {
+    match e {
+        zip::result::ZipError::Io(io) => io.into(),
+        other => CoreError::Io(other.to_string()),
     }
 }
 
@@ -2271,26 +2279,25 @@ impl UserData {
         let out = NamedTempFile::with_prefix_in(".userData-export.", dest_dir)?;
         let mut zip = zip::ZipWriter::new(out);
         let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
-        let zip_err = |e: zip::result::ZipError| CoreError::Io(e.to_string());
-        zip.start_file(MANIFEST, options).map_err(zip_err)?;
+        zip.start_file(MANIFEST, options).map_err(zip_write_error)?;
         zip.write_all(&manifest)?;
-        zip.start_file(DB_FILE, options).map_err(zip_err)?;
+        zip.start_file(DB_FILE, options).map_err(zip_write_error)?;
         std::io::copy(&mut File::open(&copy)?, &mut zip)?;
         for name in media_files(&media)? {
             // A media file can't stand in for the manifest or the database.
             if name == MANIFEST || name == DB_FILE {
                 continue;
             }
-            zip.start_file(name.as_str(), options).map_err(zip_err)?;
+            zip.start_file(name.as_str(), options)
+                .map_err(zip_write_error)?;
             std::io::copy(&mut File::open(media.join(&name))?, &mut zip)?;
         }
-        let out = zip.finish().map_err(zip_err)?;
+        let out = zip.finish().map_err(zip_write_error)?;
         out.as_file().sync_all()?;
         progress.on_progress(4, EXPORT_STEPS);
 
         cancel.check()?;
-        out.persist(path)
-            .map_err(|e| CoreError::Io(e.error.to_string()))?;
+        out.persist(path).map_err(|e| CoreError::from(e.error))?;
         progress.on_progress(EXPORT_STEPS, EXPORT_STEPS);
         Ok(())
     }
