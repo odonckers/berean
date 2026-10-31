@@ -14,7 +14,6 @@ A spec's recommended direction stays **pending** until Owen decides on it in the
 | [`.jwlibrary` backup: import and export](jwlibrary-backup.md) | Approved Oct 30 2026; parity questions pending Echo |
 | [Color themes](themes/themes-spec.md) ([tokens](themes/tokens.json)) | Decided, Oct 31 2026 (Owen, via Wren): four themes, six preset accents each; frames F01–F10 |
 | [Studyspace canvas: feel findings and specs](studyspace-findings.md) | Draft (Oct 31, 2026): Kerning & Co. findings with Wren's rulings; open items pending Iris and Owen |
-| Studyspace infinite canvas | Planned |
 | Omnisearch | Planned |
 | Note hyperlinks with inline previews | Planned |
 | Liquid Glass and platform fidelity guide | Planned |
