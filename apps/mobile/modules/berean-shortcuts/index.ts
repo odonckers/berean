@@ -11,7 +11,7 @@ type BereanShortcutsModule = {
   addListener(name: 'onListKey', listener: (event: ListKeyEvent) => void): EventSubscription;
   captureListKeys(viewTag: number): Promise<void>;
   releaseListKeys(viewTag: number): Promise<void>;
-  setFocusRing(color: string, widthDp: number): Promise<void>;
+  setFocusRing(color: string, widthDp: number, radiusDp: number, offsetDp: number): Promise<void>;
   followFocusRingIn(viewTag: number): Promise<void>;
 };
 
@@ -55,13 +55,14 @@ export function useEditorModeShortcuts(onWrite: () => void, onRead: () => void, 
 /**
  * Android's keyboard focus indicator: instead of the platform's grey fill,
  * the view focused from a hardware keyboard (Enter, Tab, arrows) gets a
- * ring of `color` (#RRGGBB), `widthDp` wide, with no fill. It isn't shown
+ * ring of `color` (#RRGGBB), `widthDp` wide, with no fill, corners of
+ * `radiusDp` and its inner edge `offsetDp` outside the view. It isn't shown
  * after a touch. Mounted once at the root, with the theme's ring.
  */
-export function useKeyboardFocusRing(color: string, widthDp: number) {
+export function useKeyboardFocusRing(color: string, widthDp: number, radiusDp: number, offsetDp: number) {
   useEffect(() => {
-    BereanShortcuts?.setFocusRing(color, widthDp).catch(() => {});
-  }, [color, widthDp]);
+    BereanShortcuts?.setFocusRing(color, widthDp, radiusDp, offsetDp).catch(() => {});
+  }, [color, widthDp, radiusDp, offsetDp]);
 }
 
 /**
