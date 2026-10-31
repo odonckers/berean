@@ -400,9 +400,9 @@ Highlights carry no meaning (they are spoken by hue name, never used to encode s
 | destructive | destructive on background | `#A1000D` | `#F8F4ED` | 7.6 | 4.5 | PASS | ≥4.5 usable as text |
 | destructive | destructive on surface | `#A1000D` | `#FCF9F3` | 7.93 | 4.5 | PASS | ≥4.5 usable as text |
 | destructive | destructive on surfaceRaised | `#A1000D` | `#FFFCF5` | 8.13 | 4.5 | PASS | ≥4.5 usable as text |
-| separator | linkUnderline on background (decorative; the underline itself is the non-colour cue, link text is textPrimary) | `#B88E84` | `#F8F4ED` | 2.65 | 1.0 | INFO |  |
-| separator | linkUnderline on surface (decorative; the underline itself is the non-colour cue, link text is textPrimary) | `#B88E84` | `#FCF9F3` | 2.76 | 1.0 | INFO |  |
-| separator | linkUnderline on surfaceRaised (decorative; the underline itself is the non-colour cue, link text is textPrimary) | `#B88E84` | `#FFFCF5` | 2.83 | 1.0 | INFO |  |
+| separator | linkUnderline on background (decorative; the underline itself is the non-colour cue, link text is textPrimary) | `#7A2E1C` | `#F8F4ED` | 8.57 | 1.0 | INFO |  |
+| separator | linkUnderline on surface (decorative; the underline itself is the non-colour cue, link text is textPrimary) | `#7A2E1C` | `#FCF9F3` | 8.94 | 1.0 | INFO |  |
+| separator | linkUnderline on surfaceRaised (decorative; the underline itself is the non-colour cue, link text is textPrimary) | `#7A2E1C` | `#FFFCF5` | 9.17 | 1.0 | INFO |  |
 | separator | separator on background (decorative) | `#A49E94` | `#F8F4ED` | 2.43 | 1.0 | INFO |  |
 | separator | separator on surface (decorative) | `#A49E94` | `#FCF9F3` | 2.53 | 1.0 | INFO |  |
 | separator | separator on surfaceRaised (decorative) | `#A49E94` | `#FFFCF5` | 2.6 | 1.0 | INFO |  |

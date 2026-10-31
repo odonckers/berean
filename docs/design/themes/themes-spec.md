@@ -22,7 +22,7 @@ Readers choose how the page looks. There are four themes, each with six preset a
   - Accent: `accent`, `onAccent`.
   - Other: `destructive`, `noteMarker`, `selection`, `focusRing`.
   - `highlights`: six, keyed by color name (§7).
-- **Links:** the link text is `textPrimary`, and the **underline is the non-color cue** (WCAG 1.4.1). `linkUnderline` colors only that underline (1 px, 3 px offset). It is decorative and has no contrast floor; `contrast.py` reports it as INFO in group `separator`. Paper uses the shipped value. The other themes and all IC sets derive it as the midpoint of the accent and page lightness, at 0.45 × the accent's chroma.
+- **Links:** the link text is `textPrimary`, and the **underline is the non-color cue** (WCAG 1.4.1). `linkUnderline` colors only that underline (1 px, 3 px offset). It is decorative and has no contrast floor; `contrast.py` reports it as INFO in group `separator`. Paper uses the shipped value in light (`#C9A493`), dark (`#734F40`) and light Increase Contrast (`#7A2E1C`, decision 21). The other themes, and Paper darkIC, derive it as the midpoint of the accent and page lightness, at 0.45 × the accent's chroma.
 - **All colors are opaque sRGB hex**, with one exception. Highlights and selection are solid, pre-blended fills, never alpha, so iOS, macOS, Android and the web render them the same on every surface. The exception is the Material 3 scrims (`scrim`, `scrimWarm`), which are `rgba()` because a scrim has to dim whatever is behind it.
 - **Paper is today's look** (§2.1). For every Paper role in light and dark, the shipped value in `apps/mobile/src/design/tokens.ts` is used wherever it passes our floors. Where a shipped value fails a floor, the solved value is kept, and the change is an **intended accessibility fix**. Roles that `tokens.ts` doesn't define are solved under the same floors.
 - **Paper's surface ladder** runs the same way as the shipped M3 container ladder:
@@ -45,7 +45,7 @@ Readers choose how the page looks. There are four themes, each with six preset a
 | textTertiary | `#807B73` | `#928B83` | solved (not in tokens.ts), ≥3:1 on all four surfaces |
 | outline | `#8B8275` | `#7A7165` | solved. **Accessibility fix:** shipped `outline` is the separator at 1.28:1, and control borders need 3:1 (WCAG 1.4.11). |
 | separator | `#E6DCC2` | `#38312A` | shipped |
-| linkUnderline | `#C9A493` | `#734F40` | shipped |
+| linkUnderline | `#C9A493` | `#734F40` | shipped. Paper lightIC is shipped `#7A2E1C` (decision 21) |
 | accent / focusRing | `#9B3F2A` | `#E59A7C` | shipped |
 | onAccent | `#FFFCF5` | `#211D18` | shipped |
 | destructive | `#D70015` | `#FF453A` | shipped |
@@ -353,20 +353,21 @@ The sample scripture in every frame is Psalm 23 from the American Standard Versi
 | 18 | Paper pins today's shipped values (`tokens.ts`) wherever they pass the floors. Where one fails, the solved value is kept as an intended accessibility fix: the role outline, the M3 outline and the six highlights (§2.1, §7.2). | Lumen asked; the studio (Iris) rebuilt Paper | Final |
 | 19 | Links keep `textPrimary` text with an underline as the cue, and a decorative `linkUnderline` token colors the underline. Paper uses the shipped light and dark values. | Studio (Iris); adopted by Lumen | Final |
 | 20 | Stone dark is re-biased to a quieter chroma, so it no longer matches Paper dark. | Studio (Iris); adopted by Lumen | Final |
+| 21 | Paper lightIC `linkUnderline` keeps the shipped Increase Contrast value `#7A2E1C`, so Paper stays today's look. | Wren (Oct 31, 2026) | Final |
 
 **Open items.** These don't block the decisions above.
 
 1. **Differentiate Without Color shapes.** The guide's margin shapes (circle, square, triangle, diamond, bar, ring) are a separate, approved feature from the dropped hue glyph, and they're unchanged here.
 2. **Increase Contrast on Android.** Android has no exact equivalent to Increase Contrast. The suggestion is to use the IC sets when `UiModeManager.getContrast()` reports high contrast on Android 14 and later. This is Otter's call, with design review.
 3. **Paper and Stone darkIC highlights are identical.** The studio accepted this at that extreme. It is a studio call, not a ruling from Owen.
-4. **Paper's IC link underline.** Paper's IC sets derive `linkUnderline`. Whether to adopt the shipped `increaseContrast` link color (`#7A2E1C`, the accent itself) for the IC underline is open.
+4. **Paper's IC link underline.** Resolved. Wren, Oct 31 2026: keep shipped #7A2E1C. Paper lightIC `linkUnderline` is `#7A2E1C`.
 
 **Follow-ups** (from the studio):
 
-- **Chip order (Otter):** Expo lists purple before pink. Reorder it to yellow, green, blue, pink, purple, orange, and update the test (§12.5). Storage maps by color name, never by the core's index.
+- **Chip order (Otter):** Expo lists purple before pink. Reorder it to yellow, green, blue, pink, purple, orange, and update the test (§12.5). Storage maps by color name, never by the core's index. The `HIGHLIGHT_ORDER` fix (pink before purple) is tracked on Otter's theme-switcher row.
 - **M3 containers (Otter):** confirm whether the Expo Material build reads `primaryContainer` and `onPrimaryContainer` (§9). Ours are kept until then.
 
-**Resolved since the first draft:** Paper now matches the shipped values (decision 18), and the highlight word is Purple, as in core and Expo (decision 8).
+**Resolved since the first draft:** Paper now matches the shipped values (decision 18), the highlight word is Purple, as in core and Expo (decision 8), and open item 4 is resolved: Paper lightIC `linkUnderline` keeps shipped `#7A2E1C` (decision 21).
 
 ## 15. Contrast summary
 
