@@ -163,6 +163,7 @@ database errors.
 | Call | Sync/async | Notes |
 |---|---|---|
 | `render_markdown(markdown: &str) -> Result<Vec<Block>, CoreError>` | sync | Pure parse plus one installed-pubs query. Never fails on bad Markdown (CommonMark has no syntax errors); errors come only from the database. Cheap: pulldown-cmark parses tens of KB in well under a millisecond, so it's fine on the JS thread. The UI calls it on note open and when switching to Read. |
+| `markdown_spans(markdown: &str) -> Vec<SourceSpan>` | sync | Free function, no database, never fails. Flat, non-overlapping syntax ranges of the source for the Write view, from the same parser as `render_markdown`. Offsets are UTF-16 code units, half-open. Cheap enough to call on every keystroke. See Q7. |
 | `passage_url(span: &LocationSpan) -> Result<String, CoreError>` | sync | Free function. `Invalid` if the span isn't a Bible passage within one book. |
 | `publication_url(location: &Location) -> Result<String, CoreError>` | sync | Free function. `Invalid` if the location isn't a publication location. The UI builds the Markdown `[text](url)` itself; `text` is the reference shown to the user. |
 | `set_task(note_id: &str, index: u32, checked: bool) -> Result<(), CoreError>` | sync | Rewrites the nth task marker (`[ ]` / `[x]`) in the stored Markdown, using pulldown-cmark source offsets. Everything else stays byte-identical. `NotFound` for an unknown note; `Invalid` if `index` is out of range. See Q8. |
@@ -292,6 +293,45 @@ end, kind }>` with UTF-16 offsets (what `NSString` and JS strings use), from the
 the same syntax. It's a follow-up Holding board row (Core: markdown_spans for note editor syntax ranges, owner
 Echo), not in this row's first implementation PR. It must land before Expo 6 and Kiwi's notes editor.
 
+*Q7 shape.*
+
+Revised after Otter's Expo 6c Write view (`apps/mobile/src/notes/syntax-spans.ts`, whose `SyntaxKind` union
+and `styledSegments` this matches): flat syntax ranges, not nested construct ranges.
+
+```rust
+/// One syntax range of a note's Markdown source, for the Write view.
+/// `start..end` is half-open, in UTF-16 code units (what JS strings and
+/// NSString/NSRange index by), never splitting a surrogate pair.
+pub struct SourceSpan { pub start: u32, pub end: u32, pub kind: SpanKind }
+
+pub enum SpanKind {
+    HeadingMarker,  // ATX "#"s (opening and optional closing run), setext "==="/"---" underline
+    EmphasisMarker, // "*" / "_" around emphasis
+    StrongMarker,   // "**" / "__" around strong
+    StrikeMarker,   // "~~" / "~"
+    CodeMarker,     // inline code backticks; a code block's fence lines (fence + info string)
+    Code,           // inline code content between the backticks; a code block's content lines (fenced or indented)
+    LinkBracket,    // a link's/image's punctuation: "!" "[" "](" ")" "<" ">" of autolinks, "][ref]", a title and its quotes
+    LinkUrl,        // an inline link's destination, when it appears verbatim in the source (so the UI can fold it)
+    ListMarker,     // "-", "*", "+", "1." / "1)"
+    TaskMarker,     // "[ ]", "[x]"
+    QuoteMarker,    // each ">" of a block quote, on every line
+    Rule,           // a thematic break line
+    Tag,            // an inline #tag, exactly the token ranges inline tag sync uses
+}
+```
+
+- **Flat, never overlapping**, sorted by `start`. No whole-construct ranges: the text between markers
+  (a heading's, a link's, a quote's) is unstyled. Only `Code` and `Tag` cover content. Each span is one run
+  without whitespace, so indentation and line ends stay unstyled.
+- **Unstyled (no kind):** backslash escapes, entities, raw HTML, link reference definitions (`[ref]: /url`)
+  and hard breaks. Open questions for Wren, not new kinds. A quote's `>`s are still marked on those lines,
+  inside code blocks and in lists. A reference link has no `LinkUrl` (its URL is in the definition), and the
+  parser leaves a collapsed reference's `[]` out of the link, so that stays unstyled too.
+- **Offsets are UTF-16 code units**, half-open, never splitting a surrogate pair (emoji are two units, a ZWJ
+  family is several). They're `u32`: a plain `number` in TS via ubrn (`u64` would become `bigint`). Notes are
+  far below 4G units.
+
 **Q8. Tappable checkboxes in the Read view (`set_task`).** **Decided:** include `set_task` in this row. The
 shape (`Task.index`) is already in the tree.
 
@@ -308,7 +348,8 @@ the call is async). No stateful preview handle.
 - Berean-native backup that keeps folders (Holding row).
 - Merge import.
 - Write-view spans: `markdown_spans` is a follow-up Holding row (Core: markdown_spans for note editor syntax
-  ranges, owner Echo). It must land before Expo 6 and Kiwi's notes editor (Q7).
+  ranges, owner Echo), now specified in Q7 and implemented in its own PR. It must land before Expo 6 and
+  Kiwi's notes editor.
 - Tables.
 
 ## 10. Implementation PR plan (after Wren decides)
