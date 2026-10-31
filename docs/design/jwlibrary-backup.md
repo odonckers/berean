@@ -85,13 +85,8 @@ Berean takes a snapshot of the current library before **every** import (Replace 
 The restore UI:
 - After a successful import, a banner at the top of the Library tab says "Library replaced from backup" (or "Backup merged"), with **Restore Previous Library** and a close button. It stays until it's closed or the next import.
 - The same action lives under Library overflow (and Settings later), and is disabled when there's no snapshot to restore.
-- Restoring asks for confirmation: "Restore this library?" / "Your current library will be saved as a snapshot first, so you can switch back." with **Restore** and **Cancel** (the default). Nothing is lost, because a restore first keeps the current library as a `Restore` snapshot.
-- The action opens a two-row chooser of the snapshots, newest first. Each row names why it was taken, with when it was taken as the secondary line:
-  - `Replace`: "Before importing a backup". If the snapshot has the source backup's device name and date, add them: "Before importing a backup from Owen's iPhone (Oct 30, 2026)". Either part can be missing; leave out whatever isn't there.
-  - `Merge`: "Before merging a backup" (Phase 2), with the same optional source.
-  - `Restore`: "Before restoring a snapshot".
-  - Secondary line: "Saved Oct 31, 2026 at 11:15 AM", from `taken_at` in the device's time zone and format.
-- With one snapshot, the chooser shows one row.
+- Restoring asks for confirmation with the destructive role: "Restore your previous library? Changes since the import will be lost."
+- The action opens a two-row chooser, showing each snapshot's date and source, so either of the two can be restored. Until Echo's core change lands there's only one row.
 
 ### 3.6 Errors (core error, then message)
 

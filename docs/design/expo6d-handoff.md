@@ -20,12 +20,12 @@ Everything below is built in **both looks** (Material, and the iOS look via the 
 - [ ] Hardware keyboard: Ctrl+D opens the picker in save mode; ↑/↓, Return and Esc.
 
 ### Import (Phase 1 = Replace only, on today's core)
-- [ ] Library overflow: Import Backup…, Export Backup…, Restore Previous Library… (disabled when there's no snapshot; opens a two-row chooser of the last two snapshots, each named by its reason (Replace, Merge or Restore) with when it was taken, plus the source backup's device name and date when the snapshot has them; spec §3.5).
+- [ ] Library overflow: Import Backup…, Export Backup…, Restore Previous Library… (disabled when there's no snapshot; opens a two-row chooser of the last two snapshots, with date and source).
 - [ ] The system picker (`ACTION_OPEN_DOCUMENT`), and the intent filter for opening `.jwlibrary` from other apps (VIEW and SEND, `application/zip` + `application/octet-stream`, checked in the app).
 - [ ] Presentation: iOS-look phone full-height sheet, iOS-look tablet large two-pane sheet, Material phone full-screen dialog, Material tablet list-detail dialog.
 - [ ] States: reading (150 ms delay, then skeleton counts), review (source line, 5 category rows, the playlists line), the Replace summary (removes, the folders line, adds), the "Replace Library…" outlined destructive button, the confirmation dialog, progress (Cancel until the swap, then not dismissible), success + Done, and each error in spec §3.6.
 - [ ] The "Library replaced from backup" banner on the Library tab, plus the restore confirmation.
-- [ ] Snapshots (S2): a snapshot before every import and before every restore, the last two kept, the oldest pruned when a third is made (Echo's `list_snapshots` / `restore_snapshot`). The restore confirmation says the current library is saved first; there's no "changes will be lost" line.
+- [ ] Snapshots (S2): a snapshot before every import, the last two kept, the oldest pruned when a third is made. Needs Echo's core change (today's core keeps one undo copy); until it lands, the chooser shows one row.
 - [ ] Add a `destructive` token per look and scheme (spec §7). **No #FF3B30 for text, and no white on #E59A7C.**
 - [ ] Phase 2 (only after Echo's merge row): Merge | Replace segmented control, include switches, duplicate summary rows, the drill-in, and "Merge N items".
 
