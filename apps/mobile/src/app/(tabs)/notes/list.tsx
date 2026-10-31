@@ -133,6 +133,8 @@ export default function NoteListScreen() {
   const { width } = useWindowDimensions();
   const twoPane = notesColumns(width) >= 2;
   const [openId, setOpenId] = useState<string>();
+  // The pane touched last, for the editor's Ctrl+1 / Ctrl+2.
+  const [detailActive, setDetailActive] = useState(false);
 
   const key = `${scope}/${params.id ?? ''}/${selected.join(',')}`;
   const data = useNotesRead(key, () => readList(scope, id, selected));
@@ -295,7 +297,10 @@ export default function NoteListScreen() {
         }}
       />
       <View style={twoPane ? styles.panes : styles.single}>
-        <View style={twoPane ? [styles.listPane, { width: width >= 1000 ? 400 : 360, borderEndColor: colors.separator }] : styles.single}>
+        <View
+          onTouchStart={twoPane ? () => setDetailActive(false) : undefined}
+          style={twoPane ? [styles.listPane, { width: width >= 1000 ? 400 : 360, borderEndColor: colors.separator }] : styles.single}
+        >
           {!data.ok ? (
             <UIText style={[styles.message, { color: colors.accent }]}>{data.message}</UIText>
           ) : (
@@ -327,7 +332,7 @@ export default function NoteListScreen() {
               accessibilityRole="button"
               accessibilityLabel="New note"
               onPress={newNote}
-              android_ripple={{ color: m3.outline, borderless: false }}
+              android_ripple={{ color: colors.separator, borderless: false }}
               style={({ pressed }) => [
                 styles.fab,
                 {
@@ -343,13 +348,14 @@ export default function NoteListScreen() {
           )}
         </View>
         {twoPane && (
-          <View style={styles.detailPane}>
+          <View style={styles.detailPane} onTouchStart={() => setDetailActive(true)}>
             {detailId !== undefined ? (
               <NoteEditor
                 key={detailId}
                 id={detailId}
                 initialMode="read"
                 embedded
+                active={detailActive}
                 onDeleted={() => setOpenId(undefined)}
               />
             ) : (

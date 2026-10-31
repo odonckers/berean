@@ -1,6 +1,5 @@
 // The Write view's formatting bar and reference suggestion, as settings
-// easy to change: the button order and whether the bar stays with the
-// keyboard closed wait on Lumen's answer (expo6c spec question 6).
+// easy to change. Order and placement per Lumen (expo6c spec question 6).
 import type { AndroidSymbol, SFSymbol } from 'expo-symbols';
 
 import type { FormatAction } from '@/notes/format-edits';
@@ -35,8 +34,18 @@ export const FORMAT_BUTTONS: Record<FormatAction, FormatButton> = {
   tag: { label: 'Tag', accessibilityLabel: 'Tag', symbol: { ios: 'number', android: 'tag' } },
 };
 
-/** With the keyboard closed: hide the bar, or keep it at the bottom. */
+/**
+ * With no Write field focused and no keyboard: hide the bar (Lumen), or
+ * keep it docked at the bottom. Fed to formatBarPlacement.
+ */
 export const FORMAT_BAR_WHEN_KEYBOARD_CLOSED: 'hide' | 'show' = 'hide';
+
+/**
+ * How long a field keeps focus with no soft keyboard before the bar docks:
+ * the soft keyboard opens a moment after the focus, and the bar shouldn't
+ * flash at the bottom on its way above it.
+ */
+export const FORMAT_BAR_DOCK_DELAY_MS = 500;
 
 /** The most words before the cursor offered to the core as a reference. */
 export const REFERENCE_SUGGESTION_MAX_WORDS = 4;

@@ -46,7 +46,7 @@ type SearchPaletteProps = {
 // The Material palette has no scope chips and shows every group (scoping
 // lives in the search view); the iOS look pins the chips under the field.
 export function SearchPalette({ visible, onClose }: SearchPaletteProps) {
-  const { look, scheme, m3, radii, spacing } = useBerean();
+  const { look, scheme, colors, m3, radii, spacing } = useBerean();
   const search = useSearch();
   const { text, total, truncated, open } = search;
   const chips = look === 'ios';
@@ -164,7 +164,7 @@ export function SearchPalette({ visible, onClose }: SearchPaletteProps) {
                 style={[
                   styles.keycap,
                   {
-                    borderColor: m3.outline,
+                    borderColor: colors.separator,
                     borderRadius: radii.chip,
                     paddingHorizontal: spacing.sm,
                   },

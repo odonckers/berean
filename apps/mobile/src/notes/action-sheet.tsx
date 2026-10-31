@@ -124,7 +124,7 @@ export function ActionSheet({ visible, title, items, anchor, onClose }: ActionSh
         accessibilityState={item.current === undefined ? undefined : { selected: item.current }}
         onPress={() => choose(item)}
         onFocus={followRing}
-        android_ripple={material ? { color: m3.outline } : undefined}
+        android_ripple={material ? { color: colors.separator } : undefined}
         style={({ pressed }) => [
           menu ? styles.menuItem : material ? styles.materialItem : styles.iosRow,
           !menu && !material && index > 0 && { borderTopWidth: hairline, borderTopColor: colors.separator },

@@ -124,7 +124,7 @@ export function ListRow({
       onAccessibilityAction={onAccessibilityAction}
       onPress={onPress}
       onLongPress={onLongPress}
-      android_ripple={material ? { color: m3.outline } : undefined}
+      android_ripple={material ? { color: colors.separator } : undefined}
       style={({ pressed }) => [
         material ? styles.materialRow : styles.iosRow,
         { backgroundColor: material ? m3.surface : colors.surfaceRaised },

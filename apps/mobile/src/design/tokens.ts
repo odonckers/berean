@@ -169,7 +169,7 @@ export const m3Roles: Record<'light' | 'dark', M3Roles> = {
     surfaceContainerHighest: '#E9E0CC',
     onSurface: colorSets.light.text,
     onSurfaceVariant: colorSets.light.textSecondary,
-    outline: colorSets.light.separator,
+    outline: '#8B8275', // Lumen
     // Derived pending Lumen. Deliberately darker than the 'outline' separator so the
     // unselected filter-chip edge stays visible (M3 baseline outlineVariant is ~1.6:1
     // against surface).
@@ -189,7 +189,8 @@ export const m3Roles: Record<'light' | 'dark', M3Roles> = {
     surfaceContainerHighest: '#312B25',
     onSurface: colorSets.dark.text,
     onSurfaceVariant: colorSets.dark.textSecondary,
-    outline: colorSets.dark.separator,
+    // Derived pending Lumen: a mid tone like light's, against the dark surface.
+    outline: '#968D7F',
     // Derived pending Lumen. Deliberately darker than the 'outline' separator so the
     // unselected filter-chip edge stays visible (M3 baseline outlineVariant is ~1.6:1
     // against surface).

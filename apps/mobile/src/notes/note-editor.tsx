@@ -1,12 +1,14 @@
 import { router, Stack, useIsFocused } from 'expo-router';
-import { type ComponentRef, useRef, useState } from 'react';
+import { type ComponentRef, useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  type ColorValue,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   Platform,
   Pressable,
   ScrollView,
+  type StyleProp,
   StyleSheet,
   type TextInputInstance,
   useWindowDimensions,
@@ -28,9 +30,12 @@ import { useNoteActions } from '@/notes/actions';
 import { changeNotes, findNote, makeReferencer, useNotesRead } from '@/notes/data';
 import { folderTrail, noteMetaLine } from '@/notes/folders';
 import { FormatBar } from '@/notes/format-bar';
-import { FORMAT_BAR_WHEN_KEYBOARD_CLOSED } from '@/notes/format-bar-config';
+import { FORMAT_BAR_DOCK_DELAY_MS, FORMAT_BAR_WHEN_KEYBOARD_CLOSED } from '@/notes/format-bar-config';
+import { formatBarPlacement } from '@/notes/format-bar-placement';
 import { applyFormat, type EditState, type FormatAction, insertLink, replaceRange, type Selection } from '@/notes/format-edits';
 import { ModeSwitch, type NoteMode } from '@/notes/mode-switch';
+import { NoteAppBar } from '@/notes/note-app-bar';
+import { openingMode } from '@/notes/note-draft';
 import { noteTitle, shortDate } from '@/notes/note-list';
 import { NoteReadView } from '@/notes/note-reader';
 import { ReferenceSuggestionChip } from '@/notes/reference-suggestion';
@@ -47,16 +52,19 @@ type ScrollHandler = (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
 
 type NoteEditorProps = {
   id: string;
+  /** Read from a list, Write for a new note; a note with an empty body opens in Write. */
   initialMode: NoteMode;
   /** A note just made for the editor: removed again if left empty. */
   fresh?: boolean;
   /**
-   * Started at a verse, over the tabs: a Done button (Close on the
-   * Material look) leaves, back to the verse.
+   * Started at a verse, over the tabs: Done (iOS look) or X (Material)
+   * leaves, back to the verse, as Back does.
    */
   stay?: boolean;
   /** Beside a note list (list-detail): its own toolbar instead of the screen header. */
   embedded?: boolean;
+  /** Beside the list: this pane was touched last, not the list. */
+  active?: boolean;
   /** After Delete: the screen goes back; list-detail clears its selection. */
   onDeleted: () => void;
   /** The screen's top app bar fill, on a full-screen note. */
@@ -75,6 +83,7 @@ export function NoteEditor({
   fresh = false,
   stay = false,
   embedded = false,
+  active = false,
   onDeleted,
   fill,
 }: NoteEditorProps) {
@@ -85,8 +94,9 @@ export function NoteEditor({
   const insets = embedded ? { top: 0, bottom: contentInsets.bottom, left: 0, right: contentInsets.right } : contentInsets;
   const keyboard = useKeyboardHeight();
   const { fontScale } = useWindowDimensions();
-  const [mode, setMode] = useState(initialMode);
   const { found, draft, setDraft, flush, forget, reload } = useNoteDraft(id, fresh);
+  // An empty body opens in Write wherever the note was opened from.
+  const [mode, setMode] = useState(() => (found ? openingMode(initialMode, draft.content) : initialMode));
   // The folder, date and location, and the note for More: the text is the draft's.
   const data = useNotesRead(`note/${id}`, () => readNote(id));
   const value = data.ok ? data.value : undefined;
@@ -98,6 +108,7 @@ export function NoteEditor({
   const moreRef = useRef<ComponentRef<typeof Pressable>>(null);
   const safe = useSafeAreaInsets();
   const bodyRef = useRef<TextInputInstance>(null);
+  const titleRef = useRef<TextInputInstance>(null);
   // The body's selection as the field reports it, and one set by an edit
   // from the bar until the field reports it back.
   const [selection, setSelection] = useState<Selection>({ start: 0, end: 0 });
@@ -106,20 +117,53 @@ export function NoteEditor({
   const [toolsHeight, setToolsHeight] = useState(0);
   const writing = found && mode === 'write';
   const suggestion = useReferenceSuggestion(writing ? draft.content : '', selection);
-  const showTools = writing && (keyboard > 0 || FORMAT_BAR_WHEN_KEYBOARD_CLOSED === 'show');
+  // The Write field holding focus. Blur comes before the next field's
+  // focus, so only the field that had it clears it.
+  const [focusedField, setFocusedField] = useState<'title' | 'body'>();
+  const onFieldFocus = (field: 'title' | 'body', on: boolean) =>
+    setFocusedField((current) => (on ? field : current === field ? undefined : current));
+  const fieldFocused = writing && focusedField !== undefined;
+  const docked = useDockedFocus(fieldFocused, keyboard);
+  const placement = formatBarPlacement({
+    writing,
+    fieldFocused: docked,
+    keyboardHeight: keyboard,
+    whenKeyboardClosed: FORMAT_BAR_WHEN_KEYBOARD_CLOSED,
+  });
+  const showTools = placement !== 'hidden';
+
+  // The soft keyboard closed with a field still focused (Android's Back
+  // does that): let go of the field, so the bar hides instead of docking
+  // as if a hardware keyboard were typing.
+  const lastKeyboard = useRef(keyboard);
+  useEffect(() => {
+    if (lastKeyboard.current > 0 && keyboard === 0) {
+      bodyRef.current?.blur();
+      titleRef.current?.blur();
+    }
+    lastKeyboard.current = keyboard;
+  }, [keyboard]);
 
   // Read shows what was written, saved.
   const switchTo = (next: NoteMode) => {
     if (next === 'read') flush();
     setPinned(undefined);
+    setFocusedField(undefined);
     setMode(next);
   };
 
-  // Ctrl+1 / Ctrl+2 on a hardware keyboard, while this screen is in front.
+  // Ctrl+1 / Ctrl+2 on a hardware keyboard, only while the editor has the
+  // focus. Full screen, that's the screen being in front. Beside the list,
+  // React Native can't tell which pane holds focus (a list row focused
+  // from the keyboard isn't reported), so the pane counts as focused while
+  // one of its fields has focus, or when it was the last pane touched
+  // (`active`, kept by the list); Read has no fields, so the touch is what
+  // tells there.
+  const editorFocused = focused && found && (!embedded || active || fieldFocused);
   useEditorModeShortcuts(
     () => switchTo('write'),
     () => switchTo('read'),
-    focused && found,
+    editorFocused,
   );
 
   const onSelectionChange = (next: Selection) => {
@@ -198,41 +242,58 @@ export function NoteEditor({
     </Pressable>
   ) : null;
 
-  // Over the tabs there's no back button: Done (iOS) or Close (Material) leaves.
-  const close = material ? (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel="Close"
-      onPress={() => router.back()}
-      style={({ pressed }) => [styles.iconButton, { minWidth: 48, minHeight: 48, opacity: pressed ? 0.6 : 1 }]}
-    >
-      <ScaledSymbol name={{ ios: 'xmark', android: 'close' }} size={24} tintColor={m3.onSurfaceVariant} />
-    </Pressable>
-  ) : (
-    <TextButton title="Done" onPress={() => router.back()} />
-  );
+  // Leaving, by any way out (the bar's back, X, Done, Android's Back and
+  // predictive back alike), unmounts the editor; useNoteDraft then saves,
+  // or removes a fresh note left empty. Over the tabs that returns to the
+  // verse.
+  const leave = () => router.back();
 
-  // Above the keyboard, or the system bars while it's closed.
-  const toolsBottom = keyboard > 0 ? keyboardBottom(keyboard, safe.bottom, Platform.OS === 'android') : insets.bottom;
+  // Material: the 64dp bar, back or X leading (Lumen). iOS look: the
+  // native header; over the tabs, Done at the trailing edge with More
+  // beside it (both fit beside the switch on a phone).
+  const headerOptions = material
+    ? {
+        header: ({ options }: { options: { headerStyle?: StyleProp<{ backgroundColor?: ColorValue }> } }) => (
+          <NoteAppBar
+            leading={stay ? 'close' : 'back'}
+            onLeading={leave}
+            title={modeSwitch}
+            trailing={more}
+            backgroundColor={StyleSheet.flatten(options.headerStyle)?.backgroundColor}
+          />
+        ),
+      }
+    : {
+        header: undefined,
+        headerTitle: modeSwitch ? () => modeSwitch : undefined,
+        headerRight: stay
+          ? () => (
+              <View style={styles.trailing}>
+                {more}
+                <TextButton title="Done" onPress={leave} />
+              </View>
+            )
+          : more
+            ? () => more
+            : undefined,
+        ...(stay ? { headerBackVisible: false, headerLeft: undefined, headerTitleAlign: 'center' as const } : null),
+      };
+
+  // Above the soft keyboard, else docked over the system bars.
+  const toolsBottom =
+    placement === 'keyboard' ? keyboardBottom(keyboard, safe.bottom, Platform.OS === 'android') : insets.bottom;
 
   return (
     <>
       {embedded ? (
         modeSwitch && (
-          <View style={[styles.toolbar, { borderBottomColor: colors.separator }]}>
+          <View style={[styles.toolbar, { minHeight: material ? 64 : 44, borderBottomColor: colors.separator }]}>
             {modeSwitch}
             {more}
           </View>
         )
       ) : (
-        <Stack.Screen
-          options={{
-            title: '',
-            headerTitle: modeSwitch ? () => modeSwitch : undefined,
-            headerRight: more ? () => more : undefined,
-            ...(stay ? { headerBackVisible: false, headerLeft: () => close } : null),
-          }}
-        />
+        <Stack.Screen options={{ title: '', ...headerOptions }} />
       )}
       <View style={styles.body}>
         <ScrollView
@@ -258,6 +319,8 @@ export function NoteEditor({
                 onChange={onDraftChange}
                 autoFocus={fresh}
                 bodyRef={bodyRef}
+                titleRef={titleRef}
+                onFieldFocus={onFieldFocus}
                 selection={pinned}
                 onSelectionChange={onSelectionChange}
               />
@@ -297,7 +360,27 @@ export function NoteEditor({
   );
 }
 
+/**
+ * Whether a Write field has held focus with no soft keyboard for a moment:
+ * a hardware keyboard, by formatBarPlacement's rule. The soft keyboard
+ * opens a beat after the focus, so docking waits FORMAT_BAR_DOCK_DELAY_MS
+ * rather than flash the bar at the bottom first; moving between the title
+ * and the body blurs one before focusing the other, so letting go waits a
+ * little too. The soft keyboard opening undocks at once.
+ */
+function useDockedFocus(fieldFocused: boolean, keyboard: number): boolean {
+  const [docked, setDocked] = useState(false);
+  useEffect(() => {
+    const next = fieldFocused && keyboard === 0;
+    const delay = next ? FORMAT_BAR_DOCK_DELAY_MS : keyboard > 0 ? 0 : 150;
+    const timer = setTimeout(() => setDocked(next), delay);
+    return () => clearTimeout(timer);
+  }, [fieldFocused, keyboard]);
+  return docked;
+}
+
 const styles = StyleSheet.create({
+  trailing: { flexDirection: 'row', alignItems: 'center' },
   toolbar: {
     flexDirection: 'row',
     alignItems: 'center',

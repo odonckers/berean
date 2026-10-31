@@ -16,7 +16,7 @@ function tabColors({ look, colors, m3, type }: Berean) {
       indicatorColor: m3.secondaryContainer,
       iconColor: { default: m3.onSurfaceVariant, selected: m3.onSecondaryContainer },
       tintColor: m3.primary,
-      rippleColor: m3.outline,
+      rippleColor: colors.separator,
       labelStyle: {
         default: { ...labelSize, color: m3.onSurfaceVariant },
         selected: { ...labelSize, color: m3.onSurface },

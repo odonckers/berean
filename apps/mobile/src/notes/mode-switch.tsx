@@ -50,7 +50,7 @@ export function ModeSwitch({ mode, onChange }: ModeSwitchProps) {
                 style={[
                   styles.materialSegment,
                   i === 0 ? styles.materialFirst : styles.materialLast,
-                  { borderColor: m3.outlineVariant },
+                  { borderColor: m3.outline },
                   selected && { backgroundColor: m3.secondaryContainer },
                 ]}
               >

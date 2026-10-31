@@ -7,13 +7,13 @@ import { useBerean } from '@/design/theme';
 
 // M3 search bar (material look). It only opens the search screen.
 function SearchBar({ style }: { style: StyleProp<ViewStyle> }) {
-  const { m3, radii, spacing } = useBerean();
+  const { colors, m3, radii, spacing } = useBerean();
   return (
     <Pressable
       accessibilityRole="search"
       accessibilityLabel="Search Berean"
       onPress={() => router.push('/search-view')}
-      android_ripple={{ color: m3.outline }}
+      android_ripple={{ color: colors.separator }}
       style={[
         styles.bar,
         {

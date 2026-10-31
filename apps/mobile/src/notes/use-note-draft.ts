@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Alert, AppState, BackHandler } from 'react-native';
 
 import { userdata } from '@/ffi/core';
 import { changeNotes, findNote } from '@/notes/data';
-import { type Draft, SAVE_DELAY_MS, leaveStep, shouldSave } from '@/notes/note-draft';
+import { type Draft, SAVE_DELAY_MS, createDraftSession } from '@/notes/note-draft';
 
 function readDraft(id: string): Draft | undefined {
   try {
@@ -20,73 +20,60 @@ function readDraft(id: string): Draft | undefined {
  * `flush` (switching to Read), on leaving the screen, on Android's Back and
  * when the app goes to the background; only a change saves. A `fresh` note
  * (made for the editor) still empty on leaving is removed instead. A failed
- * save says so and keeps the draft.
+ * save says so and keeps the draft. createDraftSession holds the rules.
  */
 export function useNoteDraft(id: string, fresh: boolean) {
   // Read once: the fields own the text from here.
   const [initial] = useState(() => readDraft(id));
-  const [draft, setDraftState] = useState<Draft>(initial ?? { title: '', content: '' });
-  // The latest draft and the last saved one, for saves outside a render.
-  const current = useRef(draft);
-  const saved = useRef(draft);
-  // Deleted (More, Delete) or removed on leaving: nothing saves again.
-  const gone = useRef(initial === undefined);
-
-  const setDraft = useCallback((next: Draft) => {
-    current.current = next;
-    setDraftState(next);
-  }, []);
-
-  const flush = useCallback(() => {
-    const next = current.current;
-    if (gone.current || !shouldSave(next, saved.current)) return;
-    const error = changeNotes(() => userdata().updateNote(id, next.title, next.content));
-    if (error !== undefined) {
-      Alert.alert('Couldn’t save the note', error);
-      return;
-    }
-    saved.current = next;
-  }, [id]);
-
-  const leave = useCallback(() => {
-    if (gone.current) return;
-    switch (leaveStep(current.current, saved.current, fresh)) {
-      case 'remove':
-        gone.current = true;
+  const [session] = useState(() =>
+    createDraftSession({
+      initial,
+      fresh,
+      save: (next) => {
+        const error = changeNotes(() => userdata().updateNote(id, next.title, next.content));
+        if (error !== undefined) Alert.alert('Couldn’t save the note', error);
+        return error === undefined;
+      },
+      // The screen under it hears the change and reads again.
+      remove: () => {
         changeNotes(() => userdata().removeNote(id));
-        break;
-      case 'save':
-        // Deleted elsewhere meanwhile (beside the list): nothing to save to.
-        if (findNote(id) === undefined) gone.current = true;
-        else flush();
-        break;
-      case 'none':
-        break;
-    }
-  }, [id, fresh, flush]);
+      },
+      exists: () => findNote(id) !== undefined,
+    }),
+  );
+  const found = initial !== undefined;
+  const [draft, setDraftState] = useState<Draft>(session.draft);
+
+  const setDraft = useCallback(
+    (next: Draft) => {
+      session.update(next);
+      setDraftState(next);
+    },
+    [session],
+  );
+
+  const flush = session.flush;
 
   /** The note was deleted: drop the draft unsaved. */
-  const forget = useCallback(() => {
-    gone.current = true;
-  }, []);
+  const forget = session.forget;
 
   /** Take the core's text again after a change made outside the fields (a checklist tick). */
   const reload = useCallback(() => {
     const read = readDraft(id);
     if (read === undefined) return;
-    saved.current = read;
-    setDraft(read);
-  }, [id, setDraft]);
+    session.reload(read);
+    setDraftState(read);
+  }, [id, session]);
 
   // Saves a moment after typing stops.
   useEffect(() => {
-    if (!shouldSave(draft, saved.current)) return;
+    if (!session.dirty()) return;
     const timer = setTimeout(flush, SAVE_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [draft, flush]);
+  }, [draft, session, flush]);
 
   // Saves now when the app goes to the background, or Android's Back is
-  // pressed (Back still goes back).
+  // pressed (Back still goes back, and leaving then does the rest).
   useEffect(() => {
     const appState = AppState.addEventListener('change', (state) => {
       if (state === 'background') flush();
@@ -101,9 +88,13 @@ export function useNoteDraft(id: string, fresh: boolean) {
     };
   }, [flush]);
 
-  // Leaving: the screen going back, or a list-detail pane switching notes.
-  // The screen under it hears the change and reads again.
-  useEffect(() => leave, [leave]);
+  // Leaving: the screen going back, by any way out, or a list-detail pane
+  // switching notes. The session waits a turn, so StrictMode's dev remount
+  // doesn't count as leaving.
+  useEffect(() => {
+    session.mount();
+    return session.unmount;
+  }, [session]);
 
-  return { found: initial !== undefined, draft, setDraft, flush, forget, reload };
+  return { found, draft, setDraft, flush, forget, reload };
 }
