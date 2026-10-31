@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import { useBerean } from '@/design/theme';
-import { spacing } from '@/design/tokens';
+import { radii, spacing } from '@/design/tokens';
 import { markerCount, markerLabel } from '@/notes/verse-notes';
 
 /**
@@ -34,6 +34,33 @@ export function NoteGlyph({ color, background, scale = 1 }: { color: string; bac
     </View>
   );
 }
+
+/**
+ * The notes count on a verse number where there's no margin (guide §7.2):
+ * an accent capsule. It is an inline View inside the number's span, not
+ * text: the paragraph's text then holds only a placeholder character for
+ * it (BADGE_TEXT), so a screen reader reading the verse never says the
+ * count as a stray number, and the View itself is hidden from
+ * accessibility. It takes no touches, so a tap on it is a tap on the
+ * number's span around it.
+ */
+export function NoteBadge({ count }: { count: string }) {
+  const { colors, type } = useBerean();
+  const { fontScale } = useWindowDimensions();
+  return (
+    <View
+      accessible={false}
+      importantForAccessibility="no-hide-descendants"
+      accessibilityElementsHidden
+      pointerEvents="none"
+      style={[styles.badge, { minWidth: BADGE_LINE * fontScale, backgroundColor: colors.accent }]}
+    >
+      <Text style={[type.verseNumber, styles.badgeCount, { color: colors.onAccent }]}>{count}</Text>
+    </View>
+  );
+}
+
+const BADGE_LINE = 14;
 
 /** The leading gutter the reader keeps in margin layouts, with or without notes, so lines never rebreak. */
 export const MARKER_GUTTER = 36;
@@ -102,5 +129,13 @@ const styles = StyleSheet.create({
     borderLeftColor: 'transparent',
   },
   marker: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
+  // Fully rounded: the capsule radius is half its height whatever the text size.
+  badge: {
+    borderRadius: radii.capsule,
+    paddingHorizontal: spacing.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeCount: { lineHeight: BADGE_LINE, textAlign: 'center' },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs / 2 },
 });

@@ -90,7 +90,7 @@ import {
   rememberVerse,
   restoredPane,
 } from '@/reader/session';
-import { MARKER_GUTTER, NoteMarker } from '@/reader/note-marker';
+import { MARKER_GUTTER, NoteBadge, NoteMarker } from '@/reader/note-marker';
 import { type PaneNote, StudyPane, moveAccessibilityFocus } from '@/reader/study-pane';
 import { useChapterHighlights } from '@/reader/use-chapter-highlights';
 import { useChapterNotes } from '@/reader/use-chapter-notes';
@@ -740,16 +740,7 @@ export function BibleChapterView({
                     {span.label}
                     {span.pad}
                   </Text>
-                  {span.badge !== '' && (
-                    <Text
-                      style={[
-                        type.verseNumber,
-                        { color: m3.onSecondaryContainer, backgroundColor: m3.secondaryContainer },
-                      ]}
-                    >
-                      {span.badge}
-                    </Text>
-                  )}
+                  {span.badge !== '' && <NoteBadge count={span.badge} />}
                   {span.trailing}
                 </Text>
               );
