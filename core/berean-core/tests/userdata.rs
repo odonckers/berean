@@ -275,6 +275,11 @@ fn new_userdata_db_matches_the_pinned_blank() {
             pair("index", "IX_BereanFolder_ParentId"),
             pair("table", "BereanNoteFolder"),
             pair("index", "IX_BereanNoteFolder_FolderId"),
+            pair("table", "BereanWorkspace"),
+            pair("index", "IX_BereanWorkspace_Name"),
+            pair("table", "BereanCanvasItem"),
+            pair("index", "IX_BereanCanvasItem_Note"),
+            pair("index", "IX_BereanCanvasItem_Workspace"),
         ]
     );
     // 18 tables, 23 triggers, 14 explicit indexes (design §5).
@@ -2253,6 +2258,14 @@ fn import_preview_progress_holds_no_lock_and_honours_cancel() {
     }
 }
 
+/// Every Berean table (folders, Studyspace), sorted.
+const BEREAN_TABLES: [&str; 4] = [
+    "BereanCanvasItem",
+    "BereanFolder",
+    "BereanNoteFolder",
+    "BereanWorkspace",
+];
+
 /// The Berean tables in the database at `path`, by name.
 fn berean_tables(path: &Path) -> Vec<String> {
     let mut names: Vec<String> = schema(path)
@@ -2274,10 +2287,7 @@ fn folder_tables_are_added_to_an_existing_jw_db() {
     assert!(berean_tables(&env.userdata_db()).is_empty());
 
     let ud = env.core().userdata();
-    assert_eq!(
-        berean_tables(&env.userdata_db()),
-        ["BereanFolder", "BereanNoteFolder"]
-    );
+    assert_eq!(berean_tables(&env.userdata_db()), BEREAN_TABLES);
     // JW's schema version and tables are untouched.
     assert_eq!(user_version(&env.userdata_db()), 16);
     assert_eq!(jw_schema(&env.userdata_db()), schema(&blank));
@@ -2304,10 +2314,7 @@ fn import_clears_folders_and_undo_brings_them_back() {
     Backup::synthetic().write(&file);
     ex.import(&file).unwrap();
     // The JW database has no folders: the tables are there again, empty.
-    assert_eq!(
-        berean_tables(&ex.env.userdata_db()),
-        ["BereanFolder", "BereanNoteFolder"]
-    );
+    assert_eq!(berean_tables(&ex.env.userdata_db()), BEREAN_TABLES);
     assert!(ud.folders().unwrap().is_empty());
     assert!(ud
         .notes(&NoteFilter::default())

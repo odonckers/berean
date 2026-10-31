@@ -102,7 +102,7 @@ const STAGE_STEPS: u64 = 5;
 /// header for where it comes from.
 const SCHEMA_V16: &str = include_str!("userdata_v16.sql");
 
-/// Berean's own tables (note folders), beside JW's; see the file's header.
+/// Berean's own tables (note folders, Studyspace), beside JW's; see the file's header.
 const BEREAN_TABLES: &str = include_str!("userdata_berean.sql");
 
 /// The path of the user-data database under `data_dir`.
@@ -371,6 +371,117 @@ pub struct ImportPreview {
     /// (ISO-8601, as JW Library and Berean write it).
     pub created: String,
 }
+
+/// A Studyspace workspace, as [`UserData::workspaces`] lists it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Workspace {
+    pub id: i64,
+    pub name: String,
+    /// `None` until the first [`UserData::set_viewport`]: the app opens at
+    /// fit-all.
+    pub viewport: Option<Viewport>,
+    /// The cards on its canvas.
+    pub item_count: u32,
+}
+
+/// Where a workspace's view is: the camera centre, the canvas point `x`,
+/// `y` at the middle of the view, and its zoom (1.0 = 100%). `|x|` and `|y|`
+/// are at most [`MAX_CANVAS_COORD`]; the zoom is finite and over 0, with no
+/// other limit (the app picks its own range).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Viewport {
+    pub x: f64,
+    pub y: f64,
+    pub zoom: f64,
+}
+
+/// A card's place and size, in canvas points at zoom 1.0: `x`, `y` is its
+/// top-left corner, `|x|` and `|y|` at most [`MAX_CANVAS_COORD`]; `width` and
+/// `height` are [`MIN_CARD_SIZE`] to [`MAX_CARD_SIZE`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct Frame {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+/// What a card shows. `missing`: the card's `pub_key` isn't installed (set
+/// by reads, ignored on input).
+#[derive(Debug, Clone, PartialEq)]
+pub enum CardRef {
+    /// A note, by `Guid`.
+    Note { note_id: String },
+    /// A Bible passage within one book, as `notes::passage_url` takes it.
+    Passage { span: LocationSpan, missing: bool },
+    /// An excerpt: a publication, document or paragraph, as
+    /// `notes::publication_url` takes it.
+    Publication { location: Location, missing: bool },
+}
+
+/// Where a passage or excerpt card has been read to, for
+/// [`UserData::set_reader_state`]. The card's own [`CardRef`] stays its
+/// origin (what was opened, and the passage highlight).
+///
+/// - `at` is the same kind as the card and in the same publication: for a
+///   Bible card, one verse (`start == end`, verse set) of the same Bible,
+///   any book or chapter; for a publication card, a paragraph (so a
+///   document too) of the same `pub_key`. `missing` is set as for cards.
+/// - `char_offset` counts UTF-16 code units into the core's plain text of
+///   that verse or paragraph, the unit `markdown_spans` uses: where the
+///   card's top edge is.
+///
+/// The core stores both as given. Clamping `char_offset` to the block's
+/// length on restore, and falling back to the nearest earlier block when
+/// `at` no longer exists (a different edition, say), are up to the reader.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReaderState {
+    pub at: CardRef,
+    pub char_offset: u32,
+}
+
+/// A card on a workspace's canvas. A higher `z` draws on top. `reader` is
+/// `None` for a note card, and for a passage or excerpt card never
+/// scrolled (it is at its origin, offset 0). `last_used_at` is when the
+/// card was added, read in ([`UserData::set_reader_state`]) or touched
+/// ([`UserData::touch_item`]), ISO 8601 in UTC like [`Note::modified`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct CanvasItem {
+    pub id: i64,
+    pub workspace_id: i64,
+    pub card: CardRef,
+    pub frame: Frame,
+    pub z: i64,
+    pub reader: Option<ReaderState>,
+    pub last_used_at: String,
+}
+
+/// A new frame for the item `id`, for [`UserData::set_frames`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct ItemFrame {
+    pub id: i64,
+    pub frame: Frame,
+}
+
+/// The order [`UserData::items`] lists a workspace's cards in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ItemOrder {
+    /// Back to front, for drawing: by `z`, then id.
+    Z,
+    /// Top to bottom, then left to right, for the List view and screen
+    /// readers: by `y`, then `x`, then id.
+    Reading,
+}
+
+// Studyspace bounds, in canvas points. `add_item`, `set_frames` and
+// `set_viewport` reject anything outside them, or not finite, as `Invalid`.
+
+/// The smallest card width or height.
+pub const MIN_CARD_SIZE: f64 = 24.0;
+/// The largest card width or height.
+pub const MAX_CARD_SIZE: f64 = 8192.0;
+/// The largest `|x|` or `|y|` of a card's corner or a viewport's centre.
+pub const MAX_CANVAS_COORD: f64 = 1e6;
 
 /// The highest bookmark slot: JW gives each publication ten.
 const MAX_SLOT: u8 = 9;
@@ -829,6 +940,185 @@ fn read_folders(conn: &Connection) -> Result<Vec<Folder>, CoreError> {
     }
     .walk(None, 0, &mut out);
     Ok(out)
+}
+
+/// The trimmed workspace name; empty => `Invalid`.
+fn workspace_name(name: &str) -> Result<&str, CoreError> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(CoreError::Invalid("a workspace name can't be empty".into()));
+    }
+    Ok(name)
+}
+
+/// `Invalid` if a workspace other than `except` is already called `name`,
+/// ignoring ASCII case as the unique index does.
+fn check_workspace_name_free(
+    conn: &Connection,
+    name: &str,
+    except: Option<i64>,
+) -> Result<(), CoreError> {
+    let taken: bool = conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM BereanWorkspace \
+         WHERE Name = ?1 COLLATE NOCASE AND WorkspaceId IS NOT ?2)",
+        params![name, except],
+        |r| r.get(0),
+    )?;
+    if taken {
+        return Err(CoreError::Invalid(format!(
+            "a workspace called {name:?} exists"
+        )));
+    }
+    Ok(())
+}
+
+/// `NotFound` unless workspace `id` exists.
+fn check_workspace(conn: &Connection, id: i64) -> Result<(), CoreError> {
+    conn.query_row(
+        "SELECT 1 FROM BereanWorkspace WHERE WorkspaceId = ?1",
+        [id],
+        |_| Ok(()),
+    )?;
+    Ok(())
+}
+
+/// Whether `v` is a canvas coordinate in bounds (so finite).
+fn canvas_coord(v: f64) -> bool {
+    v.abs() <= MAX_CANVAS_COORD
+}
+
+/// Whether `v` is a card width or height in bounds (so finite).
+fn card_size(v: f64) -> bool {
+    (MIN_CARD_SIZE..=MAX_CARD_SIZE).contains(&v)
+}
+
+/// `Invalid` unless `frame`'s corner and size are in bounds.
+fn check_frame(frame: &Frame) -> Result<(), CoreError> {
+    let Frame {
+        x,
+        y,
+        width,
+        height,
+    } = *frame;
+    if !(canvas_coord(x) && canvas_coord(y) && card_size(width) && card_size(height)) {
+        return Err(CoreError::Invalid(format!(
+            "a frame needs |x|, |y| <= {MAX_CANVAS_COORD} and a size of \
+             {MIN_CARD_SIZE} to {MAX_CARD_SIZE}: {frame:?}"
+        )));
+    }
+    Ok(())
+}
+
+/// `Invalid` unless `viewport`'s centre is in bounds and its zoom is finite
+/// and over 0.
+fn check_viewport(viewport: &Viewport) -> Result<(), CoreError> {
+    let Viewport { x, y, zoom } = *viewport;
+    if !(canvas_coord(x) && canvas_coord(y) && zoom.is_finite() && zoom > 0.0) {
+        return Err(CoreError::Invalid(format!(
+            "a viewport needs |x|, |y| <= {MAX_CANVAS_COORD} and a finite zoom over 0: \
+             {viewport:?}"
+        )));
+    }
+    Ok(())
+}
+
+/// The card a stored `Target` or `ReaderAt` URL names; `None` if the link
+/// parser can't read it as a passage or publication.
+fn url_card(url: &str, installed: &HashSet<String>) -> Option<CardRef> {
+    match notes::link_target(url, &|key| installed.contains(key)) {
+        notes::LinkTarget::Passage { span, missing } => Some(CardRef::Passage { span, missing }),
+        notes::LinkTarget::Publication { location, missing } => {
+            Some(CardRef::Publication { location, missing })
+        }
+        _ => None,
+    }
+}
+
+/// The workspaces, or the one `id` names, in creation order.
+fn read_workspaces(conn: &Connection, id: Option<i64>) -> Result<Vec<Workspace>, CoreError> {
+    let workspaces = conn
+        .prepare(
+            "SELECT w.WorkspaceId, w.Name, w.ViewX, w.ViewY, w.Zoom, \
+             (SELECT COUNT(*) FROM BereanCanvasItem i WHERE i.WorkspaceId = w.WorkspaceId) \
+             FROM BereanWorkspace w WHERE (?1 IS NULL OR w.WorkspaceId = ?1) \
+             ORDER BY w.WorkspaceId",
+        )?
+        .query_map([id], |r| {
+            let viewport = match (r.get(2)?, r.get(3)?, r.get(4)?) {
+                (Some(x), Some(y), Some(zoom)) => Some(Viewport { x, y, zoom }),
+                _ => None,
+            };
+            Ok(Workspace {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                viewport,
+                item_count: to_u32(r.get(5)?).unwrap_or(u32::MAX),
+            })
+        })?
+        .collect::<Result<_, _>>()?;
+    Ok(workspaces)
+}
+
+/// The cards of workspace `workspace` in `order`, or the one item `item`
+/// names (with `workspace` `None`); `installed` says whether a `pub_key` is
+/// installed. A stored target the link parser can't read is skipped, as
+/// rows with no equivalent here are (see the module docs); a reader state
+/// it can't read is `None`.
+fn read_items(
+    conn: &Connection,
+    workspace: Option<i64>,
+    item: Option<i64>,
+    order: ItemOrder,
+    installed: &HashSet<String>,
+) -> Result<Vec<CanvasItem>, CoreError> {
+    let order = match order {
+        ItemOrder::Z => "i.Z, i.ItemId",
+        ItemOrder::Reading => "i.Y, i.X, i.ItemId",
+    };
+    let rows: Vec<Option<CanvasItem>> = conn
+        .prepare(&format!(
+            "SELECT i.ItemId, i.WorkspaceId, n.Guid, i.Target, i.X, i.Y, i.Width, i.Height, i.Z, \
+             i.ReaderAt, i.ReaderCharOffset, i.LastUsedAt \
+             FROM BereanCanvasItem i LEFT JOIN Note n ON n.NoteId = i.NoteId \
+             WHERE (?1 IS NULL OR i.WorkspaceId = ?1) AND (?2 IS NULL OR i.ItemId = ?2) \
+             ORDER BY {order}"
+        ))?
+        .query_map(params![workspace, item], |r| {
+            let note: Option<String> = r.get(2)?;
+            let target: Option<String> = r.get(3)?;
+            let card = match (note, target) {
+                (Some(note_id), _) => Some(CardRef::Note { note_id }),
+                (None, Some(url)) => url_card(&url, installed),
+                (None, None) => None,
+            };
+            let reader_at: Option<String> = r.get(9)?;
+            let reader_offset: Option<i64> = r.get(10)?;
+            let reader = match (reader_at, reader_offset.and_then(to_u32)) {
+                (Some(url), Some(char_offset)) => {
+                    url_card(&url, installed).map(|at| ReaderState { at, char_offset })
+                }
+                _ => None,
+            };
+            Ok(match card {
+                Some(card) => Some(CanvasItem {
+                    id: r.get(0)?,
+                    workspace_id: r.get(1)?,
+                    card,
+                    frame: Frame {
+                        x: r.get(4)?,
+                        y: r.get(5)?,
+                        width: r.get(6)?,
+                        height: r.get(7)?,
+                    },
+                    z: r.get(8)?,
+                    reader,
+                    last_used_at: r.get(11)?,
+                }),
+                None => None,
+            })
+        })?
+        .collect::<Result<_, _>>()?;
+    Ok(rows.into_iter().flatten().collect())
 }
 
 /// The built-in Favorites tag (`Type` 0), if the database has one.
@@ -1685,13 +1975,20 @@ impl UserData {
     /// Fails only on reading the installed list.
     pub fn render_markdown(&self, markdown: &str) -> Result<Vec<notes::Block>, CoreError> {
         // One query per render; the core lock is released before parsing.
-        let installed: HashSet<String> = self
+        let installed = self.installed()?;
+        Ok(notes::render(markdown, &|key| installed.contains(key)))
+    }
+
+    /// The `pub_key`s installed, for `missing` flags: one query, under the
+    /// core lock only while it runs.
+    fn installed(&self) -> Result<HashSet<String>, CoreError> {
+        let installed = self
             .inner
             .conn()
             .prepare("SELECT pub_key FROM installed_publication")?
             .query_map([], |r| r.get(0))?
             .collect::<Result<_, _>>()?;
-        Ok(notes::render(markdown, &|key| installed.contains(key)))
+        Ok(installed)
     }
 
     // Folders. Berean-only: they live in their own tables beside JW's (see
@@ -1904,6 +2201,316 @@ impl UserData {
             None => {
                 tx.execute("DELETE FROM BereanNoteFolder WHERE NoteId = ?1", [note])?;
             }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    // Studyspace. Berean-only, like folders: one canvas per workspace, its
+    // cards in `BereanCanvasItem`. Workspace names are trimmed and must be
+    // non-empty and unique, ignoring ASCII case. Frames and viewports are
+    // in canvas points at zoom 1.0.
+
+    /// Every workspace, in the order they were made.
+    pub fn workspaces(&self) -> Result<Vec<Workspace>, CoreError> {
+        read_workspaces(&self.inner.userdata(), None)
+    }
+
+    /// Add an empty workspace called `name`, with no viewport saved. A bad
+    /// or taken name => `Invalid`.
+    pub fn create_workspace(&self, name: &str) -> Result<Workspace, CoreError> {
+        let name = workspace_name(name)?;
+        let mut conn = self.inner.userdata();
+        let tx = conn.transaction()?;
+        check_workspace_name_free(&tx, name, None)?;
+        tx.execute("INSERT INTO BereanWorkspace (Name) VALUES (?1)", [name])?;
+        let workspace = read_workspaces(&tx, Some(tx.last_insert_rowid()))?
+            .pop()
+            .ok_or(CoreError::NotFound)?;
+        tx.commit()?;
+        Ok(workspace)
+    }
+
+    /// Rename workspace `id` to `name`. Unknown => `NotFound`; a bad or
+    /// taken name => `Invalid`.
+    pub fn rename_workspace(&self, id: i64, name: &str) -> Result<(), CoreError> {
+        let name = workspace_name(name)?;
+        let mut conn = self.inner.userdata();
+        let tx = conn.transaction()?;
+        check_workspace(&tx, id)?;
+        check_workspace_name_free(&tx, name, Some(id))?;
+        tx.execute(
+            "UPDATE BereanWorkspace SET Name = ?2 WHERE WorkspaceId = ?1",
+            params![id, name],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Delete workspace `id` and its cards; the notes on it are kept. There
+    /// is no undo. Unknown => `NotFound`.
+    pub fn delete_workspace(&self, id: i64) -> Result<(), CoreError> {
+        let mut conn = self.inner.userdata();
+        let tx = conn.transaction()?;
+        // The cascade removes its items.
+        let n = tx.execute("DELETE FROM BereanWorkspace WHERE WorkspaceId = ?1", [id])?;
+        if n == 0 {
+            return Err(CoreError::NotFound);
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Save where workspace `workspace_id`'s view is (its centre and zoom).
+    /// Unknown => `NotFound`; a centre out of bounds, or a zoom that isn't
+    /// finite and over 0 => `Invalid`.
+    pub fn set_viewport(&self, workspace_id: i64, viewport: &Viewport) -> Result<(), CoreError> {
+        check_viewport(viewport)?;
+        let Viewport { x, y, zoom } = *viewport;
+        let mut conn = self.inner.userdata();
+        let tx = conn.transaction()?;
+        let n = tx.execute(
+            "UPDATE BereanWorkspace SET ViewX = ?2, ViewY = ?3, Zoom = ?4 WHERE WorkspaceId = ?1",
+            params![workspace_id, x, y, zoom],
+        )?;
+        if n == 0 {
+            return Err(CoreError::NotFound);
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// The cards on workspace `workspace_id`, in `order`, with `missing`
+    /// set for passages and excerpts whose publication isn't installed.
+    /// Unknown => `NotFound`.
+    pub fn items(&self, workspace_id: i64, order: ItemOrder) -> Result<Vec<CanvasItem>, CoreError> {
+        let installed = self.installed()?;
+        let mut conn = self.inner.userdata();
+        let tx = conn.transaction()?;
+        check_workspace(&tx, workspace_id)?;
+        let items = read_items(&tx, Some(workspace_id), None, order, &installed)?;
+        tx.commit()?;
+        Ok(items)
+    }
+
+    /// Put `card` on workspace `workspace_id` at `frame`, on top of the
+    /// others (`z` one past the highest; 1 on an empty canvas). `missing`
+    /// is ignored. An unknown workspace or note => `NotFound`; a bad frame,
+    /// a span `passage_url` rejects, a location `publication_url` rejects,
+    /// or a note already on the workspace => `Invalid`.
+    pub fn add_item(
+        &self,
+        workspace_id: i64,
+        card: &CardRef,
+        frame: &Frame,
+    ) -> Result<CanvasItem, CoreError> {
+        check_frame(frame)?;
+        let target = match card {
+            CardRef::Note { .. } => None,
+            CardRef::Passage { span, .. } => Some(notes::passage_url(span)?),
+            CardRef::Publication { location, .. } => Some(notes::publication_url(location)?),
+        };
+        let installed = self.installed()?;
+        let mut conn = self.inner.userdata();
+        let tx = conn.transaction()?;
+        check_workspace(&tx, workspace_id)?;
+        let note = match card {
+            CardRef::Note { note_id } => {
+                let note = note_row(&tx, note_id)?;
+                let there: bool = tx.query_row(
+                    "SELECT EXISTS (SELECT 1 FROM BereanCanvasItem \
+                     WHERE WorkspaceId = ?1 AND NoteId = ?2)",
+                    [workspace_id, note],
+                    |r| r.get(0),
+                )?;
+                if there {
+                    return Err(CoreError::Invalid(format!(
+                        "the note {note_id} is already on workspace {workspace_id}"
+                    )));
+                }
+                Some(note)
+            }
+            _ => None,
+        };
+        tx.execute(
+            &format!(
+                "INSERT INTO BereanCanvasItem \
+                 (WorkspaceId, NoteId, Target, X, Y, Width, Height, Z, LastUsedAt) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, \
+                 (SELECT COALESCE(MAX(Z), 0) + 1 FROM BereanCanvasItem WHERE WorkspaceId = ?1), \
+                 {NOW})"
+            ),
+            params![
+                workspace_id,
+                note,
+                target,
+                frame.x,
+                frame.y,
+                frame.width,
+                frame.height
+            ],
+        )?;
+        let item = read_items(
+            &tx,
+            None,
+            Some(tx.last_insert_rowid()),
+            ItemOrder::Z,
+            &installed,
+        )?
+        .pop()
+        .ok_or_else(|| CoreError::Invalid(format!("card not readable: {card:?}")))?;
+        tx.commit()?;
+        Ok(item)
+    }
+
+    /// Move or resize items: each gets its new frame, all or nothing. Empty
+    /// is a no-op. Any frame bad => `Invalid`, any id unknown => `NotFound`,
+    /// changing nothing.
+    pub fn set_frames(&self, frames: &[ItemFrame]) -> Result<(), CoreError> {
+        for f in frames {
+            check_frame(&f.frame)?;
+        }
+        if frames.is_empty() {
+            return Ok(());
+        }
+        let mut conn = self.inner.userdata();
+        let tx = conn.transaction()?;
+        let mut update = tx.prepare(
+            "UPDATE BereanCanvasItem SET X = ?2, Y = ?3, Width = ?4, Height = ?5 \
+             WHERE ItemId = ?1",
+        )?;
+        for ItemFrame { id, frame } in frames {
+            let n = update.execute(params![id, frame.x, frame.y, frame.width, frame.height])?;
+            if n == 0 {
+                return Err(CoreError::NotFound);
+            }
+        }
+        drop(update);
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Put item `item_id` on top of its workspace (`z` one past the
+    /// highest) and return its new `z`. Unknown => `NotFound`.
+    pub fn bring_to_front(&self, item_id: i64) -> Result<i64, CoreError> {
+        let mut conn = self.inner.userdata();
+        let tx = conn.transaction()?;
+        let z: i64 = tx.query_row(
+            "SELECT MAX(o.Z) + 1 FROM BereanCanvasItem i \
+             JOIN BereanCanvasItem o ON o.WorkspaceId = i.WorkspaceId WHERE i.ItemId = ?1 \
+             GROUP BY i.ItemId",
+            [item_id],
+            |r| r.get(0),
+        )?;
+        tx.execute(
+            "UPDATE BereanCanvasItem SET Z = ?2 WHERE ItemId = ?1",
+            [item_id, z],
+        )?;
+        tx.commit()?;
+        Ok(z)
+    }
+
+    /// Save where passage or excerpt card `item_id` has been read to (see
+    /// [`ReaderState`]), for a reader that calls this while scrolling: one
+    /// `UPDATE` by primary key that also bumps `last_used_at` and touches
+    /// nothing else (not `z`, not the frame). `missing` is ignored. Each card has its own state, so two
+    /// cards on one publication stay independent.
+    ///
+    /// Unknown item => `NotFound`. A note card; an `at` of the other kind or
+    /// another publication (a Bible card stays in its Bible, a publication
+    /// card in its `pub_key`); a passage that isn't one verse; a location
+    /// without a paragraph; or a span or location the URL builders reject
+    /// => `Invalid`.
+    pub fn set_reader_state(&self, item_id: i64, state: &ReaderState) -> Result<(), CoreError> {
+        let (url, prefix, pub_key) = match &state.at {
+            CardRef::Note { .. } => {
+                return Err(CoreError::Invalid(
+                    "a reader is at a verse or paragraph".into(),
+                ))
+            }
+            CardRef::Passage { span, .. } => {
+                if span.start != span.end || span.start.verse.is_none() {
+                    return Err(CoreError::Invalid(format!(
+                        "a Bible reader is at one verse: {span:?}"
+                    )));
+                }
+                (
+                    notes::passage_url(span)?,
+                    "berean://bible/",
+                    &span.start.pub_key,
+                )
+            }
+            CardRef::Publication { location, .. } => {
+                if location.paragraph.is_none() {
+                    return Err(CoreError::Invalid(format!(
+                        "a publication reader is at a paragraph: {location:?}"
+                    )));
+                }
+                (
+                    notes::publication_url(location)?,
+                    "berean://pub/",
+                    &location.pub_key,
+                )
+            }
+        };
+        // The card's `Target` must be this kind and publication: its URL is
+        // `{prefix}{pub_key}` (a publication) or starts `{prefix}{pub_key}/`,
+        // and the '/' keeps `nwt` from matching `nwtsty`. `substr`, not
+        // LIKE, so no character in the key is a wildcard.
+        let base = format!("{prefix}{pub_key}");
+        let conn = self.inner.userdata();
+        let n = conn.execute(
+            &format!(
+                "UPDATE BereanCanvasItem \
+                 SET ReaderAt = ?2, ReaderCharOffset = ?3, LastUsedAt = {NOW} \
+                 WHERE ItemId = ?1 \
+                 AND (Target = ?4 OR substr(Target, 1, length(?4) + 1) = ?4 || '/')"
+            ),
+            params![item_id, url, state.char_offset, base],
+        )?;
+        if n == 0 {
+            let exists: bool = conn.query_row(
+                "SELECT EXISTS (SELECT 1 FROM BereanCanvasItem WHERE ItemId = ?1)",
+                [item_id],
+                |r| r.get(0),
+            )?;
+            return Err(if exists {
+                CoreError::Invalid(format!(
+                    "item {item_id} isn't a reader on {base}: {:?}",
+                    state.at
+                ))
+            } else {
+                CoreError::NotFound
+            });
+        }
+        Ok(())
+    }
+
+    /// Mark item `item_id` as just used: bump its `last_used_at` to now,
+    /// leaving `z`, the frame and everything else as they are. For focusing
+    /// a card, and for link reuse: following a link to something already on
+    /// the canvas, the app picks the most recently used card. Unknown =>
+    /// `NotFound`.
+    pub fn touch_item(&self, item_id: i64) -> Result<(), CoreError> {
+        let conn = self.inner.userdata();
+        let n = conn.execute(
+            &format!("UPDATE BereanCanvasItem SET LastUsedAt = {NOW} WHERE ItemId = ?1"),
+            [item_id],
+        )?;
+        if n == 0 {
+            return Err(CoreError::NotFound);
+        }
+        Ok(())
+    }
+
+    /// Take item `item_id` off its workspace ("Remove from workspace"); a
+    /// note card's note is kept. Unknown => `NotFound`.
+    pub fn remove_item(&self, item_id: i64) -> Result<(), CoreError> {
+        let mut conn = self.inner.userdata();
+        let tx = conn.transaction()?;
+        let n = tx.execute("DELETE FROM BereanCanvasItem WHERE ItemId = ?1", [item_id])?;
+        if n == 0 {
+            return Err(CoreError::NotFound);
         }
         tx.commit()?;
         Ok(())
@@ -2201,8 +2808,8 @@ impl UserData {
     /// Write a `.jwlibrary` backup of all the user data to `path`, replacing
     /// any file there: the database as stored (every JW table, those Berean
     /// doesn't surface included, and note bodies as written, in Markdown),
-    /// its manifest, and the media files. Berean's own tables (note folders)
-    /// are left out, so the file is the JW schema alone.
+    /// its manifest, and the media files. Berean's own tables (note folders,
+    /// Studyspace) are left out, so the file is the JW schema alone.
     /// The file appears at `path` whole or not at all: it is written beside
     /// it and renamed into place. Progress counts [`EXPORT_STEPS`] steps.
     ///
@@ -2237,7 +2844,9 @@ impl UserData {
             // dropped and isn't in JW's schema.
             let conn = Connection::open(&copy)?;
             conn.execute_batch(
-                "DROP TABLE IF EXISTS BereanNoteFolder;
+                "DROP TABLE IF EXISTS BereanCanvasItem;
+                 DROP TABLE IF EXISTS BereanWorkspace;
+                 DROP TABLE IF EXISTS BereanNoteFolder;
                  DROP TABLE IF EXISTS BereanFolder;
                  VACUUM;",
             )?;

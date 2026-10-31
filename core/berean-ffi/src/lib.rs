@@ -1741,6 +1741,216 @@ impl From<DeletedFolder> for berean_core::userdata::DeletedFolder {
     }
 }
 
+/// The FFI mirror of [`berean_core::userdata::Workspace`].
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct Workspace {
+    pub id: i64,
+    pub name: String,
+    pub viewport: Option<Viewport>,
+    pub item_count: u32,
+}
+
+impl From<berean_core::userdata::Workspace> for Workspace {
+    fn from(w: berean_core::userdata::Workspace) -> Self {
+        Workspace {
+            id: w.id,
+            name: w.name,
+            viewport: w.viewport.map(Into::into),
+            item_count: w.item_count,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::userdata::Viewport`]: `x`, `y` is the
+/// canvas point at the centre of the view.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct Viewport {
+    pub x: f64,
+    pub y: f64,
+    pub zoom: f64,
+}
+
+impl From<berean_core::userdata::Viewport> for Viewport {
+    fn from(v: berean_core::userdata::Viewport) -> Self {
+        Viewport {
+            x: v.x,
+            y: v.y,
+            zoom: v.zoom,
+        }
+    }
+}
+
+impl From<Viewport> for berean_core::userdata::Viewport {
+    fn from(v: Viewport) -> Self {
+        berean_core::userdata::Viewport {
+            x: v.x,
+            y: v.y,
+            zoom: v.zoom,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::userdata::Frame`]: `x`, `y` is the
+/// card's top-left corner.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct Frame {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+impl From<berean_core::userdata::Frame> for Frame {
+    fn from(f: berean_core::userdata::Frame) -> Self {
+        Frame {
+            x: f.x,
+            y: f.y,
+            width: f.width,
+            height: f.height,
+        }
+    }
+}
+
+impl From<Frame> for berean_core::userdata::Frame {
+    fn from(f: Frame) -> Self {
+        berean_core::userdata::Frame {
+            x: f.x,
+            y: f.y,
+            width: f.width,
+            height: f.height,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::userdata::CardRef`].
+#[derive(Debug, Clone, PartialEq, uniffi::Enum)]
+pub enum CardRef {
+    Note { note_id: String },
+    Passage { span: LocationSpan, missing: bool },
+    Publication { location: Location, missing: bool },
+}
+
+impl From<berean_core::userdata::CardRef> for CardRef {
+    fn from(c: berean_core::userdata::CardRef) -> Self {
+        use berean_core::userdata::CardRef as C;
+        match c {
+            C::Note { note_id } => CardRef::Note { note_id },
+            C::Passage { span, missing } => CardRef::Passage {
+                span: span.into(),
+                missing,
+            },
+            C::Publication { location, missing } => CardRef::Publication {
+                location: location.into(),
+                missing,
+            },
+        }
+    }
+}
+
+impl From<CardRef> for berean_core::userdata::CardRef {
+    fn from(c: CardRef) -> Self {
+        use berean_core::userdata::CardRef as C;
+        match c {
+            CardRef::Note { note_id } => C::Note { note_id },
+            CardRef::Passage { span, missing } => C::Passage {
+                span: span.into(),
+                missing,
+            },
+            CardRef::Publication { location, missing } => C::Publication {
+                location: location.into(),
+                missing,
+            },
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::userdata::ReaderState`]: `char_offset`
+/// is in UTF-16 code units into the verse or paragraph's plain text.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct ReaderState {
+    pub at: CardRef,
+    pub char_offset: u32,
+}
+
+impl From<berean_core::userdata::ReaderState> for ReaderState {
+    fn from(s: berean_core::userdata::ReaderState) -> Self {
+        ReaderState {
+            at: s.at.into(),
+            char_offset: s.char_offset,
+        }
+    }
+}
+
+impl From<ReaderState> for berean_core::userdata::ReaderState {
+    fn from(s: ReaderState) -> Self {
+        berean_core::userdata::ReaderState {
+            at: s.at.into(),
+            char_offset: s.char_offset,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::userdata::CanvasItem`].
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct CanvasItem {
+    pub id: i64,
+    pub workspace_id: i64,
+    pub card: CardRef,
+    pub frame: Frame,
+    pub z: i64,
+    pub reader: Option<ReaderState>,
+    /// When the card was added, read in or touched: ISO 8601 in UTC, like
+    /// `Note.modified`.
+    pub last_used_at: String,
+}
+
+impl From<berean_core::userdata::CanvasItem> for CanvasItem {
+    fn from(i: berean_core::userdata::CanvasItem) -> Self {
+        CanvasItem {
+            id: i.id,
+            workspace_id: i.workspace_id,
+            card: i.card.into(),
+            frame: i.frame.into(),
+            z: i.z,
+            reader: i.reader.map(Into::into),
+            last_used_at: i.last_used_at,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::userdata::ItemFrame`].
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct ItemFrame {
+    pub id: i64,
+    pub frame: Frame,
+}
+
+impl From<ItemFrame> for berean_core::userdata::ItemFrame {
+    fn from(f: ItemFrame) -> Self {
+        berean_core::userdata::ItemFrame {
+            id: f.id,
+            frame: f.frame.into(),
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::userdata::ItemOrder`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum ItemOrder {
+    Z,
+    Reading,
+}
+
+impl From<ItemOrder> for berean_core::userdata::ItemOrder {
+    fn from(o: ItemOrder) -> Self {
+        use berean_core::userdata::ItemOrder as O;
+        match o {
+            ItemOrder::Z => O::Z,
+            ItemOrder::Reading => O::Reading,
+        }
+    }
+}
+
 /// The FFI mirror of [`berean_core::userdata::Tag`].
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct Tag {
@@ -2241,6 +2451,80 @@ impl UserData {
         folder_id: Option<i64>,
     ) -> Result<(), CoreError> {
         Ok(self.inner.set_note_folder(&note_id, folder_id)?)
+    }
+
+    /// Every Studyspace workspace, in the order they were made.
+    pub fn workspaces(&self) -> Result<Vec<Workspace>, CoreError> {
+        Ok(mirror(self.inner.workspaces()?))
+    }
+
+    /// Add an empty workspace called `name`, with no viewport saved.
+    pub fn create_workspace(&self, name: String) -> Result<Workspace, CoreError> {
+        Ok(self.inner.create_workspace(&name)?.into())
+    }
+
+    /// Rename workspace `id`.
+    pub fn rename_workspace(&self, id: i64, name: String) -> Result<(), CoreError> {
+        Ok(self.inner.rename_workspace(id, &name)?)
+    }
+
+    /// Delete workspace `id` and its cards; the notes on it are kept.
+    pub fn delete_workspace(&self, id: i64) -> Result<(), CoreError> {
+        Ok(self.inner.delete_workspace(id)?)
+    }
+
+    /// Save where workspace `workspace_id`'s view is: its centre and zoom.
+    pub fn set_viewport(&self, workspace_id: i64, viewport: Viewport) -> Result<(), CoreError> {
+        Ok(self.inner.set_viewport(workspace_id, &viewport.into())?)
+    }
+
+    /// The cards on workspace `workspace_id`, in `order`.
+    pub fn items(&self, workspace_id: i64, order: ItemOrder) -> Result<Vec<CanvasItem>, CoreError> {
+        Ok(mirror(self.inner.items(workspace_id, order.into())?))
+    }
+
+    /// Put `card` on workspace `workspace_id` at `frame`, on top of the
+    /// others; `missing` is ignored.
+    pub fn add_item(
+        &self,
+        workspace_id: i64,
+        card: CardRef,
+        frame: Frame,
+    ) -> Result<CanvasItem, CoreError> {
+        Ok(self
+            .inner
+            .add_item(workspace_id, &card.into(), &frame.into())?
+            .into())
+    }
+
+    /// Give items new frames, all or nothing.
+    pub fn set_frames(&self, frames: Vec<ItemFrame>) -> Result<(), CoreError> {
+        Ok(self.inner.set_frames(&mirror(frames))?)
+    }
+
+    /// Put item `item_id` on top of its workspace; returns its new z.
+    pub fn bring_to_front(&self, item_id: i64) -> Result<i64, CoreError> {
+        Ok(self.inner.bring_to_front(item_id)?)
+    }
+
+    /// Save where passage or excerpt card `item_id` has been read to: a
+    /// verse or paragraph of the card's own publication and a UTF-16 offset
+    /// into its plain text, stored as given. One cheap write, meant for
+    /// (debounced) scrolling; bumps last_used_at, z and frame are untouched.
+    pub fn set_reader_state(&self, item_id: i64, state: ReaderState) -> Result<(), CoreError> {
+        Ok(self.inner.set_reader_state(item_id, &state.into())?)
+    }
+
+    /// Mark item `item_id` as just used: bump its last_used_at, leaving z
+    /// and frame as they are. For focusing a card, and for link reuse (the
+    /// app picks the most recently used card).
+    pub fn touch_item(&self, item_id: i64) -> Result<(), CoreError> {
+        Ok(self.inner.touch_item(item_id)?)
+    }
+
+    /// Take item `item_id` off its workspace; a note card's note is kept.
+    pub fn remove_item(&self, item_id: i64) -> Result<(), CoreError> {
+        Ok(self.inner.remove_item(item_id)?)
     }
 
     /// The user tags, in the order they were made.
@@ -3199,6 +3483,208 @@ mod tests {
         ));
         assert!(matches!(
             ud.rename_folder(999, "x".into()),
+            Err(CoreError::NotFound)
+        ));
+    }
+
+    #[test]
+    fn studyspace_through_ffi() {
+        let dir = tempfile::tempdir().unwrap();
+        let ud = open_core(&dir).userdata();
+        let ws = ud.create_workspace("Prologue study".into()).unwrap();
+        assert_eq!(ws.viewport, None);
+        assert_eq!(ws.item_count, 0);
+        assert!(matches!(
+            ud.create_workspace(" prologue STUDY ".into()),
+            Err(CoreError::Invalid(_))
+        ));
+        ud.rename_workspace(ws.id, "John 1".into()).unwrap();
+        let viewport = Viewport {
+            x: -120.5,
+            y: 40.0,
+            zoom: 0.75,
+        };
+        ud.set_viewport(ws.id, viewport.clone()).unwrap();
+        let listed = ud.workspaces().unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].name, "John 1");
+        assert_eq!(listed[0].viewport, Some(viewport));
+
+        let frame = |x: f64, y: f64| Frame {
+            x,
+            y,
+            width: 200.0,
+            height: 120.0,
+        };
+        let note = ud
+            .add_note("Word".into(), "".into(), None, None, None)
+            .unwrap();
+        let verse = |verse| Location {
+            pub_key: "nwtsty:0:0".into(),
+            doc_id: None,
+            book: Some(43),
+            chapter: Some(1),
+            verse: Some(verse),
+            paragraph: None,
+        };
+        let cards = [
+            CardRef::Note {
+                note_id: note.id.clone(),
+            },
+            CardRef::Passage {
+                span: LocationSpan {
+                    start: verse(1),
+                    end: verse(3),
+                },
+                missing: true,
+            },
+            CardRef::Publication {
+                location: Location {
+                    pub_key: "ll:0:0".into(),
+                    doc_id: Some(2),
+                    book: None,
+                    chapter: None,
+                    verse: None,
+                    paragraph: Some(4),
+                },
+                missing: true,
+            },
+        ];
+        let mut items = Vec::new();
+        for (i, card) in cards.iter().enumerate() {
+            let item = ud
+                .add_item(ws.id, card.clone(), frame(0.0, 100.0 - i as f64))
+                .unwrap();
+            assert_eq!(&item.card, card);
+            assert_eq!(item.z, i as i64 + 1);
+            items.push(item);
+        }
+        assert_eq!(ud.items(ws.id, ItemOrder::Z).unwrap(), items);
+        let reading: Vec<i64> = ud
+            .items(ws.id, ItemOrder::Reading)
+            .unwrap()
+            .iter()
+            .map(|i| i.id)
+            .collect();
+        assert_eq!(reading, [items[2].id, items[1].id, items[0].id]);
+
+        ud.set_frames(vec![ItemFrame {
+            id: items[0].id,
+            frame: frame(5.0, 6.0),
+        }])
+        .unwrap();
+        assert!(matches!(
+            ud.set_frames(vec![
+                ItemFrame {
+                    id: items[1].id,
+                    frame: frame(7.0, 8.0),
+                },
+                ItemFrame {
+                    id: items[2].id,
+                    frame: Frame {
+                        width: 0.0,
+                        ..frame(0.0, 0.0)
+                    },
+                },
+            ]),
+            Err(CoreError::Invalid(_))
+        ));
+        assert_eq!(ud.bring_to_front(items[0].id).unwrap(), 4);
+        let now = ud.items(ws.id, ItemOrder::Z).unwrap();
+        assert_eq!(now[2].frame, frame(5.0, 6.0));
+        assert_eq!(now[0], items[1]);
+        assert!(now.iter().all(|i| i.reader.is_none()));
+
+        // Readers: a verse elsewhere in the same Bible, a paragraph in
+        // another document of the same publication.
+        let states = [
+            ReaderState {
+                at: CardRef::Passage {
+                    span: LocationSpan {
+                        start: Location {
+                            chapter: Some(2),
+                            ..verse(5)
+                        },
+                        end: Location {
+                            chapter: Some(2),
+                            ..verse(5)
+                        },
+                    },
+                    missing: true,
+                },
+                char_offset: 17,
+            },
+            ReaderState {
+                at: CardRef::Publication {
+                    location: Location {
+                        pub_key: "ll:0:0".into(),
+                        doc_id: Some(9),
+                        book: None,
+                        chapter: None,
+                        verse: None,
+                        paragraph: Some(1),
+                    },
+                    missing: true,
+                },
+                char_offset: 0,
+            },
+        ];
+        ud.set_reader_state(items[1].id, states[0].clone()).unwrap();
+        ud.set_reader_state(items[2].id, states[1].clone()).unwrap();
+        assert!(matches!(
+            ud.set_reader_state(items[0].id, states[1].clone()),
+            Err(CoreError::Invalid(_))
+        ));
+        assert!(matches!(
+            ud.set_reader_state(items[1].id, states[1].clone()),
+            Err(CoreError::Invalid(_))
+        ));
+        assert!(matches!(
+            ud.set_reader_state(items[2].id + 100, states[1].clone()),
+            Err(CoreError::NotFound)
+        ));
+        let read = ud.items(ws.id, ItemOrder::Z).unwrap();
+        let reader = |id| read.iter().find(|i| i.id == id).unwrap().reader.clone();
+        assert_eq!(reader(items[0].id), None);
+        assert_eq!(reader(items[1].id), Some(states[0].clone()));
+        assert_eq!(reader(items[2].id), Some(states[1].clone()));
+        // Reading bumps last_used_at (whole seconds, so it may not move
+        // within a test); nothing else changes.
+        assert!(read.iter().all(|i| i.last_used_at.ends_with('Z')));
+        assert!(read
+            .iter()
+            .zip(&now)
+            .all(|(r, n)| r.last_used_at >= n.last_used_at));
+        assert_eq!(read, {
+            let mut want = now.clone();
+            want[0].reader = Some(states[0].clone());
+            want[1].reader = Some(states[1].clone());
+            for (w, r) in want.iter_mut().zip(&read) {
+                w.last_used_at = r.last_used_at.clone();
+            }
+            want
+        });
+
+        // Touching leaves z and frame alone.
+        ud.touch_item(items[0].id).unwrap();
+        let touched = ud.items(ws.id, ItemOrder::Z).unwrap();
+        assert_eq!(touched.len(), read.len());
+        for (t, r) in touched.iter().zip(&read) {
+            assert_eq!((t.id, t.z, &t.frame), (r.id, r.z, &r.frame));
+            assert!(t.last_used_at >= r.last_used_at);
+        }
+        assert!(matches!(
+            ud.touch_item(items[2].id + 100),
+            Err(CoreError::NotFound)
+        ));
+
+        ud.remove_item(items[1].id).unwrap();
+        assert_eq!(ud.workspaces().unwrap()[0].item_count, 2);
+        ud.delete_workspace(ws.id).unwrap();
+        assert!(ud.workspaces().unwrap().is_empty());
+        assert_eq!(ud.notes(NoteFilter::default()).unwrap().len(), 1);
+        assert!(matches!(
+            ud.items(ws.id, ItemOrder::Z),
             Err(CoreError::NotFound)
         ));
     }

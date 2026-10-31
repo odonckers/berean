@@ -213,7 +213,7 @@ fn valid_pub_key(pub_key: &str) -> bool {
 }
 
 /// What `url` points at; `installed` says whether a `pub_key` is installed.
-fn link_target(url: &str, installed: &dyn Fn(&str) -> bool) -> LinkTarget {
+pub(crate) fn link_target(url: &str, installed: &dyn Fn(&str) -> bool) -> LinkTarget {
     let scheme = url.split_once(':').map_or("", |(scheme, _)| scheme);
     let is = |name: &str| scheme.eq_ignore_ascii_case(name);
     if is("http") || is("https") || is("mailto") {
