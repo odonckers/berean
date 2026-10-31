@@ -1,8 +1,9 @@
-import { useMemo } from 'react';
-import { StyleSheet, Text, TextInput, type TextStyle } from 'react-native';
+import { type Ref, useMemo } from 'react';
+import { StyleSheet, Text, TextInput, type TextInputInstance, type TextStyle } from 'react-native';
 
 import { useBerean } from '@/design/theme';
 import { hairline, spacing } from '@/design/tokens';
+import { type Selection } from '@/notes/format-edits';
 import { type Draft } from '@/notes/note-draft';
 import { type SyntaxKind, styledSegments, useSyntaxSpans } from '@/notes/syntax-spans';
 
@@ -11,6 +12,11 @@ type WriteViewProps = {
   onChange: (draft: Draft) => void;
   /** A note just made: the title takes the keyboard. */
   autoFocus?: boolean;
+  /** The body field, for the formatting bar to focus again. */
+  bodyRef?: Ref<TextInputInstance>;
+  /** Set only after an edit made outside typing; otherwise the field keeps its own. */
+  selection?: Selection;
+  onSelectionChange?: (selection: Selection) => void;
 };
 
 /**
@@ -18,7 +24,14 @@ type WriteViewProps = {
  * reading serif, its syntax styled from the core's spans: markers dimmed
  * but visible. Plain until the core reports spans.
  */
-export function WriteView({ draft, onChange, autoFocus = false }: WriteViewProps) {
+export function WriteView({
+  draft,
+  onChange,
+  autoFocus = false,
+  bodyRef,
+  selection,
+  onSelectionChange,
+}: WriteViewProps) {
   const { colors, type } = useBerean();
   const spans = useSyntaxSpans(draft.content);
   const segments = useMemo(() => styledSegments(draft.content, spans), [draft.content, spans]);
@@ -57,7 +70,10 @@ export function WriteView({ draft, onChange, autoFocus = false }: WriteViewProps
       />
       {/* The source as styled runs instead of a value. */}
       <TextInput
+        ref={bodyRef}
         onChangeText={(content) => onChange({ ...draft, content })}
+        selection={selection}
+        onSelectionChange={(e) => onSelectionChange?.(e.nativeEvent.selection)}
         multiline
         placeholder="Write in Markdown"
         placeholderTextColor={colors.textSecondary}

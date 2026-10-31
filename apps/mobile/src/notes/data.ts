@@ -58,6 +58,7 @@ export function allNotes(): Note[] {
   return userdata().notes({ tagIds: [] });
 }
 
+// TODO(core): use userdata().note(id) once the core exposes note-by-id
 export function findNote(id: string): Note | undefined {
   return allNotes().find((n) => n.id === id);
 }

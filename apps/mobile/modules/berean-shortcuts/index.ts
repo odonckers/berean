@@ -2,7 +2,7 @@ import { requireOptionalNativeModule } from 'expo';
 import { useEffect, useRef } from 'react';
 import type { EventSubscription } from 'react-native';
 
-type ShortcutEvent = { key: 'k' };
+type ShortcutEvent = { key: 'k' | '1' | '2' };
 export type ListKey = 'up' | 'down';
 type ListKeyEvent = { key: ListKey };
 
@@ -32,6 +32,24 @@ export function useSearchShortcut(callback: () => void) {
     });
     return () => subscription?.remove();
   }, []);
+}
+
+// Ctrl+1 (or Meta+1) calls `onWrite` and Ctrl+2 `onRead`, the note
+// editor's modes (guide §7.1), only while `enabled`.
+export function useEditorModeShortcuts(onWrite: () => void, onRead: () => void, enabled: boolean) {
+  const callbacksRef = useRef({ onWrite, onRead });
+  useEffect(() => {
+    callbacksRef.current = { onWrite, onRead };
+  }, [onWrite, onRead]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const subscription = BereanShortcuts?.addListener('onShortcut', (event) => {
+      if (event.key === '1') callbacksRef.current.onWrite();
+      else if (event.key === '2') callbacksRef.current.onRead();
+    });
+    return () => subscription?.remove();
+  }, [enabled]);
 }
 
 /**
