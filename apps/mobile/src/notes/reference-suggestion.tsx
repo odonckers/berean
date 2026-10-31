@@ -23,7 +23,7 @@ export function ReferenceSuggestionChip({ label, onPress }: ReferenceSuggestionC
     return (
       <View style={styles.row}>
         <Pressable {...a11y} onPress={onPress} style={({ pressed }) => [styles.materialTarget, { opacity: pressed ? 0.6 : 1 }]}>
-          <View style={[styles.materialChip, { borderColor: m3.outlineVariant, backgroundColor: m3.surface }]}>
+          <View style={[styles.materialChip, { borderColor: m3.outline, backgroundColor: m3.surface }]}>
             <ScaledSymbol
               name={{ ios: 'link', android: 'link' }}
               size={18}
