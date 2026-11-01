@@ -50,10 +50,8 @@ targets:
     type: application
     platform: macOS
     sources:
-      # BereanApp.swift is the iOS @main; the Mac app has its own in Apps/macOS.
+      # Apps/Shared holds code both apps can use; the Mac @main is in Apps/macOS.
       - path: Apps/Shared
-        excludes:
-          - BereanApp.swift
       - path: Apps/macOS
     dependencies:
       - package: Cupertino

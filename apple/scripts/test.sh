@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 #
-# Run the Cupertino package's tests.
+# Run the Cupertino package's tests (ios), or build the Mac app and run its
+# tests (mac).
 #
-#   apple/scripts/test.sh [ios]
+#   apple/scripts/test.sh [ios|mac]
+#
+# mac builds the core's macOS slice, generates the Xcode project, builds
+# Berean-macOS and runs BereanTests-macOS, with DerivedData in apple/build/.
 #
 # The tests live in the Cupertino SwiftPM package rather than in an app
 # scheme's test action (XcodeGen can only put project targets there), so they
@@ -20,6 +24,24 @@ CUPERTINO_DIR="$APPLE_DIR/Cupertino"
 XCFRAMEWORK="$CUPERTINO_DIR/BereanCoreFFI.xcframework"
 
 PLATFORM="${1:-ios}"
+
+if [[ "$PLATFORM" == "mac" ]]; then
+    cd "$ROOT_DIR"
+    "$SCRIPT_DIR/build-xcframework.sh" --platforms macos
+    xcodegen generate --spec apple/project.yml
+    mac_args=(
+        -project apple/Berean.xcodeproj
+        -scheme Berean-macOS
+        -destination "${DESTINATION:-platform=macOS}"
+        -derivedDataPath apple/build/DerivedData
+        -clonedSourcePackagesDirPath apple/build/SourcePackages
+    )
+    echo "Building Berean-macOS"
+    xcodebuild build "${mac_args[@]}"
+    echo "Testing BereanTests-macOS"
+    xcodebuild test "${mac_args[@]}"
+    exit 0
+fi
 
 # The package links the core as a binary target, so there is nothing to test
 # until the XCFramework exists.
@@ -54,7 +76,7 @@ case "$PLATFORM" in
         destination="${DESTINATION:-$(ios_simulator_destination)}"
         ;;
     *)
-        echo "error: unknown platform: $PLATFORM (expected: ios)" >&2
+        echo "error: unknown platform: $PLATFORM (expected: ios or mac)" >&2
         exit 2
         ;;
 esac
