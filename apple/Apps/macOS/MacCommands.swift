@@ -4,6 +4,7 @@ import SwiftUI
 /// reached through `@FocusedValue`, and is disabled when no window is key.
 struct MacCommands: Commands {
     @FocusedValue(\.windowModel) private var model
+    @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
         // System-supplied groups: Hide Sidebar, Customize Toolbar, and the
@@ -11,6 +12,16 @@ struct MacCommands: Commands {
         SidebarCommands()
         ToolbarCommands()
         TextEditingCommands()
+
+        // File. ⌘N is deliberately left unbound: it is reserved for New Note,
+        // which arrives with the notes editor. So the default New Window item
+        // is replaced with one on ⌥⌘N.
+        CommandGroup(replacing: .newItem) {
+            Button("New Window") {
+                openWindow(id: "main")
+            }
+            .keyboardShortcut("n", modifiers: [.option, .command])
+        }
 
         // View, after Customize Toolbar.
         CommandGroup(after: .toolbar) {

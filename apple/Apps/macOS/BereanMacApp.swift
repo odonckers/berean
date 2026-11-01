@@ -4,21 +4,27 @@ import SwiftUI
 struct BereanMacApp: App {
     init() {
         #if DEBUG
-        DebugSnapshot.startIfRequested()
+        DebugLaunch.startIfRequested()
         #endif
     }
 
     var body: some Scene {
-        // The default File › New Window (⌘N) is left in place.
         WindowGroup(id: "main") {
-            MacRootView()
+            ThemedScene {
+                MacRootView()
+            }
         }
+        // The proof size for design review; BEREAN_DEBUG_WINDOW_SIZE overrides
+        // it at launch in debug builds.
+        .defaultSize(width: 1200, height: 760)
         .commands {
             MacCommands()
         }
 
         Settings {
-            MacSettingsView()
+            ThemedScene {
+                MacSettingsView()
+            }
         }
     }
 }

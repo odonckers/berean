@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Settings (⌘,). Two panes for now; Appearance grows the theme, accent and
-/// appearance pickers once the generated theme tokens land.
+/// appearance pickers in Moss 2 (themes-spec.md §4).
 struct MacSettingsView: View {
     var body: some View {
         TabView {
@@ -26,16 +26,24 @@ private struct SettingsPlaceholder: View {
     let title: String
     let detail: String
 
+    @Environment(\.macTheme) private var theme
+
     var body: some View {
         VStack(spacing: 8) {
             Text(title)
                 .font(.headline)
+                .foregroundStyle(theme.textPrimary)
+
             Text(detail)
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
                 .multilineTextAlignment(.center)
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // An explicit token surface, so the text above is measurably
+        // `textSecondary` on `background` rather than on whatever the Settings
+        // window happens to draw.
+        .background(theme.background)
     }
 }

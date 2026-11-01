@@ -1,45 +1,50 @@
 import AppKit
-import Combine
 import CupertinoCore
+import CupertinoUI
 import SwiftUI
 
 /// The Mac window: a standard `NavigationSplitView` under the unified window
 /// toolbar.
 ///
 /// Materials follow the design guide: Liquid Glass is **system only** here.
-/// The sidebar and toolbar get no custom background and no accent tint, so
-/// they are whatever macOS 26 draws. Content sits on an opaque Paper surface.
-/// The one exception is Reduce Transparency / Increase Contrast, where the
-/// chrome becomes solid `surfaceRaised` with a 1 pt `outline` — same shape,
-/// same position, just not translucent.
+/// The sidebar and toolbar get no custom background, so they are whatever
+/// macOS 26 draws, and content sits on an opaque Paper surface. The one
+/// exception is Reduce Transparency / Increase Contrast, where the chrome
+/// becomes solid `surfaceRaised` with a 1 pt `outline` — same shape, same
+/// position, just not translucent (themes-spec.md §3 rule 5).
+///
+/// Colours come from `\.macTheme`, which `ThemedScene` resolves out of the
+/// generated `ThemeTokens`. No `Text` in the shell uses `.secondary` or
+/// `.tertiary`: those are system greys, and §3 rule 7 keeps the system palette
+/// off Berean's text.
 struct MacRootView: View {
     @State private var model = WindowModel()
     @State private var columnVisibility = NavigationSplitViewVisibility.all
-    @State private var increaseContrast = false
 
     @SceneStorage("sidebar.selection") private var storedSelection: String?
     @SceneStorage("search.text") private var storedSearchText: String?
     @SceneStorage("sidebar.columnVisibility") private var storedColumnVisibility: String?
 
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.macTheme) private var theme
+    @Environment(\.macSolidChrome) private var solidChrome
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebar
         } detail: {
-            DetailPlaceholder(item: model.selection)
+            detail
         }
         .searchable(text: $model.searchText, placement: .toolbar, prompt: "Search")
         .toolbar { historyButtons }
-        .modifier(SolidToolbarChrome(isActive: wantsSolidChrome))
-        .overlay(alignment: .top) { chromeOutline }
+        .modifier(SolidToolbarChrome(isActive: solidChrome, surface: theme.surfaceRaised))
         .overlay { palette }
         .focusedSceneValue(\.windowModel, model)
         .onAppear(perform: restoreScene)
-        .onReceive(NSWorkspace.shared.notificationCenter.publisher(
-            for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification
-        )) { _ in
-            increaseContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+        .task {
+            #if DEBUG
+            await DebugLaunch.runSceneActions { openSettings() }
+            #endif
         }
         .onChange(of: model.selection) { _, item in storedSelection = item.rawValue }
         .onChange(of: model.searchText) { _, text in storedSearchText = text }
@@ -52,21 +57,63 @@ struct MacRootView: View {
 
     private var sidebar: some View {
         List(selection: sidebarSelection) {
-            Section("Berean") {
+            Section {
                 ForEach(SidebarItem.allCases) { item in
                     Label(item.title, systemImage: item.symbolName)
+                        .foregroundStyle(rowForeground(for: item))
                         .tag(item)
+                        .listRowBackground(rowBackground(for: item))
                 }
+            } header: {
+                sectionHeader("Berean")
             }
-            Section("Recent") {
+
+            Section {
                 Text("Nothing yet")
                     .font(.callout)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(theme.textSecondary)
+            } header: {
+                sectionHeader("Recent")
             }
         }
         .listStyle(.sidebar)
         .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 320)
-        .modifier(SolidSidebarChrome(isActive: wantsSolidChrome))
+        .modifier(
+            SolidSidebarChrome(
+                isActive: solidChrome,
+                surface: theme.surfaceRaised,
+                outline: theme.outline
+            )
+        )
+    }
+
+    private func sectionHeader(_ title: String) -> some View {
+        // `textSecondary`, not `.secondary`: a header is content, and
+        // `textTertiary` is placeholders only (§3 rule 10).
+        Text(title).foregroundStyle(theme.textSecondary)
+    }
+
+    /// The selected row is drawn from the theme, not from the Mac's accent.
+    ///
+    /// `.tint` alone is not enough on macOS: when the Mac accent is anything
+    /// other than Multicolor — Owen's is Graphite — AppKit draws the sidebar's
+    /// selection highlight in *that* colour, and SwiftUI's `List` gives no hook
+    /// to recolour it. So the row paints its own `accent` background through
+    /// `.listRowBackground`, which sits above the system highlight, and its
+    /// label switches to `onAccent` (4.5:1 or better in every set, §15).
+    /// Selection itself still goes through `List(selection:)`, so arrow keys,
+    /// Full Keyboard Access and VoiceOver behave exactly as before.
+    @ViewBuilder private func rowBackground(for item: SidebarItem) -> some View {
+        if item == model.selection {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(theme.accent)
+        } else {
+            Color.clear
+        }
+    }
+
+    private func rowForeground(for item: SidebarItem) -> Color {
+        item == model.selection ? theme.onAccent : theme.textPrimary
     }
 
     /// Selecting in the sidebar goes through the model, so it records history.
@@ -77,6 +124,16 @@ struct MacRootView: View {
             guard let item else { return }
             model.select(item)
         }
+    }
+
+    // MARK: Detail
+
+    /// The detail column carries the window title and the toolbar hairline, so
+    /// the line stops at the sidebar's trailing edge instead of crossing it.
+    private var detail: some View {
+        DetailPlaceholder(item: model.selection)
+            .overlay(alignment: .top) { chromeOutline }
+            .navigationTitle(model.selection.title)
     }
 
     // MARK: Toolbar
@@ -105,12 +162,13 @@ struct MacRootView: View {
 
     // MARK: Overlays
 
-    /// The hairline that stands in for the glass toolbar's edge. It sits at the
-    /// very top of the window's content, directly under the toolbar.
+    /// The hairline that stands in for the glass toolbar's edge. It sits flush
+    /// under the toolbar at the top of the detail column; the sidebar has its
+    /// own trailing outline instead.
     @ViewBuilder private var chromeOutline: some View {
-        if wantsSolidChrome {
+        if solidChrome {
             Rectangle()
-                .fill(SolidChrome.outline)
+                .fill(theme.outline)
                 .frame(height: 1)
                 .allowsHitTesting(false)
         }
@@ -124,25 +182,9 @@ struct MacRootView: View {
         }
     }
 
-    // MARK: Accessibility materials
-
-    /// True when the chrome must be opaque rather than glass.
-    private var wantsSolidChrome: Bool {
-        #if DEBUG
-        // Debug-only override for snapshots and manual checks. It reads an env
-        // var and nothing else — it never touches a system setting.
-        if ProcessInfo.processInfo.environment["BEREAN_FORCE_REDUCE_TRANSPARENCY"] == "1" {
-            return true
-        }
-        #endif
-        return reduceTransparency || increaseContrast
-    }
-
     // MARK: Restoration
 
     private func restoreScene() {
-        increaseContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
-
         if let raw = storedSelection, let item = SidebarItem(rawValue: raw) {
             model.restore(item)
         }
@@ -152,6 +194,16 @@ struct MacRootView: View {
         if let code = storedColumnVisibility {
             columnVisibility = ColumnVisibilityCode.visibility(for: code)
         }
+
+        #if DEBUG
+        // Debug proof hooks override whatever was restored, at launch only.
+        if let item = DebugLaunch.section {
+            model.restore(item)
+        }
+        if DebugLaunch.startsSidebarCollapsed {
+            columnVisibility = .detailOnly
+        }
+        #endif
     }
 }
 
@@ -182,14 +234,17 @@ private enum ColumnVisibilityCode {
 private struct DetailPlaceholder: View {
     let item: SidebarItem
 
+    @Environment(\.macTheme) private var theme
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(item.title)
                 .font(.largeTitle.weight(.semibold))
+                .foregroundStyle(theme.textPrimary)
 
             Text("Core version \(BereanCore.version)")
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(
@@ -197,9 +252,11 @@ private struct DetailPlaceholder: View {
                         + "and the Word was God."
                 )
                 .font(.system(.title3, design: .serif))
+                .foregroundStyle(theme.textPrimary)
+
                 Text("— John 1:1")
                     .font(.system(.subheadline, design: .serif))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
             }
             .padding(.top, 8)
 
@@ -209,18 +266,19 @@ private struct DetailPlaceholder: View {
         .padding(32)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         // Content is never glass. This is the Paper background, opaque.
-        .background(SolidChrome.background)
+        .background(theme.background)
     }
 }
 
 /// Reduce Transparency / Increase Contrast: an opaque toolbar.
 private struct SolidToolbarChrome: ViewModifier {
     let isActive: Bool
+    let surface: Color
 
     func body(content: Content) -> some View {
         if isActive {
             content
-                .toolbarBackground(SolidChrome.surfaceRaised, for: .windowToolbar)
+                .toolbarBackground(surface, for: .windowToolbar)
                 .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
         } else {
             content
@@ -232,15 +290,17 @@ private struct SolidToolbarChrome: ViewModifier {
 /// outline on its trailing edge, in place of the glass separator.
 private struct SolidSidebarChrome: ViewModifier {
     let isActive: Bool
+    let surface: Color
+    let outline: Color
 
     func body(content: Content) -> some View {
         if isActive {
             content
                 .scrollContentBackground(.hidden)
-                .background(SolidChrome.surfaceRaised)
+                .background(surface)
                 .overlay(alignment: .trailing) {
                     Rectangle()
-                        .fill(SolidChrome.outline)
+                        .fill(outline)
                         .frame(width: 1)
                         .allowsHitTesting(false)
                 }
