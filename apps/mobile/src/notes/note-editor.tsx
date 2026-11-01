@@ -481,8 +481,9 @@ const styles = StyleSheet.create({
   // The suggestion and the formatting bar, below the scroll view in the
   // body's flow. The padding above (part of their laid-out height, so
   // formatBarBottom's clamp counts it) keeps the scroll view's bottom
-  // clear of the bar by the focus ring's reach outside a field.
-  tools: { paddingTop: FOCUS_RING_OFFSET + FOCUS_RING_WIDTH, gap: spacing.xs },
+  // clear of the bar by the focus ring's reach outside a field plus 4dp of
+  // air, so the ring doesn't read as touching the bar.
+  tools: { paddingTop: FOCUS_RING_OFFSET + FOCUS_RING_WIDTH + spacing.xs, gap: spacing.xs },
   column: { width: '100%', alignSelf: 'center', gap: spacing.md },
   readColumn: { gap: spacing.lg },
 });
