@@ -13,6 +13,8 @@ npm run ubrn:ios        # macOS only: xcframework + generate everything
 npm run ubrn:clean      # delete everything ubrn generated
 ```
 
+`ubrn:android` and `ubrn:generate` also create an empty `android/proguard-rules.pro`: the generated `build.gradle` references it, but ubrn only renders it for the `native_bindings` flavour, and `jsi` has no JNA classes to keep.
+
 Run `npm run ubrn:android` before `npx expo prebuild`, `npm run typecheck`, or a native build. Without the bindings, `berean-ffi-rn` has no entrypoint: typecheck fails with `Cannot find module 'berean-ffi-rn'`, and autolinking finds no Android library. Re-run the command whenever `core/` changes.
 
 Android needs the NDK (`ANDROID_NDK_HOME`), `cargo-ndk` 4.1.2, and the Rust targets `aarch64-linux-android` and `x86_64-linux-android`. The first run also compiles the `ubrn` CLI into `node_modules`.
