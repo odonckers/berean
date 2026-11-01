@@ -10,7 +10,12 @@ import android.graphics.RectF
 import android.graphics.drawable.Drawable
 import android.os.Build
 import android.view.View
+import android.view.ViewGroup
 import android.view.ViewTreeObserver
+import android.widget.HorizontalScrollView
+import android.widget.ScrollView
+import androidx.core.widget.NestedScrollView
+import com.facebook.react.uimanager.ReactOverflowView
 import java.lang.ref.WeakReference
 
 // Android draws a grey fill (the default focus highlight, API 26+) over a
@@ -25,8 +30,11 @@ import java.lang.ref.WeakReference
 // overlay (the window's decor view or a dialog's root), which nothing clips,
 // at the view's rect in the root. It is re-placed before every frame, so it
 // follows scroll, layout and animation, and clipped to the part of the view
-// that is on screen: a side cut off by an ancestor (the field scrolled under
-// a header) is cut at that edge, and a view not on screen draws nothing.
+// that is drawn: a side cut off by an ancestor (the field scrolled under a
+// header, or past the end of a scroll view) is cut at that edge, and a view
+// not on screen draws nothing. React Native views don't set clipChildren but
+// clip in draw from `overflow`, so the drawn part is the view's visible rect
+// cut by every ancestor that clips its children, whichever way it does.
 internal class KeyboardFocusRing {
   private val ring = RingDrawable()
   private var offsetPx = 0
@@ -105,7 +113,7 @@ internal class KeyboardFocusRing {
     // getGlobalVisibleRect works in the coordinates of the view's root; the
     // origin it reports is the view's content origin, before its own scroll.
     val onScreen = rootView != null && view.isAttachedToWindow && view.rootView === rootView &&
-      view.isShown && view.getGlobalVisibleRect(visible, origin)
+      view.isShown && view.getGlobalVisibleRect(visible, origin) && clipToAncestors(view, rootView)
     if (rootView == null || !onScreen) {
       clip.setEmpty()
       outline.setEmpty()
@@ -134,6 +142,33 @@ internal class KeyboardFocusRing {
     ring.outline.set(outline)
     ring.bounds = clip
     ring.invalidateSelf()
+  }
+
+  private val ancestorRect = Rect()
+  private val ancestorOrigin = Point()
+
+  // Cuts `visible` to every ancestor up to rootView that clips its children's
+  // drawing; getGlobalVisibleRect only cuts at those with clipChildren set.
+  // False if nothing is left.
+  private fun clipToAncestors(view: View, rootView: View): Boolean {
+    var parent = view.parent
+    while (parent is ViewGroup && parent !== rootView) {
+      val clipBounds = parent.clipBounds
+      val clips = parent.clipChildren || clipBounds != null ||
+        parent is ScrollView || parent is HorizontalScrollView || parent is NestedScrollView ||
+        (parent is ReactOverflowView && parent.overflow.let { it != null && it != "visible" })
+      if (clips) {
+        if (!parent.getGlobalVisibleRect(ancestorRect, ancestorOrigin)) return false
+        if (clipBounds != null) {
+          // Clip bounds are in the ancestor's own coordinates, before its scroll.
+          clipBounds.offset(ancestorOrigin.x + parent.scrollX, ancestorOrigin.y + parent.scrollY)
+          if (!ancestorRect.intersect(clipBounds)) return false
+        }
+        if (!visible.intersect(ancestorRect)) return false
+      }
+      parent = parent.parent
+    }
+    return true
   }
 
   private fun hide() {
