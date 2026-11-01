@@ -28,7 +28,7 @@ export type FormatBarFrame = {
   bodyGapFromWindowBottom: number;
   /** The bar's offset docked at the editor's bottom, over the system bars. */
   dockedInset: number;
-  /** The editor's height and the tools', as laid out; 0 or absent while unknown. */
+  /** The editor's height and the tools' (their clearance above included), as laid out; 0 or absent while unknown. */
   bodyHeight?: number;
   toolsHeight?: number;
 };
@@ -39,9 +39,9 @@ export const MIN_WRITE_SCROLL_HEIGHT = 120;
 const minScrollHeight = (bodyHeight: number) => Math.min(MIN_WRITE_SCROLL_HEIGHT, bodyHeight);
 
 /**
- * The tools' `bottom` inside the editor. The keyboard is measured from the
- * window's bottom but the editor may end above it (Android's native tab bar
- * and navigation bar), so whatever lies below the editor comes off; a
+ * The room below the tools inside the editor. The keyboard is measured
+ * from the window's bottom but the editor may end above it (Android's
+ * native tab bar and navigation bar), so whatever lies below it comes off; a
  * keyboard shorter than that leaves the bar at the editor's bottom. Never
  * so high the tools leave the body or the scroll view less than its
  * minimum above them, whatever height the keyboard reports.
@@ -68,48 +68,28 @@ export type ScrollFrameState = {
   /** In Write, rather than Read. */
   writing: boolean;
   placement: FormatBarPlacement;
-  /** formatBarBottom's answer. */
-  toolsBottom: number;
-  /** The suggestion and the bar together, as laid out. */
-  toolsHeight: number;
   /** The safe area's bottom inset. */
   bottomInset: number;
   /** Room after the last line in Write, and in Read. */
   writeEnd: number;
   readEnd: number;
-  /** The editor's height, as laid out; 0 or absent while unknown. */
-  bodyHeight?: number;
 };
 
 export type ScrollFrame = {
-  /** How far above the editor's bottom the scroll view's frame ends. */
-  frameBottom: number;
   /** The content's own padding below the last line. */
   paddingBottom: number;
 };
 
 /**
- * With the tools up, the scroll view ends at their top instead of padding
- * under them: scrolling to the caret only keeps it inside the scroll
- * view's bounds, so bounds running behind the bar (and the keyboard,
- * Android being edge to edge) let the caret's line hide there. The frame
- * never ends so high the scroll view drops below its minimum height.
+ * With the tools up they follow the scroll view in the editor's flow, so
+ * its frame ends above them by layout and its content pads only the room
+ * after the last line; with them hidden it runs to the editor's bottom and
+ * pads clear of the system bars there.
  */
-export function scrollFrame({
-  writing,
-  placement,
-  toolsBottom,
-  toolsHeight,
-  bottomInset,
-  writeEnd,
-  readEnd,
-  bodyHeight = 0,
-}: ScrollFrameState): ScrollFrame {
-  if (!writing) return { frameBottom: 0, paddingBottom: bottomInset + readEnd };
-  if (placement === 'hidden') return { frameBottom: 0, paddingBottom: bottomInset + writeEnd };
-  const frameBottom = toolsBottom + toolsHeight;
-  if (bodyHeight <= 0) return { frameBottom, paddingBottom: writeEnd };
-  return { frameBottom: Math.min(frameBottom, bodyHeight - minScrollHeight(bodyHeight)), paddingBottom: writeEnd };
+export function scrollFrame({ writing, placement, bottomInset, writeEnd, readEnd }: ScrollFrameState): ScrollFrame {
+  if (!writing) return { paddingBottom: bottomInset + readEnd };
+  if (placement === 'hidden') return { paddingBottom: bottomInset + writeEnd };
+  return { paddingBottom: writeEnd };
 }
 
 export type CaretReveal = {

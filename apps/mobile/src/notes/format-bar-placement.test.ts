@@ -83,8 +83,6 @@ describe('format bar bottom', () => {
 const scroll = (over: Partial<ScrollFrameState>): ScrollFrameState => ({
   writing: true,
   placement: 'keyboard',
-  toolsBottom: 0,
-  toolsHeight: 0,
   bottomInset: 0,
   writeEnd: 24,
   readEnd: 48,
@@ -92,57 +90,55 @@ const scroll = (over: Partial<ScrollFrameState>): ScrollFrameState => ({
 });
 
 describe('scroll frame', () => {
-  test('Write above the keyboard: the frame ends at the tools, a little room after the last line', () => {
-    const above = { toolsBottom: 214, toolsHeight: 52, bottomInset: 48 };
-    assert.deepEqual(scrollFrame(scroll(above)), { frameBottom: 266, paddingBottom: 24 });
+  test('Write above the keyboard: the tools below it, a little room after the last line', () => {
+    assert.deepEqual(scrollFrame(scroll({ bottomInset: 48 })), { paddingBottom: 24 });
   });
 
-  test('Write docked: the frame ends at the tools over the system bars', () => {
-    const docked = { placement: 'docked', toolsBottom: 48, toolsHeight: 52, bottomInset: 48 } as const;
-    assert.deepEqual(scrollFrame(scroll(docked)), { frameBottom: 100, paddingBottom: 24 });
+  test('Write docked: the tools over the system bars, no padding for them', () => {
+    assert.deepEqual(scrollFrame(scroll({ placement: 'docked', bottomInset: 48 })), { paddingBottom: 24 });
   });
 
   test('Write with the tools hidden: the whole body, padded clear of the system bars', () => {
-    const hidden = { placement: 'hidden', toolsHeight: 52, bottomInset: 48 } as const;
-    assert.deepEqual(scrollFrame(scroll(hidden)), { frameBottom: 0, paddingBottom: 72 });
+    assert.deepEqual(scrollFrame(scroll({ placement: 'hidden', bottomInset: 48 })), { paddingBottom: 72 });
   });
 
   test('Read: the whole body, with more room after the last line', () => {
     const read = { writing: false, placement: 'hidden', bottomInset: 48 } as const;
-    assert.deepEqual(scrollFrame(scroll(read)), { frameBottom: 0, paddingBottom: 96 });
+    assert.deepEqual(scrollFrame(scroll(read)), { paddingBottom: 96 });
   });
 });
 
 describe('the scroll view never collapses', () => {
   // The emulator's editor: 760 tall, 48 of navigation bar below it, tools 52 tall.
   const body = { bodyHeight: 760, toolsHeight: 52 };
+  // The scroll view takes what the tools and the room below them leave of the body.
+  const scrollHeight = (toolsBottom: number, { bodyHeight, toolsHeight } = body) => bodyHeight - toolsHeight - toolsBottom;
 
   test('a keyboard taller than the body, the body focused: the tools stay in the body, the scroll view keeps its minimum', () => {
     const placement = formatBarPlacement(state({ bodyFocused: true, keyboardHeight: 842.3 }));
     assert.equal(placement, 'keyboard');
     const toolsBottom = formatBarBottom(frame({ placement, keyboardFromWindowBottom: 842.3 + 48, bodyGapFromWindowBottom: 48, ...body }));
     assert.ok(toolsBottom >= 0 && toolsBottom + body.toolsHeight <= body.bodyHeight);
-    const { frameBottom } = scrollFrame(scroll({ placement, toolsBottom, ...body }));
-    assert.ok(body.bodyHeight - frameBottom >= MIN_WRITE_SCROLL_HEIGHT);
+    assert.ok(scrollHeight(toolsBottom) >= MIN_WRITE_SCROLL_HEIGHT);
   });
 
-  test('the frame alone, given tools past the body: still the minimum', () => {
-    const { frameBottom } = scrollFrame(scroll({ toolsBottom: 842.3, ...body }));
-    assert.equal(body.bodyHeight - frameBottom, MIN_WRITE_SCROLL_HEIGHT);
+  test('tools placed past the body: the scroll view exactly its minimum', () => {
+    const toolsBottom = formatBarBottom(frame({ keyboardFromWindowBottom: 842.3, ...body }));
+    assert.equal(scrollHeight(toolsBottom), MIN_WRITE_SCROLL_HEIGHT);
   });
 
-  test('a body shorter than the minimum: the tools at its bottom, the frame its whole height', () => {
+  test('a body shorter than the minimum: the tools at its bottom', () => {
     const short = { bodyHeight: 100, toolsHeight: 52 };
     assert.equal(formatBarBottom(frame({ keyboardFromWindowBottom: 300, ...short })), 0);
-    assert.equal(scrollFrame(scroll({ toolsBottom: 0, ...short })).frameBottom, 0);
   });
 
-  test('the body focused with no soft keyboard: docked over the system bars, the frame ending at the bar’s top', () => {
+  test('the body focused with no soft keyboard: docked over the system bars, the scroll view above the bar', () => {
     const placement = formatBarPlacement(state({ bodyFocused: true, keyboardHeight: shownKeyboardHeight(842.3, 914) }));
     assert.equal(placement, 'docked');
     const toolsBottom = formatBarBottom(frame({ placement, keyboardFromWindowBottom: 0, bodyGapFromWindowBottom: 48, dockedInset: 48, ...body }));
     assert.equal(toolsBottom, 48);
-    assert.deepEqual(scrollFrame(scroll({ placement, toolsBottom, ...body })), { frameBottom: 100, paddingBottom: 24 });
+    assert.equal(scrollHeight(toolsBottom), 660);
+    assert.deepEqual(scrollFrame(scroll({ placement })), { paddingBottom: 24 });
   });
 });
 

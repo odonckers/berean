@@ -22,6 +22,7 @@ import { keyboardBottom } from '@/components/palette-frame';
 import { ScaledSymbol } from '@/components/scaled-symbol';
 import { UIText } from '@/components/text';
 import { TextButton } from '@/components/text-button';
+import { FOCUS_RING_OFFSET, FOCUS_RING_WIDTH } from '@/design/focus-ring';
 import { useContentInsets } from '@/design/tab-chrome';
 import { useBerean } from '@/design/theme';
 import { hairline, readingMeasure, spacing } from '@/design/tokens';
@@ -297,12 +298,9 @@ export function NoteEditor({
   const frame = scrollFrame({
     writing: mode === 'write',
     placement,
-    toolsBottom,
-    toolsHeight,
     bottomInset: insets.bottom,
     writeEnd: spacing.xl,
     readEnd: spacing.xxxl,
-    bodyHeight,
   });
   const contentTop = insets.top + spacing.lg;
 
@@ -346,7 +344,7 @@ export function NoteEditor({
       ) : (
         <Stack.Screen options={{ title: '', ...headerOptions }} />
       )}
-      {/* Surface behind the tools too, where the scroll view now stops short. */}
+      {/* Surface behind the tools too, and the gaps above and below them. */}
       <View
         ref={bodyViewRef}
         onLayout={(e) => {
@@ -356,7 +354,7 @@ export function NoteEditor({
         style={[styles.body, { backgroundColor: colors.surface }]}>
         <ScrollView
           ref={scrollRef}
-          style={{ backgroundColor: colors.surface, marginBottom: frame.frameBottom }}
+          style={[styles.scroll, { backgroundColor: colors.surface }]}
           keyboardShouldPersistTaps="handled"
           contentInsetAdjustmentBehavior="automatic"
           contentContainerStyle={{
@@ -404,7 +402,7 @@ export function NoteEditor({
           <View
             pointerEvents="box-none"
             onLayout={(e) => setToolsHeight(e.nativeEvent.layout.height)}
-            style={[styles.tools, { bottom: toolsBottom }]}
+            style={[styles.tools, { marginBottom: toolsBottom }]}
           >
             {suggestion && (
               <View style={{ paddingLeft: insets.left + spacing.lg, paddingRight: insets.right + spacing.lg }}>
@@ -478,8 +476,13 @@ const styles = StyleSheet.create({
   },
   iconButton: { alignItems: 'center', justifyContent: 'center' },
   body: { flex: 1 },
-  // The suggestion and the formatting bar, over the bottom of the note.
-  tools: { position: 'absolute', left: 0, right: 0, gap: spacing.xs },
+  // The scroll view takes what the tools leave of the body.
+  scroll: { flex: 1 },
+  // The suggestion and the formatting bar, below the scroll view in the
+  // body's flow. The padding above (part of their laid-out height, so
+  // formatBarBottom's clamp counts it) keeps the scroll view's bottom
+  // clear of the bar by the focus ring's reach outside a field.
+  tools: { paddingTop: FOCUS_RING_OFFSET + FOCUS_RING_WIDTH, gap: spacing.xs },
   column: { width: '100%', alignSelf: 'center', gap: spacing.md },
   readColumn: { gap: spacing.lg },
 });
