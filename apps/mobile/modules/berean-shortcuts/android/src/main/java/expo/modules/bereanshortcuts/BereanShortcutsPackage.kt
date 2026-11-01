@@ -37,3 +37,4 @@ class BereanShortcutsPackage : Package {
     KeyEvent.metaStateHasModifiers(event.metaState, KeyEvent.META_CTRL_ON) ||
       KeyEvent.metaStateHasModifiers(event.metaState, KeyEvent.META_META_ON)
 }
+val ciSyntaxCheck: Int =
