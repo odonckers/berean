@@ -1305,6 +1305,8 @@ fn export_leaves_studyspace_out() {
     let folder = ud.create_folder("Gospels", None).unwrap();
     ud.add_note("Filed", "", None, None, Some(folder.id))
         .unwrap();
+    ud.set_last_workspace(Some(ws.id)).unwrap();
+    assert_eq!(count(&env.raw(), "BereanStudyspace"), 1);
 
     let out_dir = tempfile::tempdir().unwrap();
     let out = out_dir.path().join("backup.jwlibrary");
@@ -1345,8 +1347,9 @@ fn export_leaves_studyspace_out() {
         .is_none());
     assert_eq!(count(&conn, "Note"), 2);
 
-    // The live data keeps its workspace.
+    // The live data keeps its workspace, still the one open last.
     assert_eq!(workspace(&ud, ws.id).item_count, 2);
+    assert_eq!(ud.last_workspace().unwrap(), Some(ws.id));
 }
 
 #[test]
@@ -1389,4 +1392,98 @@ fn reopening_is_idempotent() {
         let raw = Connection::open(dir.path().join("data/userData.db")).unwrap();
         assert_eq!(names(&raw), schema);
     }
+}
+
+#[test]
+fn last_workspace_is_none_on_a_fresh_database() {
+    let env = Env::new();
+    assert_eq!(env.ud().last_workspace().unwrap(), None);
+}
+
+#[test]
+fn last_workspace_set_then_get_and_clear() {
+    let env = Env::new();
+    let ud = env.ud();
+    let john = ud.create_workspace("John").unwrap();
+    let acts = ud.create_workspace("Acts").unwrap();
+    ud.set_last_workspace(Some(john.id)).unwrap();
+    assert_eq!(ud.last_workspace().unwrap(), Some(john.id));
+    ud.set_last_workspace(Some(acts.id)).unwrap();
+    assert_eq!(ud.last_workspace().unwrap(), Some(acts.id));
+    ud.set_last_workspace(None).unwrap();
+    assert_eq!(ud.last_workspace().unwrap(), None);
+    // Still one row: the setter upserts.
+    assert_eq!(count(&env.raw(), "BereanStudyspace"), 1);
+}
+
+#[test]
+fn last_workspace_unknown_id_is_not_found_and_keeps_the_value() {
+    let env = Env::new();
+    let ud = env.ud();
+    let ws = ud.create_workspace("John").unwrap();
+    assert!(is_not_found(ud.set_last_workspace(Some(ws.id + 1))));
+    assert_eq!(ud.last_workspace().unwrap(), None);
+    ud.set_last_workspace(Some(ws.id)).unwrap();
+    assert!(is_not_found(ud.set_last_workspace(Some(ws.id + 1))));
+    assert_eq!(ud.last_workspace().unwrap(), Some(ws.id));
+}
+
+#[test]
+fn deleting_the_last_workspace_clears_it() {
+    let env = Env::new();
+    let ud = env.ud();
+    let john = ud.create_workspace("John").unwrap();
+    let acts = ud.create_workspace("Acts").unwrap();
+    ud.set_last_workspace(Some(john.id)).unwrap();
+    // Deleting another workspace leaves it.
+    ud.delete_workspace(acts.id).unwrap();
+    assert_eq!(ud.last_workspace().unwrap(), Some(john.id));
+    // Deleting it clears it; the core picks no other.
+    ud.create_workspace("Romans").unwrap();
+    ud.delete_workspace(john.id).unwrap();
+    assert_eq!(ud.last_workspace().unwrap(), None);
+}
+
+#[test]
+fn last_workspace_persists_across_reopening() {
+    let env = Env::new();
+    let ud = env.ud();
+    ud.create_workspace("John").unwrap();
+    let acts = ud.create_workspace("Acts").unwrap();
+    ud.set_last_workspace(Some(acts.id)).unwrap();
+    drop(ud);
+
+    let Env { dir, core } = env;
+    drop(core);
+    for _ in 0..2 {
+        let ud = open(&dir).userdata();
+        assert_eq!(ud.last_workspace().unwrap(), Some(acts.id));
+    }
+}
+
+#[test]
+fn import_clears_the_last_workspace_and_undo_brings_it_back() {
+    // A backup to import: another data dir's export, as a JW device would
+    // have it (no Berean tables).
+    let other = Env::new();
+    let files = tempfile::tempdir().unwrap();
+    let file = files.path().join("in.jwlibrary");
+    other
+        .ud()
+        .export_backup(&file, &|_, _| {}, &CancelToken::new())
+        .unwrap();
+
+    let env = Env::new();
+    let ud = env.ud();
+    let ws = ud.create_workspace("John").unwrap();
+    ud.set_last_workspace(Some(ws.id)).unwrap();
+
+    ud.import_backup(&file, &|_, _| {}, &CancelToken::new())
+        .unwrap();
+    assert_eq!(ud.last_workspace().unwrap(), None);
+    assert!(ud.workspaces().unwrap().is_empty());
+
+    // Undo puts the old file back, the value with it.
+    assert!(ud.undo_import().unwrap());
+    assert_eq!(ud.last_workspace().unwrap(), Some(ws.id));
 }

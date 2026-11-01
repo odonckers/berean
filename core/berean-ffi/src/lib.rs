@@ -2358,6 +2358,12 @@ impl UserData {
             .collect())
     }
 
+    /// The note `id` (its Guid), or none if there's no such note: the same
+    /// `Note` that `notes` returns, so a note `notes` skips is none here too.
+    pub fn note(&self, id: String) -> Result<Option<Note>, CoreError> {
+        Ok(self.inner.note(&id)?.map(Into::into))
+    }
+
     /// Add a note at `location` (none for a free-standing one), on the
     /// highlight `highlight_id` if given, filed in `folder_id` if given,
     /// tagged with its body's inline #tags.
@@ -2471,6 +2477,18 @@ impl UserData {
     /// Delete workspace `id` and its cards; the notes on it are kept.
     pub fn delete_workspace(&self, id: i64) -> Result<(), CoreError> {
         Ok(self.inner.delete_workspace(id)?)
+    }
+
+    /// The workspace open last, if any: none before the first
+    /// `set_last_workspace`, after it's cleared, after that workspace is
+    /// deleted, and after an import.
+    pub fn last_workspace(&self) -> Result<Option<i64>, CoreError> {
+        Ok(self.inner.last_workspace()?)
+    }
+
+    /// Remember `id` as the workspace open last (none clears it).
+    pub fn set_last_workspace(&self, id: Option<i64>) -> Result<(), CoreError> {
+        Ok(self.inner.set_last_workspace(id)?)
     }
 
     /// Save where workspace `workspace_id`'s view is: its centre and zoom.
@@ -3485,6 +3503,36 @@ mod tests {
             ud.rename_folder(999, "x".into()),
             Err(CoreError::NotFound)
         ));
+    }
+
+    #[test]
+    fn last_workspace_through_ffi() {
+        let dir = tempfile::tempdir().unwrap();
+        let ud = open_core(&dir).userdata();
+        assert_eq!(ud.last_workspace().unwrap(), None);
+        let ws = ud.create_workspace("John".into()).unwrap();
+        ud.set_last_workspace(Some(ws.id)).unwrap();
+        assert_eq!(ud.last_workspace().unwrap(), Some(ws.id));
+        assert!(matches!(
+            ud.set_last_workspace(Some(ws.id + 1)),
+            Err(CoreError::NotFound)
+        ));
+        assert_eq!(ud.last_workspace().unwrap(), Some(ws.id));
+        ud.set_last_workspace(None).unwrap();
+        assert_eq!(ud.last_workspace().unwrap(), None);
+    }
+
+    #[test]
+    fn note_by_id_through_ffi() {
+        let dir = tempfile::tempdir().unwrap();
+        let ud = open_core(&dir).userdata();
+        let note = ud
+            .add_note("Cana".into(), "#signs".into(), None, None, None)
+            .unwrap();
+        assert_eq!(ud.note(note.id.clone()).unwrap(), Some(note.clone()));
+        assert_eq!(ud.note("no-such-guid".into()).unwrap(), None);
+        ud.remove_note(note.id.clone()).unwrap();
+        assert_eq!(ud.note(note.id).unwrap(), None);
     }
 
     #[test]

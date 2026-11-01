@@ -34,6 +34,13 @@ CREATE TABLE IF NOT EXISTS BereanWorkspace (
 CREATE UNIQUE INDEX IF NOT EXISTS IX_BereanWorkspace_Name
     ON BereanWorkspace (Name COLLATE NOCASE);
 
+-- Studyspace state that isn't per workspace: the one open last. One row at
+-- most (Id = 1); no row, or a NULL, means none.
+CREATE TABLE IF NOT EXISTS BereanStudyspace (
+    Id               INTEGER PRIMARY KEY CHECK (Id = 1),
+    LastWorkspaceId  INTEGER REFERENCES BereanWorkspace (WorkspaceId) ON DELETE SET NULL
+);
+
 -- A card on a workspace: a note (`NoteId`), or a passage or excerpt
 -- (`Target`, its `berean://bible/...` or `berean://pub/...` URL). X, Y is
 -- the card's top-left corner. A passage or excerpt card is a reader: once
