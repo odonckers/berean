@@ -1,11 +1,11 @@
 // Moving and resizing a card (findings §4.2, §4.3): the finger's screen
 // travel in canvas units, the resize clamps, snapping to other cards' edges
-// and centres, and the accessibility actions' steps. Pure and free of React
+// and centres with its guides, and the accessibility actions' steps. Pure and free of React
 // Native so `node --test` can run it; every function is a worklet, since a
 // card's drag runs on the UI thread, and none reads a module constant in a
 // default parameter (worklets.test.ts checks both).
 
-import type { Rect } from '@/studyspace/camera';
+import type { Camera, Rect, Size } from '@/studyspace/camera';
 
 /** A card's smallest size from its content (§4.3): a title line and a caption. */
 export const MIN_CARD = { width: 120, height: 72 } as const;
@@ -101,6 +101,91 @@ export function snapFrame(frame: Rect, others: readonly Rect[], screenReach: num
     x: sx?.line,
     y: sy?.line,
   };
+}
+
+/**
+ * A drag's frame (§4.2): the start frame moved by the finger's screen
+ * travel at `zoom`, then snapped. Unsnapped on an axis it is the raw frame,
+ * so the card follows the finger 1:1; snapped, it meets the caught line.
+ * The card springs to it when a catch starts or ends, and the release
+ * commits it.
+ */
+export function dragFrame(
+  start: Rect,
+  dx: number,
+  dy: number,
+  zoom: number,
+  others: readonly Rect[],
+  screenReach: number,
+): Snap {
+  'worklet';
+  return snapFrame(moveBy(start, dx, dy, zoom), others, screenReach, zoom);
+}
+
+/** Whether an axis's caught line has changed from `was` (NaN for none) to `now`, so the card springs. */
+export function lineChanged(was: number, now: number | undefined): boolean {
+  'worklet';
+  return now === undefined ? !Number.isNaN(was) : now !== was;
+}
+
+/** A snap guide (§4.2): a line across `axis` at canvas `at`, from `from` to `to` along the other axis. */
+export type Guide = { axis: 'x' | 'y'; at: number; from: number; to: number };
+
+/** Whether a span (start, length) has a snap line at `at`. */
+function hasLine(start: number, length: number, at: number): boolean {
+  'worklet';
+  return lines(start, length).some((line) => Math.abs(line - at) < 1e-6);
+}
+
+/**
+ * The guides for `snap` (§4.2), in canvas units: for each axis caught, a
+ * line at the caught coordinate spanning the snapped card and every other
+ * card with a line there, `overhang` past both ends. None when nothing is
+ * caught.
+ */
+export function snapGuides(snap: Snap, others: readonly Rect[], overhang: number): Guide[] {
+  'worklet';
+  const { frame } = snap;
+  const guides: Guide[] = [];
+  if (snap.x !== undefined) {
+    const at = snap.x;
+    let from = frame.y;
+    let to = frame.y + frame.height;
+    for (const o of others) {
+      if (!hasLine(o.x, o.width, at)) continue;
+      from = Math.min(from, o.y);
+      to = Math.max(to, o.y + o.height);
+    }
+    guides.push({ axis: 'x', at, from: from - overhang, to: to + overhang });
+  }
+  if (snap.y !== undefined) {
+    const at = snap.y;
+    let from = frame.x;
+    let to = frame.x + frame.width;
+    for (const o of others) {
+      if (!hasLine(o.y, o.height, at)) continue;
+      from = Math.min(from, o.x);
+      to = Math.max(to, o.x + o.width);
+    }
+    guides.push({ axis: 'y', at, from: from - overhang, to: to + overhang });
+  }
+  return guides;
+}
+
+/**
+ * `guide` on screen through `camera` in a view of `view`, as a box
+ * `thickness` screen points across, centred on its line.
+ */
+export function guideOnScreen(guide: Guide, camera: Camera, view: Size, thickness: number): Rect {
+  'worklet';
+  const along = guide.axis === 'x' ? view.height / 2 - camera.y * camera.zoom : view.width / 2 - camera.x * camera.zoom;
+  const across = guide.axis === 'x' ? view.width / 2 - camera.x * camera.zoom : view.height / 2 - camera.y * camera.zoom;
+  const at = across + guide.at * camera.zoom - thickness / 2;
+  const from = along + guide.from * camera.zoom;
+  const length = (guide.to - guide.from) * camera.zoom;
+  return guide.axis === 'x'
+    ? { x: at, y: from, width: thickness, height: length }
+    : { x: from, y: at, width: length, height: thickness };
 }
 
 export type CardAction =
