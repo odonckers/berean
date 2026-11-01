@@ -1,4 +1,5 @@
 import AppKit
+import CupertinoUI
 import SwiftUI
 import Testing
 
@@ -60,6 +61,36 @@ struct SidebarSelectionTests {
         #expect(SidebarSelectionMetrics.horizontalInset == 10)
         #expect(SidebarSelectionMetrics.cornerRadius == 8)
         #expect(SidebarSelectionMetrics.rowHeight == 32)
+    }
+
+    // MARK: The active/inactive rule
+
+    /// `SidebarRowStyle.colors` is the whole of the rule, so it is checked
+    /// directly rather than through a rendered row: accent/onAccent while the
+    /// window is key, the theme's `selection` token with `textPrimary` — text
+    /// *and* icon — while it is not, and the same geometry either way.
+    @Test("The selected row's roles follow the window's active state")
+    func rowColors() {
+        let active = SidebarRowStyle.colors(isSelected: true, appearsActive: true)
+        #expect(active.fill == .accent)
+        #expect(active.text == .onAccent)
+        #expect(active.icon == .onAccent)
+
+        let inactive = SidebarRowStyle.colors(isSelected: true, appearsActive: false)
+        #expect(inactive.fill == .selection)
+        #expect(inactive.text == .textPrimary)
+        #expect(inactive.icon == .textPrimary)
+
+        // Unselected rows paint no fill and do not care about the window.
+        for appearsActive in [true, false] {
+            let unselected = SidebarRowStyle.colors(
+                isSelected: false,
+                appearsActive: appearsActive
+            )
+            #expect(unselected.fill == nil)
+            #expect(unselected.text == .textPrimary)
+            #expect(unselected.icon == .textSecondary)
+        }
     }
 
     // MARK: Measured against the system

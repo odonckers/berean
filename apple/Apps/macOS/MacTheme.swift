@@ -48,6 +48,12 @@ struct MacTheme: Equatable {
     var accent: Color { color(.accent) }
     var onAccent: Color { color(.onAccent) }
 
+    /// The `selection` role — the unemphasised selection fill, used for the
+    /// selected sidebar row while the window is not key — has no named property
+    /// of its own: `selection` here is the stored choice, and the sidebar names
+    /// its roles through `SidebarRowStyle` and reaches them with `color(_:)`,
+    /// which is dynamic in exactly the same way as the properties above.
+
     /// The scrim behind the Omnisearch palette. Warm ink at 45% in light, plain
     /// black at 32% in dark — generated from tokens.json's `material3` scrims,
     /// the file's only non-opaque values (themes-spec.md §2, §9).

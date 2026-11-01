@@ -28,6 +28,10 @@ struct MacRootView: View {
     @Environment(\.macTheme) private var theme
     @Environment(\.macSolidChrome) private var solidChrome
     @Environment(\.openSettings) private var openSettings
+    /// False when the window is not key — another window of ours is in front,
+    /// or another app is. SwiftUI's own value for it, so the rows repaint with
+    /// the window rather than needing an `NSWindow` observer.
+    @Environment(\.appearsActive) private var appearsActive
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -94,29 +98,39 @@ struct MacRootView: View {
 
     /// One sidebar row, with the icon coloured on its own.
     ///
+    /// Which token each part draws with is `SidebarRowStyle.colors`, so the
+    /// active/inactive rule is one pure function rather than conditionals spread
+    /// through the view: `onAccent` on the accent while the window is key,
+    /// `textPrimary` on the `selection` token while it is not, `textPrimary` /
+    /// `textSecondary` when the row isn't selected.
+    ///
     /// The icon cannot inherit the row's `.foregroundStyle`: in an AppKit
     /// sidebar the selected row is drawn in the emphasised background style,
     /// and that style's default foreground is white — which is what put a
     /// #FFFFFF glyph on the dark accent at 2.27:1. `SystemRowHighlight.off()`
     /// (in the row background) stops AppKit emphasising the row at all, and
     /// styling the `Image` explicitly, rather than the whole `Label`, means the
-    /// glyph is pinned to a token either way. `onAccent` on `accent` is 3:1 or
-    /// better in every set and slot (`ThemeContrastTests.iconOnAccent`).
-    ///
-    /// Unselected icons are `textSecondary`, not the system grey: §3 rule 6
-    /// keeps icons monochrome in `textPrimary` or `textSecondary`. The text
-    /// stays `textPrimary`.
+    /// glyph is pinned to a token either way. Both selected pairs clear WCAG
+    /// 1.4.11's 3:1 as icons and 4.5:1 as text, in every set and slot
+    /// (`ThemeContrastTests.iconOnAccent`, `.selectedRowWhenInactive`).
     private func sidebarRow(for item: SidebarItem) -> some View {
-        let isSelected = item == model.selection
+        let colors = rowColors(for: item)
 
         return Label {
             Text(item.title)
-                .foregroundStyle(isSelected ? theme.onAccent : theme.textPrimary)
+                .foregroundStyle(theme.color(colors.text))
         } icon: {
             Image(systemName: item.symbolName)
                 .symbolRenderingMode(.monochrome)
-                .foregroundStyle(isSelected ? theme.onAccent : theme.textSecondary)
+                .foregroundStyle(theme.color(colors.icon))
         }
+    }
+
+    private func rowColors(for item: SidebarItem) -> SidebarRowColors {
+        SidebarRowStyle.colors(
+            isSelected: item == model.selection,
+            appearsActive: appearsActive
+        )
     }
 
     /// The selected row is drawn from the theme, not from the Mac's accent.
@@ -134,17 +148,18 @@ struct MacRootView: View {
     /// AppKit rather than chosen, and re-measured by
     /// `SidebarSelectionTests.matchesTheSystemHighlight`.
     ///
-    /// The fill stays `theme.accent`
-    /// whether or not the window is key. Native macOS dims an unemphasised
-    /// selection to a system grey; doing that here would put the system palette
-    /// back on Berean's chrome (§3 rule 7, §10) and would need a second pair of
-    /// contrast floors. Holding the accent keeps `onAccent` correct in every
-    /// window state.
+    /// The fill follows the window's state, per the HIG: key window, the
+    /// emphasised selection in `theme.accent`; non-key window, unemphasised —
+    /// but in the theme's own `selection` token, not macOS's system grey, which
+    /// §3 rule 7 and §10 keep off Berean's chrome. `SidebarRowStyle.colors`
+    /// holds that choice, and the pair it picks for the inactive state —
+    /// `textPrimary` on `selection` — has its own contrast floors in
+    /// `ThemeContrastTests`.
     private func rowBackground(for item: SidebarItem) -> some View {
         ZStack {
-            if item == model.selection {
+            if let fill = rowColors(for: item).fill {
                 SidebarSelectionMetrics.shape
-                    .fill(theme.accent)
+                    .fill(theme.color(fill))
                     .padding(.horizontal, SidebarSelectionMetrics.horizontalInset)
             }
 

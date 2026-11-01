@@ -162,6 +162,50 @@ struct ThemeContrastTests {
         }
     }
 
+    /// The selected sidebar row while the window is **not** key: the fill is the
+    /// theme's `selection` token and both the text and the icon are
+    /// `textPrimary` (`SidebarRowStyle.colors(isSelected: true,
+    /// appearsActive: false)`). Text takes §15's 4.5:1, the SF Symbol takes WCAG
+    /// 1.4.11's 3:1.
+    ///
+    /// Every theme, not just Paper: the picker arrives in Moss 2 and the
+    /// unemphasised fill has to hold for whatever it selects. Resolved through
+    /// `ThemeTokens.resolve` with each accent slot as well — `selection` is a
+    /// role and so does not move with the slot, and running every slot is what
+    /// proves that rather than assuming it.
+    @Test(
+        "The inactive-window selected row clears its floors, every theme and slot",
+        arguments: ThemeSet.allCases
+    )
+    func selectedRowWhenInactive(set: ThemeSet) {
+        for id in ThemeID.allCases {
+            for slot in ThemeTokens.palette(id).accentSlots {
+                let theme = ThemeTokens.resolve(
+                    ThemeSelection(theme: id, accentSlot: slot.slot),
+                    set: set
+                )
+                let fill = theme[.selection]
+                let foreground = theme[.textPrimary]
+                let ratio = foreground.contrastRatio(against: fill)
+
+                for (what, floor) in [
+                    ("text", Self.bodyTextFloor),
+                    ("icon", Self.nonTextFloor),
+                ] {
+                    #expect(
+                        ratio >= floor,
+                        """
+                        \(id.rawValue) \(set.rawValue) slot \(slot.slot): the \
+                        inactive selected row's \(what) is textPrimary \
+                        \(foreground.hexString) on selection \(fill.hexString) at \
+                        \(ratio), under \(floor):1
+                        """
+                    )
+                }
+            }
+        }
+    }
+
     /// §6: every accent reaches 4.5:1 on the page in every set, so the accent is
     /// safe as text and as a 1 pt mark, not just as a fill.
     @Test("Every accent clears 4.5:1 on the page", arguments: ThemeSet.allCases)
@@ -244,6 +288,18 @@ struct ThemeContrastTests {
                 "the selected sidebar row's icon",
                 theme.onAccentColor,
                 on: theme.accentColor
+            ),
+            // The same row with the window not key: unemphasised, so the fill is
+            // the `selection` token and both parts are textPrimary.
+            .text(
+                "the selected sidebar row in an inactive window",
+                roles.textPrimary,
+                on: roles.selection
+            ),
+            .icon(
+                "the selected sidebar row's icon in an inactive window",
+                roles.textPrimary,
+                on: roles.selection
             ),
             .text("the Omnisearch field", roles.textPrimary, on: roles.surfaceRaised),
             .text("the Omnisearch footer", roles.textSecondary, on: roles.surfaceRaised),

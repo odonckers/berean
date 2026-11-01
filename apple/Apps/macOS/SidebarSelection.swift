@@ -1,8 +1,19 @@
 import AppKit
+import CupertinoUI
 import SwiftUI
 
-/// The selected sidebar row: Berean's own accent fill, in the system's shape,
-/// with the system's own highlight switched off underneath it.
+/// The selected sidebar row: Berean's own fill, in the system's shape, with the
+/// system's own highlight switched off underneath it.
+///
+/// ## Which fill
+///
+/// Two states, both from the theme (`SidebarRowStyle`): `accent` with `onAccent`
+/// text and icon while the window is key, and the theme's `selection` token with
+/// `textPrimary` text and icon while it is not. That second state is the HIG's
+/// rule — a selection in a non-key window reads unemphasised — kept inside
+/// Berean's palette: macOS would dim it to a system grey, and §3 rule 7 keeps the
+/// system palette off Berean's chrome, so the unemphasised fill is the token the
+/// themes already ship for exactly this (themes-spec.md §2, role `selection`).
 ///
 /// ## Why a custom fill at all
 ///
@@ -42,6 +53,43 @@ import SwiftUI
 ///
 /// `SidebarSelectionMetrics` carries the shape, and `SystemRowHighlight.off()`
 /// carries the bridge.
+
+// MARK: - Which colours a row draws with
+
+/// The three token roles one sidebar row draws with. `fill` is `nil` when the
+/// row paints no background at all.
+struct SidebarRowColors: Equatable {
+    let fill: ThemeRole?
+    let text: ThemeRole
+    let icon: ThemeRole
+}
+
+/// The row's colours, as a pure function of its two bits of state.
+///
+/// Kept separate from the view so the rule itself is unit-testable
+/// (`SidebarSelectionTests.rowColors`): the view only turns these roles into
+/// `Color`s through `MacTheme`.
+enum SidebarRowStyle {
+    /// - Parameters:
+    ///   - isSelected: whether this row is `List`'s selection.
+    ///   - appearsActive: `@Environment(\.appearsActive)` — false when the
+    ///     window is not key, including while another app is in front.
+    static func colors(isSelected: Bool, appearsActive: Bool) -> SidebarRowColors {
+        guard isSelected else {
+            // §3 rule 6: icons are monochrome in textPrimary or textSecondary,
+            // never the system grey.
+            return SidebarRowColors(fill: nil, text: .textPrimary, icon: .textSecondary)
+        }
+
+        // Key window: the emphasised selection, Berean's accent.
+        // Non-key window: unemphasised, the theme's `selection` token, with
+        // text *and* icon in textPrimary — `onAccent` is only guaranteed to
+        // read on the accent.
+        return appearsActive
+            ? SidebarRowColors(fill: .accent, text: .onAccent, icon: .onAccent)
+            : SidebarRowColors(fill: .selection, text: .textPrimary, icon: .textPrimary)
+    }
+}
 
 // MARK: - Geometry
 
