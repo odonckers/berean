@@ -1859,6 +1859,19 @@ impl UserData {
         Ok(notes)
     }
 
+    /// The note `id` (its Guid), or `None` if there's no such note: the
+    /// same `Note` that `notes` returns. A note `notes` skips (a location
+    /// the reads can't map) is `None` here too.
+    pub fn note(&self, id: &str) -> Result<Option<Note>, CoreError> {
+        let conn = self.inner.userdata();
+        let note = match note_row(&conn, id) {
+            Ok(note) => note,
+            Err(CoreError::NotFound) => return Ok(None),
+            Err(e) => return Err(e),
+        };
+        Ok(read_notes(&conn, Some(note))?.pop())
+    }
+
     /// Add a note at `location` (`None` for a free-standing one), on the
     /// highlight `highlight_id` if given, filed in `folder_id` if given, and
     /// tagged with its body's inline #tags: each matches a user tag ignoring
@@ -2257,6 +2270,38 @@ impl UserData {
         if n == 0 {
             return Err(CoreError::NotFound);
         }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// The workspace open last, if any: `None` before the first
+    /// `set_last_workspace`, after it's cleared, after that workspace is
+    /// deleted, and after an import.
+    pub fn last_workspace(&self) -> Result<Option<i64>, CoreError> {
+        let conn = self.inner.userdata();
+        Ok(conn
+            .query_row(
+                "SELECT LastWorkspaceId FROM BereanStudyspace WHERE Id = 1",
+                [],
+                |r| r.get(0),
+            )
+            .optional()?
+            .flatten())
+    }
+
+    /// Remember `id` as the workspace open last (`None` clears it). An
+    /// unknown id => `NotFound`.
+    pub fn set_last_workspace(&self, id: Option<i64>) -> Result<(), CoreError> {
+        let mut conn = self.inner.userdata();
+        let tx = conn.transaction()?;
+        if let Some(id) = id {
+            check_workspace(&tx, id)?;
+        }
+        tx.execute(
+            "INSERT INTO BereanStudyspace (Id, LastWorkspaceId) VALUES (1, ?1) \
+             ON CONFLICT (Id) DO UPDATE SET LastWorkspaceId = excluded.LastWorkspaceId",
+            [id],
+        )?;
         tx.commit()?;
         Ok(())
     }
@@ -2844,7 +2889,8 @@ impl UserData {
             // dropped and isn't in JW's schema.
             let conn = Connection::open(&copy)?;
             conn.execute_batch(
-                "DROP TABLE IF EXISTS BereanCanvasItem;
+                "DROP TABLE IF EXISTS BereanStudyspace;
+                 DROP TABLE IF EXISTS BereanCanvasItem;
                  DROP TABLE IF EXISTS BereanWorkspace;
                  DROP TABLE IF EXISTS BereanNoteFolder;
                  DROP TABLE IF EXISTS BereanFolder;

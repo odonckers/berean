@@ -277,6 +277,7 @@ fn new_userdata_db_matches_the_pinned_blank() {
             pair("index", "IX_BereanNoteFolder_FolderId"),
             pair("table", "BereanWorkspace"),
             pair("index", "IX_BereanWorkspace_Name"),
+            pair("table", "BereanStudyspace"),
             pair("table", "BereanCanvasItem"),
             pair("index", "IX_BereanCanvasItem_Note"),
             pair("index", "IX_BereanCanvasItem_Workspace"),
@@ -1196,10 +1197,16 @@ fn export_drops_the_berean_tables() {
     let top = ud.create_folder("Gospel of John", None).unwrap();
     let sub = ud.create_folder("Signs", Some(top.id)).unwrap();
     ud.add_note("Filed", "", None, None, Some(sub.id)).unwrap();
+    let ws = ud.create_workspace("John").unwrap();
+    ud.set_last_workspace(Some(ws.id)).unwrap();
     // The live file has Berean's tables, and the `sqlite_sequence` their
     // `AUTOINCREMENT` adds.
     let live = names(&env.raw());
     assert!(live.iter().any(|(_, n)| n == "BereanFolder"), "{live:?}");
+    assert!(
+        live.iter().any(|(_, n)| n == "BereanStudyspace"),
+        "{live:?}"
+    );
     assert!(live.iter().any(|(_, n)| n == "sqlite_sequence"), "{live:?}");
 
     let out_dir = tempfile::tempdir().unwrap();
@@ -2259,10 +2266,11 @@ fn import_preview_progress_holds_no_lock_and_honours_cancel() {
 }
 
 /// Every Berean table (folders, Studyspace), sorted.
-const BEREAN_TABLES: [&str; 4] = [
+const BEREAN_TABLES: [&str; 5] = [
     "BereanCanvasItem",
     "BereanFolder",
     "BereanNoteFolder",
+    "BereanStudyspace",
     "BereanWorkspace",
 ];
 
