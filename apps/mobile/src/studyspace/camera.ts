@@ -153,14 +153,31 @@ export function zoomAbout(camera: Camera, view: Size, focal: Point, zoom: number
   return cameraAbout(screenToCanvas(camera, view, focal), focal, zoom, view);
 }
 
-/** The content layer's transform (origin top-left): screen = translate + zoom · canvas. */
-export function contentTransform(camera: Camera, view: Size): { translateX: number; translateY: number; scale: number } {
+/**
+ * The content layer's transform (origin top-left), for a layer whose
+ * top-left is canvas point `origin`: screen = translate + zoom · (canvas − origin).
+ */
+export function contentTransform(
+  camera: Camera,
+  view: Size,
+  origin: Point,
+): { translateX: number; translateY: number; scale: number } {
   'worklet';
   return {
-    translateX: view.width / 2 - camera.x * camera.zoom,
-    translateY: view.height / 2 - camera.y * camera.zoom,
+    translateX: view.width / 2 + (origin.x - camera.x) * camera.zoom,
+    translateY: view.height / 2 + (origin.y - camera.y) * camera.zoom,
     scale: camera.zoom,
   };
+}
+
+/**
+ * The content layer's own box in canvas points: around every frame, so
+ * Android's accessibility bounds and hit-testing, which clip a child to its
+ * parent's untransformed box, see whole cards. A 1 × 1 box at (0,0) for none.
+ */
+export function layerBox(frames: readonly Rect[]): Rect {
+  'worklet';
+  return contentBounds(frames) ?? { x: 0, y: 0, width: 1, height: 1 };
 }
 
 /** The box around every frame; undefined for none. */

@@ -39,6 +39,7 @@ import {
   hitsFrame,
   inertia,
   inertiaProgress,
+  layerBox,
   nearZoom,
   restoreCamera,
   rubberBandZoom,
@@ -90,6 +91,10 @@ export function Canvas({ cards, saved, limits, onSettle }: CanvasProps) {
   // Levels and title sizes follow the settled zoom, not every frame.
   const [settledZoom, setSettledZoom] = useState(1);
   const frames = useMemo<Rect[]>(() => cards.map((c) => c.frame), [cards]);
+  // The content layer's box holds every card, so Android (which clips a
+  // child's accessibility bounds and touches to its parent's untransformed
+  // box) sees whole cards at any zoom.
+  const box = useMemo(() => layerBox(frames), [frames]);
 
   const cx = useSharedValue(0);
   const cy = useSharedValue(0);
@@ -100,6 +105,7 @@ export function Canvas({ cards, saved, limits, onSettle }: CanvasProps) {
   const progress = useSharedValue(0);
   const fit = useSharedValue<Camera>({ x: 0, y: 0, zoom: 1 });
   const hitFrames = useSharedValue<Rect[]>([]);
+  const origin = useSharedValue<Point>({ x: box.x, y: box.y });
   const panning = useSharedValue(false);
   const pinching = useSharedValue(false);
   const gliding = useSharedValue(false);
@@ -113,8 +119,9 @@ export function Canvas({ cards, saved, limits, onSettle }: CanvasProps) {
 
   useEffect(() => {
     hitFrames.set(frames);
+    origin.set({ x: box.x, y: box.y });
     if (view !== undefined) fit.set(fitAll(frames, view, fitPadding(view), limits));
-  }, [frames, view, limits, fit, hitFrames]);
+  }, [frames, box, view, limits, fit, hitFrames, origin]);
 
   const onLayout = (e: LayoutChangeEvent) => {
     const size = { width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height };
@@ -340,7 +347,7 @@ export function Canvas({ cards, saved, limits, onSettle }: CanvasProps) {
       f !== null
         ? cameraBetween(f.from, f.to, progress.get(), here, f.focal)
         : { x: cx.get(), y: cy.get(), zoom: cz.get() };
-    const t = contentTransform(now, here);
+    const t = contentTransform(now, here, origin.get());
     return { transform: [{ translateX: t.translateX }, { translateY: t.translateY }, { scale: t.scale }] };
   });
 
@@ -351,9 +358,15 @@ export function Canvas({ cards, saved, limits, onSettle }: CanvasProps) {
         style={[styles.canvas, { backgroundColor: colors.surface }]}
       >
         {view !== undefined && (
-          <Animated.View style={[styles.content, contentStyle]}>
+          <Animated.View style={[styles.content, { width: box.width, height: box.height }, contentStyle]}>
             {cards.map((card) => (
-              <StudyCard key={String(card.id)} card={card} zoom={settledZoom} fontScale={fontScale} />
+              <StudyCard
+                key={String(card.id)}
+                card={card}
+                zoom={settledZoom}
+                fontScale={fontScale}
+                origin={box}
+              />
             ))}
           </Animated.View>
         )}
@@ -364,6 +377,6 @@ export function Canvas({ cards, saved, limits, onSettle }: CanvasProps) {
 
 const styles = StyleSheet.create({
   canvas: { flex: 1, overflow: 'hidden' },
-  // Canvas (0,0) at the layer's top-left; the transform places and zooms it.
-  content: { ...StyleSheet.absoluteFill, transformOrigin: 'left top' },
+  // The cards' box (layerBox) at the layer's top-left; the transform places and zooms it.
+  content: { position: 'absolute', left: 0, top: 0, transformOrigin: 'left top' },
 });

@@ -4,6 +4,7 @@ import { ScaledSymbol } from '@/components/scaled-symbol';
 import { useBerean } from '@/design/theme';
 import { spacing } from '@/design/tokens';
 import type { SymbolName } from '@/notes/list-rows';
+import type { Point } from '@/studyspace/camera';
 import { cardText, titleScale, type CardKind } from '@/studyspace/cards';
 import type { CardView } from '@/studyspace/data';
 
@@ -24,17 +25,19 @@ type StudyCardProps = {
   /** The camera's zoom when it last settled: levels and title size follow it. */
   zoom: number;
   fontScale: number;
+  /** The content layer's top-left in canvas points; the card sits at its frame less this. */
+  origin: Point;
 };
 
 /**
- * One card on the canvas, at its frame in canvas points (the content layer
- * zooms it). Title-only for now (§5 L1 and L2): below 48 pt on screen, or
+ * One card on the canvas, at its frame in canvas points relative to the
+ * content layer's origin (the content layer places and zooms it). Title-only for now (§5 L1 and L2): below 48 pt on screen, or
  * too short for one whole title line, a glyph on the card's fill; otherwise
  * as many whole title lines as fit (up to 2) at the reader's text size,
  * never smaller. Passage and publication cards are placeholders until they
  * become live readers.
  */
-export function StudyCard({ card, zoom, fontScale }: StudyCardProps) {
+export function StudyCard({ card, zoom, fontScale, origin }: StudyCardProps) {
   const { look, colors, m3, type } = useBerean();
   const material = look === 'material';
   const { frame } = card;
@@ -71,8 +74,8 @@ export function StudyCard({ card, zoom, fontScale }: StudyCardProps) {
       style={[
         styles.card,
         {
-          left: frame.x,
-          top: frame.y,
+          left: frame.x - origin.x,
+          top: frame.y - origin.y,
           width: frame.width,
           height: frame.height,
           backgroundColor: material ? m3.surfaceContainerLow : colors.surfaceRaised,

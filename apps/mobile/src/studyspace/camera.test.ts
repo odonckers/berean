@@ -17,6 +17,7 @@ import {
   hitsFrame,
   inertia,
   inertiaProgress,
+  layerBox,
   lerpZoom,
   nextZoomStep,
   projectedRest,
@@ -125,11 +126,47 @@ describe('screen and canvas', () => {
   });
 
   test('the content transform draws canvas points where canvasToScreen says', () => {
-    const t = contentTransform(camera, view);
+    const t = contentTransform(camera, view, { x: 0, y: 0 });
     const c = { x: 37, y: 91 };
     const s = canvasToScreen(camera, view, c);
     near(t.translateX + t.scale * c.x, s.x);
     near(t.translateY + t.scale * c.y, s.y);
+  });
+
+  test('a layer offset to its origin draws every canvas point where it was', () => {
+    for (const origin of [{ x: -1200, y: 340 }, { x: 0, y: 0 }, { x: 5000, y: -75.5 }]) {
+      for (const zoom of [0.05, 1, 3.5]) {
+        const cam: Camera = { ...camera, zoom };
+        const t = contentTransform(cam, view, origin);
+        for (const p of [{ x: 37, y: 91 }, { x: -1500, y: 2000 }, origin]) {
+          // The card at p sits at p − origin in the layer.
+          near(t.translateX + (p.x - origin.x) * t.scale, view.width / 2 + (p.x - cam.x) * zoom, 1e-6);
+          near(t.translateY + (p.y - origin.y) * t.scale, view.height / 2 + (p.y - cam.y) * zoom, 1e-6);
+        }
+      }
+    }
+  });
+});
+
+describe('content layer box', () => {
+  test('holds every frame, however far from (0,0)', () => {
+    const frames: Rect[] = [
+      { x: -800, y: 1200, width: 240, height: 160 },
+      { x: 3000, y: -450, width: 300, height: 200 },
+      { x: 10, y: 20, width: 30, height: 40 },
+    ];
+    const box = layerBox(frames);
+    assert.deepEqual(box, { x: -800, y: -450, width: 4100, height: 1810 });
+    for (const f of frames) {
+      // In the layer's own coordinates each card is inside [0, width] × [0, height].
+      assert.ok(f.x - box.x >= 0 && f.y - box.y >= 0, JSON.stringify(f));
+      assert.ok(f.x - box.x + f.width <= box.width, JSON.stringify(f));
+      assert.ok(f.y - box.y + f.height <= box.height, JSON.stringify(f));
+    }
+  });
+
+  test('a 1 × 1 box at (0,0) with no cards', () => {
+    assert.deepEqual(layerBox([]), { x: 0, y: 0, width: 1, height: 1 });
   });
 });
 
