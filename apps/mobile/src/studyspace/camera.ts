@@ -154,20 +154,33 @@ export function zoomAbout(camera: Camera, view: Size, focal: Point, zoom: number
 }
 
 /**
- * The content layer's transform (origin top-left), for a layer whose
- * top-left is canvas point `origin`: screen = translate + zoom · (canvas − origin).
+ * The content layer's transform, translate then scale, about the canvas's
+ * (0,0): screen = translate + zoom · canvas, i.e. canvasToScreen. The layer
+ * is laid out at its box with its transform origin at the parent's (0,0),
+ * so the transform doesn't depend on the box.
  */
-export function contentTransform(
-  camera: Camera,
-  view: Size,
-  origin: Point,
-): { translateX: number; translateY: number; scale: number } {
+export function contentTransform(camera: Camera, view: Size): { translateX: number; translateY: number; scale: number } {
   'worklet';
   return {
-    translateX: view.width / 2 + (origin.x - camera.x) * camera.zoom,
-    translateY: view.height / 2 + (origin.y - camera.y) * camera.zoom,
+    translateX: view.width / 2 - camera.x * camera.zoom,
+    translateY: view.height / 2 - camera.y * camera.zoom,
     scale: camera.zoom,
   };
+}
+
+/**
+ * The dot grid layer's offset along one axis, in [−spacing, 0), for the
+ * content layer's translate on that axis. The grid keeps its screen size
+ * at any zoom but moves with the canvas under a pan, so a pan moves the
+ * grid and the cards by the same screen delta (modulo one spacing).
+ */
+export function gridOffset(translate: number, spacing: number): number {
+  'worklet';
+  let r = translate % spacing;
+  if (r < 0) r += spacing;
+  // r + spacing can round up to spacing for a tiny negative remainder.
+  if (r >= spacing) r -= spacing;
+  return r - spacing;
 }
 
 /** The box around every frame; undefined for none. */

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { type LayoutChangeEvent, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Image, type LayoutChangeEvent, StyleSheet, useWindowDimensions, View } from 'react-native';
 import {
   GestureDetector,
   usePanGesture,
@@ -20,6 +20,7 @@ import Animated, {
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { useBerean } from '@/design/theme';
+import { useWindowClass } from '@/design/use-window-class';
 import {
   ANDROID_DECAY,
   type Camera,
@@ -36,6 +37,7 @@ import {
   fitAll,
   fitPadding,
   gestureRange,
+  gridOffset,
   hitsFrame,
   inertia,
   inertiaProgress,
@@ -64,6 +66,13 @@ const DOUBLE_TAP_MS = 450;
 // A spring seeded faster than this (in progress per second) would overshoot visibly.
 const MAX_SEED = 10;
 
+// Guide §4's dot grid: 1 px dots every 14 px on phones, 1.2 px every 28 px
+// on tablets, white tiles tinted canvasDot (scripts/make-dot-tiles.py).
+const DOT_GRIDS = {
+  phone: { spacing: 14, tile: require('../../assets/studyspace/dot-14.png') },
+  tablet: { spacing: 28, tile: require('../../assets/studyspace/dot-28.png') },
+} as const;
+
 type CanvasProps = {
   cards: readonly CardView[];
   /** The workspace's saved camera; none the first time (it opens at fit-all). */
@@ -86,6 +95,8 @@ export function Canvas({ cards, saved, limits, onSettle }: CanvasProps) {
   const reducedMotion = useReducedMotion();
   const { fontScale } = useWindowDimensions();
   const decay = look === 'ios' ? IOS_DECAY : ANDROID_DECAY;
+  const grid = DOT_GRIDS[useWindowClass() === 'compact' ? 'phone' : 'tablet'];
+  const gridSpacing = grid.spacing;
 
   const [view, setView] = useState<Size>();
   // Levels and title sizes follow the settled zoom, not every frame.
@@ -93,7 +104,8 @@ export function Canvas({ cards, saved, limits, onSettle }: CanvasProps) {
   const frames = useMemo<Rect[]>(() => cards.map((c) => c.frame), [cards]);
   // The content layer's box holds every card, so Android (which clips a
   // child's accessibility bounds and touches to its parent's untransformed
-  // box) sees whole cards at any zoom.
+  // box) sees whole cards at any zoom. It is plain style, committed with the
+  // cards; the animated transform doesn't depend on it.
   const box = useMemo(() => layerBox(frames), [frames]);
 
   const cx = useSharedValue(0);
@@ -105,7 +117,6 @@ export function Canvas({ cards, saved, limits, onSettle }: CanvasProps) {
   const progress = useSharedValue(0);
   const fit = useSharedValue<Camera>({ x: 0, y: 0, zoom: 1 });
   const hitFrames = useSharedValue<Rect[]>([]);
-  const origin = useSharedValue<Point>({ x: box.x, y: box.y });
   const panning = useSharedValue(false);
   const pinching = useSharedValue(false);
   const gliding = useSharedValue(false);
@@ -119,9 +130,8 @@ export function Canvas({ cards, saved, limits, onSettle }: CanvasProps) {
 
   useEffect(() => {
     hitFrames.set(frames);
-    origin.set({ x: box.x, y: box.y });
     if (view !== undefined) fit.set(fitAll(frames, view, fitPadding(view), limits));
-  }, [frames, box, view, limits, fit, hitFrames, origin]);
+  }, [frames, view, limits, fit, hitFrames]);
 
   const onLayout = (e: LayoutChangeEvent) => {
     const size = { width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height };
@@ -347,18 +357,64 @@ export function Canvas({ cards, saved, limits, onSettle }: CanvasProps) {
       f !== null
         ? cameraBetween(f.from, f.to, progress.get(), here, f.focal)
         : { x: cx.get(), y: cy.get(), zoom: cz.get() };
-    const t = contentTransform(now, here, origin.get());
+    const t = contentTransform(now, here);
     return { transform: [{ translateX: t.translateX }, { translateY: t.translateY }, { scale: t.scale }] };
+  });
+
+  // The dot grid keeps its screen size at any zoom and moves with the
+  // canvas's translate, wrapped to one spacing: no per-frame JS.
+  const gridStyle = useAnimatedStyle(() => {
+    const here = { width: vw.get(), height: vh.get() };
+    const f = flight.get();
+    const now =
+      f !== null
+        ? cameraBetween(f.from, f.to, progress.get(), here, f.focal)
+        : { x: cx.get(), y: cy.get(), zoom: cz.get() };
+    const t = contentTransform(now, here);
+    return {
+      transform: [
+        { translateX: gridOffset(t.translateX, gridSpacing) },
+        { translateY: gridOffset(t.translateY, gridSpacing) },
+      ],
+    };
   });
 
   return (
     <GestureDetector gesture={gesture}>
       <View
         onLayout={onLayout}
-        style={[styles.canvas, { backgroundColor: colors.surface }]}
+        style={[styles.canvas, { backgroundColor: colors.canvas }]}
       >
         {view !== undefined && (
-          <Animated.View style={[styles.content, { width: box.width, height: box.height }, contentStyle]}>
+          <Animated.View
+            pointerEvents="none"
+            accessible={false}
+            importantForAccessibility="no-hide-descendants"
+            accessibilityElementsHidden
+            style={[
+              styles.grid,
+              { width: view.width + 2 * gridSpacing, height: view.height + 2 * gridSpacing },
+              gridStyle,
+            ]}
+          >
+            <Image
+              source={grid.tile}
+              resizeMode="repeat"
+              tintColor={colors.canvasDot}
+              style={StyleSheet.absoluteFill}
+            />
+          </Animated.View>
+        )}
+        {view !== undefined && (
+          <Animated.View
+            style={[
+              styles.content,
+              // Laid out at its box, its transform about the parent's (0,0):
+              // screen = translate + zoom · canvas, whatever the box.
+              { left: box.x, top: box.y, width: box.width, height: box.height, transformOrigin: [-box.x, -box.y, 0] },
+              contentStyle,
+            ]}
+          >
             {cards.map((card) => (
               <StudyCard
                 key={String(card.id)}
@@ -377,6 +433,8 @@ export function Canvas({ cards, saved, limits, onSettle }: CanvasProps) {
 
 const styles = StyleSheet.create({
   canvas: { flex: 1, overflow: 'hidden' },
-  // The cards' box (layerBox) at the layer's top-left; the transform places and zooms it.
-  content: { position: 'absolute', left: 0, top: 0, transformOrigin: 'left top' },
+  // At the cards' box (layerBox); the transform places and zooms it.
+  content: { position: 'absolute' },
+  // One spacing past the view on each side, so its offset in [−spacing, 0) always covers it.
+  grid: { position: 'absolute', left: 0, top: 0 },
 });

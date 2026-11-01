@@ -1,8 +1,39 @@
 // Studyspace wording and card levels: the workspace announcement and
-// delete prompt, card labels, and which semantic zoom level (§5) a card
-// draws at. Kept free of React Native for the tests.
+// delete prompt, card labels, which semantic zoom level (§5) a card draws
+// at, and its edge and L1 colours. Kept free of React Native for the tests.
+
+import type { ColorSet, M3Roles } from '@/design/colors';
 
 export type CardKind = 'note' | 'passage' | 'publication';
+
+/** The guide's soft card shadow (warm ink #2A2520), for light canvases. */
+export const LIGHT_CARD_SHADOW = '0 1px 2px rgba(42,37,32,0.06), 0 4px 10px -2px rgba(42,37,32,0.08)';
+
+/**
+ * A card's edge against the canvas (WCAG 1.4.11, 3:1). Dark: the theme's
+ * outline, which clears 3:1 on the dark canvas. Light: the subtle border
+ * (separator / outlineVariant) with the guide's soft shadow, which carries
+ * the edge instead.
+ */
+export function cardEdge(dark: boolean, outline: string, subtle: string): { border: string; shadow: string | undefined } {
+  return dark ? { border: outline, shadow: undefined } : { border: subtle, shadow: LIGHT_CARD_SHADOW };
+}
+
+/**
+ * L1's solid block (§5): its fill by kind, and the glyph's ink on it. Notes
+ * are the accent / primary; passages and publications are the secondary
+ * text colour with the raised paper / surface as ink (derived, pending Lumen).
+ */
+export function kindFill(
+  kind: CardKind,
+  look: 'ios' | 'material',
+  colors: Pick<ColorSet, 'accent' | 'onAccent' | 'textSecondary' | 'surfaceRaised'>,
+  m3: Pick<M3Roles, 'primary' | 'onPrimary' | 'onSurfaceVariant' | 'surface'>,
+): { fill: string; ink: string } {
+  const material = look === 'material';
+  if (kind === 'note') return material ? { fill: m3.primary, ink: m3.onPrimary } : { fill: colors.accent, ink: colors.onAccent };
+  return material ? { fill: m3.onSurfaceVariant, ink: m3.surface } : { fill: colors.textSecondary, ink: colors.surfaceRaised };
+}
 
 /** "1 card", "14 cards". */
 export function cardCount(n: number): string {

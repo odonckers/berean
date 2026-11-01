@@ -13,6 +13,7 @@ import { spacing } from '@/design/tokens';
 import { userdata } from '@/ffi/core';
 import { coreErrorMessage } from '@/ffi/errors';
 import { ActionSheet, type SheetItem } from '@/notes/action-sheet';
+import { ConfirmDialog } from '@/notes/confirm-dialog';
 import { useNotesRead } from '@/notes/data';
 import type { Anchor } from '@/notes/list-rows';
 import { NameDialog } from '@/notes/name-dialog';
@@ -134,27 +135,20 @@ export default function StudyspaceScreen() {
     }
   };
 
+  // The workspace Delete Workspace… asks about, while its confirmation is open.
+  const [deleting, setDeleting] = useState<Workspace>();
   const remove = (workspace: Workspace) => {
-    const { title, message } = deleteWorkspacePrompt(workspace.name, workspace.itemCount);
-    Alert.alert(title, message, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => {
-          saver.cancel();
-          try {
-            userdata().deleteWorkspace(workspace.id);
-          } catch (e) {
-            Alert.alert('Couldn’t delete the workspace', coreErrorMessage(e));
-          }
-          // The first one left opens, and is announced.
-          setSwitches((n) => n + 1);
-          setWanted(undefined);
-          reread();
-        },
-      },
-    ]);
+    setDeleting(undefined);
+    saver.cancel();
+    try {
+      userdata().deleteWorkspace(workspace.id);
+    } catch (e) {
+      Alert.alert('Couldn’t delete the workspace', coreErrorMessage(e));
+    }
+    // The first one left opens, and is announced.
+    setSwitches((n) => n + 1);
+    setWanted(undefined);
+    reread();
   };
 
   const menuItems: SheetItem[] = [
@@ -187,7 +181,7 @@ export default function StudyspaceScreen() {
             label: 'Delete Workspace…',
             destructive: true,
             icon: { ios: 'trash', android: 'delete' },
-            onPress: () => remove(current),
+            onPress: () => setDeleting(current),
           } satisfies SheetItem,
         ]),
   ];
@@ -276,6 +270,14 @@ export default function StudyspaceScreen() {
           error={askError}
           onCancel={closeAsk}
           onSubmit={submitName}
+        />
+      )}
+      {deleting !== undefined && (
+        <ConfirmDialog
+          {...deleteWorkspacePrompt(deleting.name, deleting.itemCount)}
+          confirmLabel="Delete"
+          onCancel={() => setDeleting(undefined)}
+          onConfirm={() => remove(deleting)}
         />
       )}
     </>

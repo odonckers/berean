@@ -2,10 +2,10 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { ScaledSymbol } from '@/components/scaled-symbol';
 import { useBerean } from '@/design/theme';
-import { spacing } from '@/design/tokens';
+import { radii, spacing } from '@/design/tokens';
 import type { SymbolName } from '@/notes/list-rows';
 import type { Point } from '@/studyspace/camera';
-import { cardText, titleScale, type CardKind } from '@/studyspace/cards';
+import { cardEdge, cardText, kindFill, titleScale, type CardKind } from '@/studyspace/cards';
 import type { CardView } from '@/studyspace/data';
 
 const GLYPHS: Record<CardKind, SymbolName> = {
@@ -31,14 +31,15 @@ type StudyCardProps = {
 
 /**
  * One card on the canvas, at its frame in canvas points relative to the
- * content layer's origin (the content layer places and zooms it). Title-only for now (§5 L1 and L2): below 48 pt on screen, or
- * too short for one whole title line, a glyph on the card's fill; otherwise
- * as many whole title lines as fit (up to 2) at the reader's text size,
- * never smaller. Passage and publication cards are placeholders until they
+ * content layer's box (the content layer places and zooms it). Title-only
+ * for now (§5 L1 and L2): below 48 pt on screen, or too short for one whole
+ * title line, a solid block in its kind's colour with the glyph on it
+ * (kindFill); otherwise as many whole title lines as fit (up to 2) at the
+ * reader's text size, never smaller. Passage and publication cards are placeholders until they
  * become live readers.
  */
 export function StudyCard({ card, zoom, fontScale, origin }: StudyCardProps) {
-  const { look, colors, m3, type } = useBerean();
+  const { look, scheme, colors, m3, type } = useBerean();
   const material = look === 'material';
   const { frame } = card;
   // The title layer is laid out at frame / up, then scaled back up inside
@@ -61,6 +62,13 @@ export function StudyCard({ card, zoom, fontScale, origin }: StudyCardProps) {
   );
   const ink = material ? m3.onSurface : colors.text;
   const secondary = material ? m3.onSurfaceVariant : colors.textSecondary;
+  const edge = cardEdge(
+    scheme === 'dark',
+    material ? m3.outline : colors.outline,
+    material ? m3.outlineVariant : colors.separator,
+  );
+  // L1 is a solid block in its kind's colour with the glyph on it.
+  const block = level === 1 ? kindFill(card.kind, look, colors, m3) : undefined;
 
   return (
     // TODO(Expo 7 slices 2 and 4): a tap opens the note editor or the
@@ -78,13 +86,16 @@ export function StudyCard({ card, zoom, fontScale, origin }: StudyCardProps) {
           top: frame.y - origin.y,
           width: frame.width,
           height: frame.height,
-          backgroundColor: material ? m3.surfaceContainerLow : colors.surfaceRaised,
-          borderColor: material ? m3.outlineVariant : colors.separator,
-          // 1 pt on screen once the camera settles.
-          borderWidth: 1 / zoom,
-          borderRadius: material ? 14 : 12,
+          backgroundColor: block?.fill ?? (material ? m3.surfaceContainerLow : colors.surfaceRaised),
+          // 1 pt on screen once the camera settles. The L1 block needs no
+          // edge beyond its fill, except a missing card's dashes.
+          borderColor: block === undefined ? edge.border : block.ink,
+          borderWidth: block === undefined || card.missing ? 1 / zoom : 0,
+          borderRadius: radii.studyCard,
           // Missing is said in the label and shown in words, not by the dashes alone.
           borderStyle: card.missing ? 'dashed' : 'solid',
+          // Light canvases carry the edge with the guide's soft shadow.
+          boxShadow: block === undefined ? edge.shadow : undefined,
         },
       ]}
     >
@@ -101,7 +112,7 @@ export function StudyCard({ card, zoom, fontScale, origin }: StudyCardProps) {
         ]}
       >
         {level === 1 ? (
-          <ScaledSymbol name={GLYPHS[card.kind]} size={16} tintColor={secondary} />
+          <ScaledSymbol name={GLYPHS[card.kind]} size={16} tintColor={block?.ink ?? secondary} />
         ) : (
           <>
             <Text numberOfLines={titleLines} style={[type.ui.body, styles.title, { color: ink }]}>

@@ -1,12 +1,17 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
+import { colorSets, type ColorSetName, m3Roles } from '../design/colors.ts';
+import { contrast } from '../design/contrast.ts';
 import {
   cardAccessibilityLabel,
   cardCount,
+  cardEdge,
   cardLevel,
   cardText,
   deleteWorkspacePrompt,
+  kindFill,
+  LIGHT_CARD_SHADOW,
   pickWorkspace,
   titleScale,
   workspaceAnnouncement,
@@ -113,4 +118,64 @@ describe('cardText (§5): only whole title lines', () => {
     // 70 after padding: both title lines and the caption (44 + 4 + 18 = 66).
     assert.deepEqual(cardText({ width: 300, height: 94 }, 1, 1, ios, true), { level: 3, titleLines: 2, caption: true });
   });
+});
+
+// Every iOS-look colour set, and both Material modes on their scheme's canvas.
+const looks = [
+  ...(Object.keys(colorSets) as ColorSetName[]).map((name) => ({
+    name: `iOS ${name}`,
+    look: 'ios' as const,
+    dark: name === 'dark',
+    colors: colorSets[name],
+    m3: m3Roles[name === 'dark' ? 'dark' : 'light'],
+    outline: colorSets[name].outline,
+    subtle: colorSets[name].separator,
+    surface: colorSets[name].surface,
+  })),
+  ...(['light', 'dark'] as const).map((mode) => ({
+    name: `Material ${mode}`,
+    look: 'material' as const,
+    dark: mode === 'dark',
+    colors: colorSets[mode],
+    m3: m3Roles[mode],
+    outline: m3Roles[mode].outline,
+    subtle: m3Roles[mode].outlineVariant,
+    surface: m3Roles[mode].surface,
+  })),
+];
+
+describe('card edges against the canvas (WCAG 1.4.11)', () => {
+  for (const s of looks) {
+    test(s.name, () => {
+      const edge = cardEdge(s.dark, s.outline, s.subtle);
+      assert.notEqual(s.colors.canvas.toUpperCase(), s.surface.toUpperCase());
+      if (s.dark) {
+        assert.equal(edge.border, s.outline);
+        assert.equal(edge.shadow, undefined);
+        assert.ok(contrast(edge.border, s.colors.canvas) >= 3, `${edge.border} on ${s.colors.canvas}`);
+      } else {
+        // The light edge is the subtle border plus the shadow, not a 3:1 line.
+        assert.equal(edge.border, s.subtle);
+        assert.equal(edge.shadow, LIGHT_CARD_SHADOW);
+      }
+    });
+  }
+});
+
+describe('L1 blocks (§5)', () => {
+  test('notes take the accent, the others the secondary ink', () => {
+    const { colors, m3 } = looks[0];
+    assert.deepEqual(kindFill('note', 'ios', colors, m3), { fill: colors.accent, ink: colors.onAccent });
+    assert.deepEqual(kindFill('passage', 'material', colors, m3), { fill: m3.onSurfaceVariant, ink: m3.surface });
+  });
+
+  for (const s of looks) {
+    for (const kind of ['note', 'passage', 'publication'] as const) {
+      test(`${s.name} ${kind}: glyph and block both read at 3:1`, () => {
+        const { fill, ink } = kindFill(kind, s.look, s.colors, s.m3);
+        assert.ok(contrast(ink, fill) >= 3, `glyph ${ink} on ${fill}`);
+        assert.ok(contrast(fill, s.colors.canvas) >= 3, `block ${fill} on ${s.colors.canvas}`);
+      });
+    }
+  }
 });

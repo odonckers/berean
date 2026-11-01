@@ -14,6 +14,7 @@ import {
   fitAll,
   fitPadding,
   gestureRange,
+  gridOffset,
   hitsFrame,
   inertia,
   inertiaProgress,
@@ -126,25 +127,65 @@ describe('screen and canvas', () => {
   });
 
   test('the content transform draws canvas points where canvasToScreen says', () => {
-    const t = contentTransform(camera, view, { x: 0, y: 0 });
+    const t = contentTransform(camera, view);
     const c = { x: 37, y: 91 };
     const s = canvasToScreen(camera, view, c);
     near(t.translateX + t.scale * c.x, s.x);
     near(t.translateY + t.scale * c.y, s.y);
   });
 
-  test('a layer offset to its origin draws every canvas point where it was', () => {
-    for (const origin of [{ x: -1200, y: 340 }, { x: 0, y: 0 }, { x: 5000, y: -75.5 }]) {
+  test('a layer laid out at its box, origin at the parent’s (0,0), draws every point where it was', () => {
+    // React Native: screen = layout + origin + translate + scale · (local − origin),
+    // with the layer at left/top = box, transformOrigin = −box, and a card at p − box.
+    for (const box of [{ x: -1200, y: 340 }, { x: 0, y: 0 }, { x: 5000, y: -75.5 }]) {
       for (const zoom of [0.05, 1, 3.5]) {
         const cam: Camera = { ...camera, zoom };
-        const t = contentTransform(cam, view, origin);
-        for (const p of [{ x: 37, y: 91 }, { x: -1500, y: 2000 }, origin]) {
-          // The card at p sits at p − origin in the layer.
-          near(t.translateX + (p.x - origin.x) * t.scale, view.width / 2 + (p.x - cam.x) * zoom, 1e-6);
-          near(t.translateY + (p.y - origin.y) * t.scale, view.height / 2 + (p.y - cam.y) * zoom, 1e-6);
+        const t = contentTransform(cam, view);
+        const origin = { x: -box.x, y: -box.y };
+        for (const p of [{ x: 37, y: 91 }, { x: -1500, y: 2000 }, box]) {
+          const local = { x: p.x - box.x, y: p.y - box.y };
+          const s = canvasToScreen(cam, view, p);
+          near(box.x + origin.x + t.translateX + t.scale * (local.x - origin.x), s.x, 1e-6);
+          near(box.y + origin.y + t.translateY + t.scale * (local.y - origin.y), s.y, 1e-6);
         }
       }
     }
+  });
+});
+
+describe('dot grid offset', () => {
+  test('always in [−spacing, 0)', () => {
+    for (const spacing of [14, 28]) {
+      for (const t of [0, 1, -1, 13.999999, 14, -14, 1e-17, -1e-17, 12345.67, -98765.4321]) {
+        const o = gridOffset(t, spacing);
+        assert.ok(o >= -spacing && o < 0, `${t} → ${o}`);
+        // A whole number of spacings from the translate, so the grid lines up with it.
+        const steps = (t - o) / spacing;
+        near(steps, Math.round(steps), 1e-6);
+      }
+    }
+  });
+
+  test('continuous under a pan, wrapping by exactly one spacing', () => {
+    let last = gridOffset(0, 14);
+    for (let t = 0.5; t <= 60; t += 0.5) {
+      const o = gridOffset(t, 14);
+      const step = o - last;
+      assert.ok(Math.abs(step - 0.5) < 1e-9 || Math.abs(step - 0.5 + 14) < 1e-9, `${t}: ${step}`);
+      last = o;
+    }
+  });
+
+  test('a pan moves a fixed canvas point and the grid by the same screen delta', () => {
+    const before: Camera = { x: 120, y: -40, zoom: 0.8 };
+    const after: Camera = { x: 120 - 3 / 0.8, y: -40 + 2 / 0.8, zoom: 0.8 };
+    const p = { x: 500, y: 250 };
+    const a = canvasToScreen(before, view, p);
+    const b = canvasToScreen(after, view, p);
+    const ta = contentTransform(before, view);
+    const tb = contentTransform(after, view);
+    near(gridOffset(tb.translateX, 14) - gridOffset(ta.translateX, 14), b.x - a.x);
+    near(gridOffset(tb.translateY, 14) - gridOffset(ta.translateY, 14), b.y - a.y);
   });
 });
 
