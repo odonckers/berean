@@ -12,7 +12,7 @@ Built with Kerning & Co. (Iris, Nova, Hinge, Pebble).
 ## Sections
 1. **Foundations:** type, color tokens, spacing, and the material rule.
    - Type: system UI fonts. The reading serif is New York on Apple and bundled Literata on Android, with Noto Serif Hebrew one step larger for Hebrew.
-   - Color: tokens for light, dark, sepia, and Increase Contrast, with six highlight colors at equal OKLCH lightness, named only by color. Text on highlights is at least 4.5:1. An outline token borders controls such as segmented buttons and is at least 3:1 on surface (#8B8275 in light). VoiceOver and TalkBack say "Highlighted, yellow", and with Differentiate Without Color each color also gets a margin shape (circle, square, triangle, diamond, bar, ring).
+   - Color: superseded by section 8, Themes. The single palette (light, dark, sepia and Increase Contrast sets, highlights at equal OKLCH lightness, text on highlights at least 4.5:1, "Highlighted, yellow") no longer applies. The outline token now comes per theme from the theme tokens (#8B8275 in Paper light is unchanged). Differentiate Without Color keeps its margin shapes (circle, square, triangle, diamond, bar, ring).
    - Spacing: a 4 pt grid.
    - Liquid Glass goes only on controls. Content always sits on solid surfaces.
 2. **Core components.**
@@ -27,6 +27,16 @@ Built with Kerning & Co. (Iris, Nova, Hinge, Pebble).
    - 7.2, notes in the reader: margin markers where there's room. Below about 400 pt, a count badge sits on the verse number, and markers on one line merge. Tapping the verse number opens the last-used tab. Tapping a margin marker opens My notes. VoiceOver and TalkBack read "Verse 4, 2 notes", with Study and Show notes actions. It uses custom shared marker glyphs. Underlines are only for links; highlights use a fill and a spoken color name. Exception: Pencil underline annotations on reader cards (Studyspace) draw as a thick coloured stroke in the highlight colour, at least 3 pt and set below the baseline. That's clearly heavier than the 1 pt link underline in body ink, and it's never tappable.
    - 7.3, Studyspace notes: opening a note in Studyspace from the reader, Show in reader, and an arrival highlight.
    - The 640 and 1000 pt column widths are placeholders.
+8. **Themes** (decided Oct 31, 2026): the spec is [themes/themes-spec.md](themes/themes-spec.md), and the source of truth for every color is [themes/tokens.json](themes/tokens.json).
+   - Four themes: Paper (the default, today's shipped look), Sepia, Stone and Sage. Paper keeps every shipped value that passes the contrast floors; the outlines and highlights change as accessibility fixes. The old sepia reading surface is now the Sepia theme.
+   - Each theme has light, dark, and Increase Contrast versions of both. The appearance is Automatic (follows the system, the default), Light or Dark. Increase Contrast and Reduce Transparency follow the system settings. The choice is stored per device, and nothing goes in core.
+   - Six preset accents per theme, with slot 1 as the default and no free picker. Mac adds an opt-in System accent. Android 12 and later adds opt-in Material You "System colors", for chrome only; the page, scripture text and highlights always use the theme.
+   - The accent appears only on the single primary action and on selected states. Glass stays clear, with no accent tint, and the focus ring follows the accent.
+   - Highlights are colors only, in six fixed hues, keyed by the core's color names and shown in this order: yellow, green, blue, pink, purple, orange. Each theme tunes only lightness and chroma. Yellow, green, pink and purple are light, and blue and orange are deep, so pairs that color-blind readers confuse also differ in lightness. Text on every highlight is at least 7:1, and screen readers say "Yellow highlight".
+   - The picker: the reader itself is the live preview. It's an Aa sheet on iPhone, an Aa popover on iPad and Mac, and a bottom or side sheet on Android, with the full set in Settings.
+   - Links are `textPrimary` with an underline, colored by the decorative `linkUnderline` token.
+   - Every combination is checked by [themes/contrast.py](themes/contrast.py): 2,448 checks, 0 failures. The frames are in [themes/frames/](themes/frames/) (F01–F10).
+   - **The guide's HTML and PDF are not rebuilt for this section.** They still show the earlier single palette, so this Markdown and the themes spec take precedence until they're re-exported.
 
 ## Not yet committed scope
 - The fonts (New York on Apple, Literata on Android) and the foldable book-posture layout are drafted as shown, pending explicit confirmation through Wren. Treat foldables as planning only for now.
