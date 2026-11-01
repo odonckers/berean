@@ -20,6 +20,35 @@ jobs:
       run:
         working-directory: apps/mobile
     steps:
+      # The runner disk filled up during Gradle, on top of the Rust, NDK and
+      # node builds. Drop preinstalled toolchains this job never uses. The
+      # Android SDK (/usr/local/lib/android, ANDROID_HOME) is kept on purpose:
+      # Gradle needs its cmdline-tools and React Native's NDK, and NDK r30 is
+      # installed there below. Only CodeQL goes from /opt/hostedtoolcache,
+      # since setup-node and setup-java use the rest.
+      - name: Free disk space
+        # apps/mobile doesn't exist before checkout.
+        working-directory: /
+        run: |
+          df -h /
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /opt/ghc \
+            /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost \
+            /usr/share/swift \
+            /usr/local/share/powershell \
+            /usr/share/miniconda \
+            /usr/local/julia* \
+            /opt/microsoft \
+            /opt/google/chrome \
+            /usr/local/share/chromium \
+            /opt/az \
+            /usr/lib/google-cloud-sdk
+          docker image prune --all --force || true
+          df -h /
+
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
@@ -90,6 +119,9 @@ jobs:
         # After the untracked check: android/ is gitignored, but keep that
         # check looking at a tree only ubrn has touched.
         run: npx expo prebuild --platform android --no-install
+
+      - name: Disk before Gradle
+        run: df -h /
 
       - name: Compile Android (debug, x86_64 only)
         # One ABI for speed, and ubrn only builds the Rust core for
