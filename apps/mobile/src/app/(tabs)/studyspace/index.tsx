@@ -45,6 +45,7 @@ import {
   type CardView,
   invalidNameMessage,
   newNote,
+  placeAddable,
   readAddableNotes,
   readAddablePublications,
   readCards,
@@ -127,8 +128,10 @@ export default function StudyspaceScreen() {
   const loaded = workspaces.ok;
   useEffect(() => {
     if (!loaded || currentId === wanted) return;
-    // If it has gone too, the next read (on focus, or any change) falls back again.
-    rememberWorkspace(currentId);
+    // If it has gone too, read again at once, which falls back to the next:
+    // the core's answer, not React state, says so; it is rare and one read.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (rememberWorkspace(currentId) === 'gone') setVersion((v) => v + 1);
   }, [loaded, currentId, wanted]);
 
   // A bring-to-front reorders the cards here at once, until they are next read.
@@ -149,6 +152,12 @@ export default function StudyspaceScreen() {
     return () => clearTimeout(timer);
   }, [highlighted]);
   const canvas = useRef<CanvasHandle>(null);
+  // The card just added, until the screen reader's focus moves to it once
+  // the reread has drawn it (§7.2).
+  const [focusPending, setFocusPending] = useState<bigint>();
+  useEffect(() => {
+    if (focusPending !== undefined && canvas.current?.focusCard(focusPending)) setFocusPending(undefined);
+  }, [focusPending, shown]);
 
   // The camera, saved through the core once it settles.
   const saver = useMemo(
@@ -276,16 +285,21 @@ export default function StudyspaceScreen() {
     let made: Addable;
     let item: CanvasItem;
     try {
-      made = make();
-      const target = landingTarget(size, selected?.frame, at?.camera ?? { x: 0, y: 0, zoom: 1 }, LANDING_GAP);
-      const spot = freeSpot(target, shown.map((c) => c.frame), LANDING_GAP, LANDING_GRID);
-      item = userdata().addItem(current.id, made.card, spot);
+      const m = make();
+      made = m;
+      // A New note that can't be placed is removed again (placeAddable).
+      item = placeAddable(m, () => {
+        const target = landingTarget(size, selected?.frame, at?.camera ?? { x: 0, y: 0, zoom: 1 }, LANDING_GAP);
+        const spot = freeSpot(target, shown.map((c) => c.frame), LANDING_GAP, LANDING_GRID);
+        return userdata().addItem(current.id, m.card, spot);
+      });
     } catch (e) {
       Alert.alert('Couldn’t add to the workspace', coreErrorMessage(e));
       return;
     }
     setSelectedId(item.id);
     setHighlighted(item.id);
+    setFocusPending(item.id);
     reread();
     announce(addedAnnouncement(made.title, current.name));
     if (at === undefined) return;

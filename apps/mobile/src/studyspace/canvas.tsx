@@ -1,5 +1,5 @@
-import { type Ref, useEffect, useImperativeHandle, useMemo, useState } from 'react';
-import { type LayoutChangeEvent, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { type ComponentRef, type Ref, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { AccessibilityInfo, type LayoutChangeEvent, StyleSheet, useWindowDimensions, View } from 'react-native';
 import {
   GestureDetector,
   usePanGesture,
@@ -56,7 +56,7 @@ import {
 import { StudyCard } from '@/studyspace/card';
 import type { CardView } from '@/studyspace/data';
 import { dotGridBackground } from '@/studyspace/dot-grid';
-import { type CardAction, resizeBy } from '@/studyspace/edit';
+import { type CardAction, type Guide, guideOnScreen, resizeBy } from '@/studyspace/edit';
 import { resizeHaptic } from '@/studyspace/haptics';
 
 /** An automatic camera move: zoom in log space, about `focal` if there is one. */
@@ -85,12 +85,16 @@ const DOT_GRIDS = {
 const SELECTED_WIDTH = 2;
 const SELECTED_OFFSET = 3;
 const HANDLE = 8;
+// §4.2: a snap guide is a 1 pt line.
+const GUIDE_WIDTH = 1;
 
-/** The camera and view size now, and an automatic move of the camera. */
+/** The camera and view size now, an automatic move of the camera, and a card's screen-reader focus. */
 export type CanvasHandle = {
   view: () => { camera: Camera; size: Size } | undefined;
   /** Pan to `camera` with the settle spring; a jump with Reduce Motion (§7.2). */
   moveTo: (camera: Camera) => void;
+  /** Move VoiceOver / TalkBack focus to card `id`; false if it hasn't rendered yet. */
+  focusCard: (id: bigint) => boolean;
 };
 
 type CanvasProps = {
@@ -158,6 +162,12 @@ export function Canvas(props: CanvasProps) {
   // the release until the frames are read back (below), so nothing snaps
   // back between the commit and the read.
   const live = useSharedValue<LiveFrame | null>(null);
+  // A snap's spring on the live frame's card, and the guides its drag has caught.
+  const springX = useSharedValue(0);
+  const springY = useSharedValue(0);
+  const guides = useSharedValue<Guide[]>([]);
+  // Each card's view, for moving screen-reader focus to it.
+  const cardViews = useRef(new Map<bigint, ComponentRef<typeof View>>());
   const selectedIndex = cards.findIndex((c) => c.id === selected);
   const chosen = useSharedValue(selectedIndex);
 
@@ -487,6 +497,12 @@ export function Canvas(props: CanvasProps) {
         settle();
       });
     },
+    focusCard: (id: bigint) => {
+      const node = cardViews.current.get(id);
+      if (node === undefined) return false;
+      AccessibilityInfo.sendAccessibilityEvent(node, 'focus');
+      return true;
+    },
   }));
 
   // Reads every shared value itself: Reanimated finds a style's inputs in
@@ -530,17 +546,44 @@ export function Canvas(props: CanvasProps) {
     };
   });
 
-  // The selected card's frame on screen and the zoom, through the live
-  // camera, so the overlay tracks pans, pinches and flights on the UI thread.
-  const selection = useDerivedValue(() => {
+  // The camera and view size now, through any flight, so the overlay
+  // tracks pans, pinches and flights on the UI thread, every frame.
+  const lens = useDerivedValue(() => {
     const here = { width: vw.get(), height: vh.get() };
     const f = flight.get();
     const now =
       f !== null
         ? cameraBetween(f.from, f.to, progress.get(), here, f.focal)
         : { x: cx.get(), y: cy.get(), zoom: cz.get() };
-    const rect = selectionRect(hitFrames.get(), live.get(), chosen.get(), now, here);
+    return { camera: now, view: here };
+  });
+
+  // The selected card's frame on screen and the zoom, with a snap's spring as the card draws it.
+  const selection = useDerivedValue(() => {
+    const { camera: now, view: here } = lens.get();
+    const l = live.get();
+    const drawn =
+      l === null
+        ? null
+        : { index: l.index, frame: { ...l.frame, x: l.frame.x + springX.get(), y: l.frame.y + springY.get() } };
+    const rect = selectionRect(hitFrames.get(), drawn, chosen.get(), now, here);
     return rect === undefined ? null : { rect, zoom: now.zoom };
+  });
+
+  // The snap guides (§4.2), one per axis at most, 1 pt on screen.
+  const guideXStyle = useAnimatedStyle(() => {
+    const g = guides.get().find((d) => d.axis === 'x');
+    if (g === undefined) return { display: 'none' as const };
+    const { camera: now, view: here } = lens.get();
+    const r = guideOnScreen(g, now, here, GUIDE_WIDTH);
+    return { display: 'flex' as const, left: r.x, top: r.y, width: r.width, height: r.height };
+  });
+  const guideYStyle = useAnimatedStyle(() => {
+    const g = guides.get().find((d) => d.axis === 'y');
+    if (g === undefined) return { display: 'none' as const };
+    const { camera: now, view: here } = lens.get();
+    const r = guideOnScreen(g, now, here, GUIDE_WIDTH);
+    return { display: 'flex' as const, left: r.x, top: r.y, width: r.width, height: r.height };
   });
 
   // Screen points, so no division by the zoom.
@@ -596,6 +639,13 @@ export function Canvas(props: CanvasProps) {
             {cards.map((card, index) => (
               <StudyCard
                 key={String(card.id)}
+                ref={(node) => {
+                  if (node === null) return;
+                  cardViews.current.set(card.id, node);
+                  return () => {
+                    cardViews.current.delete(card.id);
+                  };
+                }}
                 card={card}
                 zoom={settledZoom}
                 fontScale={fontScale}
@@ -604,6 +654,9 @@ export function Canvas(props: CanvasProps) {
                 frames={hitFrames}
                 index={index}
                 live={live}
+                springX={springX}
+                springY={springY}
+                guides={guides}
                 editing={editing}
                 selected={card.id === selected}
                 highlighted={card.id === highlighted}
@@ -614,6 +667,19 @@ export function Canvas(props: CanvasProps) {
               />
             ))}
           </Animated.View>
+        )}
+        {/* A drag's snap guides, in screen points above the cards, mounted before the lift selects the card. */}
+        {view !== undefined && (
+          <View
+            pointerEvents="none"
+            accessible={false}
+            importantForAccessibility="no-hide-descendants"
+            accessibilityElementsHidden
+            style={StyleSheet.absoluteFill}
+          >
+            <Animated.View style={[styles.overlaid, { backgroundColor: accent }, guideXStyle]} />
+            <Animated.View style={[styles.overlaid, { backgroundColor: accent }, guideYStyle]} />
+          </View>
         )}
         {/*
           The selection overlay: after the content layer, so the selected

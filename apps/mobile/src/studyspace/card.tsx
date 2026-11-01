@@ -1,13 +1,15 @@
-import { useEffect } from 'react';
+import { type ComponentRef, type Ref, useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { GestureDetector, useExclusiveGestures, usePanGesture, useTapGesture } from 'react-native-gesture-handler';
 import Animated, {
+  cancelAnimation,
   ReduceMotion,
   type SharedValue,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
   withDelay,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
@@ -19,7 +21,7 @@ import type { SymbolName } from '@/notes/list-rows';
 import type { LiveFrame, Rect } from '@/studyspace/camera';
 import { cardEdge, cardFill, cardText, kindFill, titleScale, type CardKind } from '@/studyspace/cards';
 import type { CardView } from '@/studyspace/data';
-import { type CardAction, moveBy, SNAP_DISTANCE, snapFrame } from '@/studyspace/edit';
+import { type CardAction, dragFrame, type Guide, lineChanged, SNAP_DISTANCE, snapGuides } from '@/studyspace/edit';
 import { liftHaptic, snapHaptic } from '@/studyspace/haptics';
 
 const GLYPHS: Record<CardKind, SymbolName> = {
@@ -56,8 +58,14 @@ const LIFT_MS = 120;
 const HIGHLIGHT_WIDTH = 3;
 const HIGHLIGHT_FADE_MS = 400;
 export const HIGHLIGHT_MS = 1500;
+// Lumen: a snap springs, stiff and short with no overshoot; with Reduce
+// Motion it jumps (§9).
+const SNAP_SPRING = { duration: 160, dampingRatio: 1, reduceMotion: ReduceMotion.System } as const;
+// The snap guides run this far past the cards they join, in screen points.
+const GUIDE_OVERHANG = 8;
 
 type StudyCardProps = {
+  ref?: Ref<ComponentRef<typeof View>>;
   card: CardView;
   /** The camera's zoom when it last settled: levels, title size and outlines follow it. */
   zoom: number;
@@ -74,6 +82,14 @@ type StudyCardProps = {
    * at its index draws it. The canvas clears it when it reads the frames back.
    */
   live: SharedValue<LiveFrame | null>;
+  /**
+   * How far the card at `live`'s index is drawn from its live frame, in
+   * canvas units: a snap's spring, settling to 0. The overlay adds it too.
+   */
+  springX: SharedValue<number>;
+  springY: SharedValue<number>;
+  /** The snap guides a drag has caught now, for the canvas's overlay to draw. */
+  guides: SharedValue<Guide[]>;
   /** Set while any card is moved or resized, so the canvas stays put. */
   editing: SharedValue<boolean>;
   /** Spoken; the canvas's selection overlay draws the outline and handle. */
@@ -97,12 +113,14 @@ type StudyCardProps = {
  * placeholders until they become live readers.
  *
  * A long press lifts the card and it follows the finger, snapping to other
- * cards (§4.2), on the UI thread, telling JS once, on release. A selected
+ * cards (§4.2) with a short spring and guides in the canvas's overlay, on
+ * the UI thread, telling JS once, on release. A selected
  * card's outline and resize handle are the canvas's selection overlay,
  * above every card; a resize reaches the card through `live`.
  */
 export function StudyCard(props: StudyCardProps) {
-  const { card, zoom, fontScale, origin, liveZoom, frames, index, live, editing, selected, highlighted } = props;
+  const { ref, card, zoom, fontScale, origin, liveZoom, frames, index, live, editing, selected, highlighted } = props;
+  const { springX, springY, guides } = props;
   const { onLift, onTap, onCommit, onAction } = props;
   const { look, scheme, colors, m3, type } = useBerean();
   const material = look === 'material';
@@ -164,12 +182,31 @@ export function StudyCard(props: StudyCardProps) {
 
   // `live` keeps the frame until the canvas reads the cards back, so the
   // card doesn't snap back between the commit and the read.
+  // Declared before the worklets that call them, which capture them when created.
+  const settleSprings = () => {
+    'worklet';
+    cancelAnimation(springX);
+    cancelAnimation(springY);
+    springX.set(0);
+    springY.set(0);
+    guides.set([]);
+  };
+
+  /** Spring an axis from where the card is drawn (its old target plus the spring) to its new target. */
+  const springTo = (spring: SharedValue<number>, was: number, to: number) => {
+    'worklet';
+    spring.set(spring.get() + was - to);
+    spring.set(withSpring(0, SNAP_SPRING));
+  };
+
+  // The release commits the snap's target, so a spring still settling ends there.
   const finish = () => {
     'worklet';
     if (!active.get()) return;
     active.set(false);
     moving.set(false);
     editing.set(false);
+    settleSprings();
     scheduleOnRN(committed, x.get(), y.get(), w.get(), h.get());
   };
 
@@ -186,17 +223,25 @@ export function StudyCard(props: StudyCardProps) {
       others.set(frames.get().filter((_, i) => i !== index));
       snapX.set(NaN);
       snapY.set(NaN);
+      settleSprings();
       scheduleOnRN(lifted);
     },
     onUpdate: (e) => {
       'worklet';
       const z = liveZoom.get();
-      const to = moveBy(start.get(), e.translationX - startX.get(), e.translationY - startY.get(), z);
-      const snap = snapFrame(to, others.get(), SNAP_DISTANCE, z);
+      const near = others.get();
+      const dx = e.translationX - startX.get();
+      const dy = e.translationY - startY.get();
+      const snap = dragFrame(start.get(), dx, dy, z, near, SNAP_DISTANCE);
+      // A catch starting, ending or moving to another line springs the card
+      // there; otherwise it is the target exactly, 1:1 with the finger when unsnapped.
+      if (lineChanged(snapX.get(), snap.x)) springTo(springX, x.get(), snap.frame.x);
+      if (lineChanged(snapY.get(), snap.y)) springTo(springY, y.get(), snap.frame.y);
       x.set(snap.frame.x);
       y.set(snap.frame.y);
-      // The selection overlay follows the card.
+      // The selection overlay follows the card, and draws the guides.
       live.set({ index, frame: snap.frame });
+      guides.set(snapGuides(snap, near, GUIDE_OVERHANG / z));
       const caught =
         (snap.x !== undefined && snap.x !== snapX.get()) || (snap.y !== undefined && snap.y !== snapY.get());
       snapX.set(snap.x ?? NaN);
@@ -221,14 +266,17 @@ export function StudyCard(props: StudyCardProps) {
 
   const gesture = useExclusiveGestures(drag, tap);
 
-  // The live frame, a resize's or this card's drag's, wins until the read-back.
+  // The live frame, a resize's or this card's drag's, wins until the read-back, with a snap's spring.
   const frameStyle = useAnimatedStyle(() => {
     const o = origin.get();
     const l = live.get();
-    const f = l !== null && l.index === index ? l.frame : { x: x.get(), y: y.get(), width: w.get(), height: h.get() };
+    const mine = l !== null && l.index === index;
+    const f = mine ? l.frame : { x: x.get(), y: y.get(), width: w.get(), height: h.get() };
+    const sx = mine ? springX.get() : 0;
+    const sy = mine ? springY.get() : 0;
     return {
-      left: f.x - o.x,
-      top: f.y - o.y,
+      left: f.x + sx - o.x,
+      top: f.y + sy - o.y,
       width: f.width,
       height: f.height,
       zIndex: raised.get() ? 1 : 0,
@@ -297,6 +345,7 @@ export function StudyCard(props: StudyCardProps) {
   return (
     <GestureDetector gesture={gesture}>
       <Animated.View
+        ref={ref}
         accessible
         accessibilityRole="button"
         accessibilityLabel={card.accessibilityLabel}
