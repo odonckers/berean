@@ -1,5 +1,6 @@
 import { type ComponentRef, useEffect, useRef } from 'react';
 import {
+  I18nManager,
   Modal,
   Platform,
   type NativeSyntheticEvent,
@@ -19,6 +20,8 @@ import { TextButton } from '@/components/text-button';
 import { systemBarStyle, useBerean } from '@/design/theme';
 import { hairline, radii, spacing } from '@/design/tokens';
 import type { Anchor, SymbolName } from '@/notes/list-rows';
+import { type MenuEdge, menuPlacement } from '@/notes/menu-placement';
+import { sheetItemInk, sheetSurface } from '@/notes/sheet-colors';
 import { moveAccessibilityFocus } from '@/reader/study-pane';
 import { followFocusRingIn } from '../../modules/berean-shortcuts';
 import { ModalNavigationBarStyle } from '../../modules/berean-system-bars';
@@ -42,6 +45,8 @@ type ActionSheetProps = {
   items: readonly SheetItem[];
   /** Material look: open as an M3 menu at this button instead of a bottom sheet. */
   anchor?: Anchor;
+  /** The anchor's edge the menu lines up with: 'start' for a dropdown, 'end' (default) for an overflow ⋮. */
+  anchorEdge?: MenuEdge;
   onClose: () => void;
 };
 
@@ -63,7 +68,7 @@ const MENU_WIDTH = 224;
  * Material, an M3 bottom sheet with a drag handle and one-line list items.
  * Material's overflow ⋮ opens it as an M3 menu under the button.
  */
-export function ActionSheet({ visible, title, items, anchor, onClose }: ActionSheetProps) {
+export function ActionSheet({ visible, title, items, anchor, anchorEdge = 'end', onClose }: ActionSheetProps) {
   const { look, scheme, colors, m3, type } = useBerean();
   const material = look === 'material';
   const insets = useSafeAreaInsets();
@@ -106,15 +111,8 @@ export function ActionSheet({ visible, title, items, anchor, onClose }: ActionSh
     ) : null;
 
   const row = (item: SheetItem, index: number, menu: boolean) => {
-    // Material marks a destructive sheet item with primary; the iOS look
-    // draws destructive items in the destructive red, as iOS does.
-    const ink = material
-      ? item.destructive && !menu
-        ? m3.primary
-        : m3.onSurface
-      : item.destructive
-        ? colors.destructive
-        : colors.accent;
+    const ink = sheetItemInk(look, item.destructive === true, menu, colors, m3);
+    const iconInk = material && item.destructive && menu ? m3.error : m3.onSurfaceVariant;
     return (
       <Pressable
         key={item.key}
@@ -133,7 +131,7 @@ export function ActionSheet({ visible, title, items, anchor, onClose }: ActionSh
         ]}
       >
         {material && item.icon !== undefined && (
-          <ScaledSymbol name={item.icon} size={24} tintColor={m3.onSurfaceVariant} {...hidden} />
+          <ScaledSymbol name={item.icon} size={24} tintColor={iconInk} {...hidden} />
         )}
         <UIText numberOfLines={1} style={[styles.label, { color: ink }]}>
           {item.label}
@@ -144,15 +142,19 @@ export function ActionSheet({ visible, title, items, anchor, onClose }: ActionSh
   };
 
   if (anchor && material) {
-    // Under the button, its trailing edge at the button's; above it when
+    // Under the anchor, lined up with its `anchorEdge`; above it when
     // there's no room below.
-    const height = items.length * MENU_ITEM + spacing.sm * 2;
-    const below = anchor.y + anchor.height;
-    const top =
-      below + height <= window.height - insets.bottom
-        ? below
-        : Math.max(insets.top, anchor.y - height);
-    const right = Math.max(spacing.sm, window.width - (anchor.x + anchor.width));
+    const { top, left } = menuPlacement({
+      anchor,
+      edge: anchorEdge,
+      menu: { width: MENU_WIDTH, height: items.length * MENU_ITEM + spacing.sm * 2 },
+      window,
+      insets,
+      margin: spacing.sm,
+      rtl: I18nManager.isRTL,
+    });
+    // `left` is the window's left; right to left, React Native reads a style's left as start.
+    const across = I18nManager.isRTL && I18nManager.doLeftAndRightSwapInRTL ? { right: left } : { left };
     return (
       <Modal visible={visible} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={onClose} onDismiss={runPending}>
         <ModalNavigationBarStyle barStyle={systemBarStyle(scheme)} />
@@ -167,7 +169,7 @@ export function ActionSheet({ visible, title, items, anchor, onClose }: ActionSh
           accessibilityViewIsModal
           accessibilityRole="menu"
           accessibilityLabel={title}
-          style={[styles.menu, { top, right, backgroundColor: m3.surfaceContainer }]}
+          style={[styles.menu, { top, ...across, backgroundColor: sheetSurface(look, colors, m3) }]}
         >
           {items.map((item, i) => row(item, i, true))}
         </View>
@@ -192,7 +194,7 @@ export function ActionSheet({ visible, title, items, anchor, onClose }: ActionSh
             styles.sheet,
             {
               maxHeight: window.height * 0.8,
-              backgroundColor: material ? m3.surfaceContainer : colors.surfaceRaised,
+              backgroundColor: sheetSurface(look, colors, m3),
               borderTopLeftRadius: material ? radii.sheet : radii.studyPane,
               borderTopRightRadius: material ? radii.sheet : radii.studyPane,
               paddingBottom: insets.bottom + spacing.lg,

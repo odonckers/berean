@@ -18,6 +18,9 @@ type TextButtonProps = {
   align?: 'center' | 'leading';
   /** Keyboard or accessibility focus; a Modal's buttons pass on the focus ring here. */
   onFocus?: (e: NativeSyntheticEvent<TargetedEvent>) => void;
+  /** The label's colour; default the accent. */
+  color?: string;
+  bold?: boolean;
 };
 
 const BORDER_WIDTH = 1;
@@ -41,6 +44,8 @@ export function TextButton({
   disabled = false,
   align = 'center',
   onFocus,
+  color,
+  bold = false,
 }: TextButtonProps) {
   const { colors, look } = useBerean();
   const target = look === 'material' ? MATERIAL_TARGET : IOS_TARGET;
@@ -60,7 +65,7 @@ export function TextButton({
         { opacity: disabled ? 0.4 : pressed ? 0.6 : 1 },
       ]}
     >
-      <UIText style={[{ color: colors.accent }, selected && styles.selected]}>{title}</UIText>
+      <UIText style={[{ color: color ?? colors.accent }, (selected || bold) && styles.selected]}>{title}</UIText>
     </Pressable>
   );
 }

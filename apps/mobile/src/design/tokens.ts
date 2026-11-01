@@ -1,83 +1,11 @@
 import { Platform, StyleSheet, type TextStyle } from 'react-native';
 
+import { colorSets, type ColorSetName, m3Roles } from '@/design/colors';
+
 // Semantic design tokens (design guide v3, "Foundations"). Screens use these
-// names only, never raw hex.
+// names only, never raw hex. The colour roles live in colors.ts.
 
-export type ColorSet = {
-  surface: string;
-  surfaceRaised: string;
-  text: string;
-  textSecondary: string;
-  accent: string;
-  separator: string;
-  /** Borders controls such as segmented buttons; at least 3:1 on surface (guide, Lumen, #57). */
-  outline: string;
-  /** A present link's underline (guide §7.1 Read). */
-  linkUnderline: string;
-  /** Destructive actions in the iOS look (Delete Folder…, Delete). */
-  destructive: string;
-  /** Text on an accent fill, as in the verse notes badge (guide §7.2). */
-  onAccent: string;
-};
-
-export type ColorSetName = 'light' | 'dark' | 'sepia' | 'increaseContrast';
-
-// Only light and dark follow the system scheme for now; sepia and
-// increaseContrast (light + Increase Contrast) are defined for later rows.
-export const colorSets: Record<ColorSetName, ColorSet> = {
-  light: {
-    surface: '#FBF7EC',
-    surfaceRaised: '#FFFCF5',
-    text: '#1F1A14',
-    textSecondary: '#5C544A',
-    accent: '#9B3F2A',
-    separator: '#E6DCC2',
-    outline: '#8B8275',
-    linkUnderline: '#C9A493',
-    destructive: '#D70015',
-    onAccent: '#FFFCF5',
-  },
-  dark: {
-    surface: '#15120E',
-    surfaceRaised: '#211D18',
-    text: '#EDE6D8',
-    textSecondary: '#A39A8B',
-    accent: '#E59A7C',
-    separator: '#38312A',
-    outline: '#7A7165',
-    linkUnderline: '#734F40',
-    destructive: '#FF453A',
-    onAccent: '#211D18',
-  },
-  // Sepia and increaseContrast link underlines are derived pending Lumen:
-  // sepia is its accent at light's blend; increaseContrast is the accent
-  // itself, so the underline keeps its contrast. Both take light's
-  // destructive red, and their raised paper as onAccent.
-  sepia: {
-    surface: '#F0E2C4',
-    surfaceRaised: '#F7EBD3',
-    text: '#3A2817',
-    textSecondary: '#66523D',
-    accent: '#8A3A22',
-    separator: '#D8C39B',
-    outline: '#7E7466',
-    linkUnderline: '#BD8E73',
-    destructive: '#D70015',
-    onAccent: '#F7EBD3',
-  },
-  increaseContrast: {
-    surface: '#FBF7EC',
-    surfaceRaised: '#FFFDF8',
-    text: '#0B0806',
-    textSecondary: '#2E2821',
-    accent: '#7A2E1C',
-    separator: '#8B8275',
-    outline: '#5C544A',
-    linkUnderline: '#7A2E1C',
-    destructive: '#D70015',
-    onAccent: '#FFFDF8',
-  },
-};
+export { colorSets, m3Roles, type ColorSet, type ColorSetName, type M3Roles } from '@/design/colors';
 
 // Highlights are a fill only, named by color. Each has a spoken name and a
 // shape for Differentiate Without Color.
@@ -138,74 +66,6 @@ export const highlightFills: Record<ColorSetName, Record<HighlightName, string>>
   },
 };
 
-// Material 3 roles mapped from the tokens: primary = accent, surface
-// containers = paper steps. The guide gives only the light primary,
-// secondaryContainer and surfaceContainer; the rest are derived pending Lumen.
-export type M3Roles = {
-  primary: string;
-  onPrimary: string;
-  secondaryContainer: string;
-  onSecondaryContainer: string;
-  surface: string;
-  surfaceContainerLow: string;
-  surfaceContainer: string;
-  surfaceContainerHigh: string;
-  surfaceContainerHighest: string;
-  onSurface: string;
-  onSurfaceVariant: string;
-  outline: string;
-  outlineVariant: string;
-  scrim: string;
-  /** The iOS look's palette scrim (guide v3 §05): warm ink at 45% in light, no blur; dark's scrim in dark. */
-  scrimWarm: string;
-};
-
-const darkScrim = 'rgba(0,0,0,0.32)';
-
-export const m3Roles: Record<'light' | 'dark', M3Roles> = {
-  light: {
-    primary: colorSets.light.accent,
-    onPrimary: '#FFFFFF',
-    secondaryContainer: '#F1DCD1',
-    onSecondaryContainer: '#3A1A10',
-    surface: colorSets.light.surface,
-    surfaceContainerLow: '#F7F1E4',
-    surfaceContainer: '#F3ECDD',
-    surfaceContainerHigh: '#EEE5D3', // Lumen
-    surfaceContainerHighest: '#E9E0CC',
-    onSurface: colorSets.light.text,
-    onSurfaceVariant: colorSets.light.textSecondary,
-    outline: colorSets.light.outline,
-    // Derived pending Lumen. Deliberately darker than the 'outline' separator so the
-    // unselected filter-chip edge stays visible (M3 baseline outlineVariant is ~1.6:1
-    // against surface).
-    outlineVariant: '#D2C5AA',
-    scrim: 'rgba(0,0,0,0.32)',
-    scrimWarm: 'rgba(31,26,20,0.45)', // text #1F1A14
-  },
-  dark: {
-    primary: colorSets.dark.accent,
-    onPrimary: '#3A140A',
-    secondaryContainer: '#4A2C22',
-    onSecondaryContainer: '#F6DDD2',
-    surface: colorSets.dark.surface,
-    surfaceContainerLow: '#1A1612',
-    surfaceContainer: '#1C1814',
-    surfaceContainerHigh: '#26211C',
-    surfaceContainerHighest: '#312B25',
-    onSurface: colorSets.dark.text,
-    onSurfaceVariant: colorSets.dark.textSecondary,
-    outline: colorSets.dark.outline,
-    // Derived pending Lumen. Deliberately darker than the 'outline' separator so the
-    // unselected filter-chip edge stays visible (M3 baseline outlineVariant is ~1.6:1
-    // against surface).
-    outlineVariant: '#4E443B',
-    scrim: darkScrim,
-    // The guide defines no dark warm scrim, so dark uses the theme's scrim token.
-    scrimWarm: darkScrim,
-  },
-};
-
 // Study pane colors that have no general role (Lumen review of the inline
 // study pane). Material: the 1dp ring and the My notes footer. iOS: the
 // segmented control and the My notes footer.
@@ -261,6 +121,7 @@ export const radii = {
   chip: 6,
   materialChip: 8, // M3 assist/filter/input chips
   card: 12,
+  studyCard: 14, // Studyspace cards, both looks (guide card)
   studyPane: 18,
   materialPane: 16, // also the M3 FAB
   sheet: 28, // also M3 dialogs
