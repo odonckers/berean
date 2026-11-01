@@ -1,10 +1,20 @@
-import type { Workspace } from 'berean-ffi-rn';
+import type { CanvasItem, Workspace } from 'berean-ffi-rn';
 import { Stack, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Alert, AppState, Platform, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { type ComponentRef, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  AccessibilityInfo,
+  Alert,
+  AppState,
+  Platform,
+  Pressable,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import Animated, { FadeIn, FadeOut, ReduceMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ScaledSymbol } from '@/components/scaled-symbol';
 import { UIText } from '@/components/text';
 import { TextButton } from '@/components/text-button';
 import { useHeaderHidden } from '@/design/tab-chrome';
@@ -12,17 +22,48 @@ import { useBerean } from '@/design/theme';
 import { spacing } from '@/design/tokens';
 import { userdata } from '@/ffi/core';
 import { coreErrorMessage } from '@/ffi/errors';
+import { load } from '@/library/load';
 import { ActionSheet, type SheetItem } from '@/notes/action-sheet';
 import { ConfirmDialog } from '@/notes/confirm-dialog';
 import { useNotesRead } from '@/notes/data';
 import type { Anchor } from '@/notes/list-rows';
 import { NameDialog } from '@/notes/name-dialog';
-import { type Camera, deviceClass, zoomLimits } from '@/studyspace/camera';
-import { Canvas } from '@/studyspace/canvas';
-import { cardCount, deleteWorkspacePrompt, pickWorkspace, workspaceAnnouncement } from '@/studyspace/cards';
-import { invalidNameMessage, readCards, readWorkspaces } from '@/studyspace/data';
+import { type Camera, deviceClass, type Rect, type Size, zoomLimits } from '@/studyspace/camera';
+import { Canvas, type CanvasHandle } from '@/studyspace/canvas';
+import { HIGHLIGHT_MS } from '@/studyspace/card';
+import {
+  addedAnnouncement,
+  cardCount,
+  deleteWorkspacePrompt,
+  isFront,
+  pickWorkspace,
+  toFront,
+  workspaceAnnouncement,
+} from '@/studyspace/cards';
+import {
+  type Addable,
+  type CardView,
+  invalidNameMessage,
+  newNote,
+  readAddableNotes,
+  readAddablePublications,
+  readCards,
+  readLastWorkspace,
+  readWorkspaces,
+  rememberWorkspace,
+} from '@/studyspace/data';
 import { debounce } from '@/studyspace/debounce';
-import { lastWorkspace, rememberWorkspace } from '@/studyspace/session';
+import { type CardAction, nudge, sameFrame } from '@/studyspace/edit';
+import {
+  freeSpot,
+  LANDING_GAP,
+  LANDING_GRID,
+  LANDING_MARGIN,
+  landingTarget,
+  NOTE_CARD,
+  panIntoView,
+  PUBLICATION_CARD,
+} from '@/studyspace/landing';
 import { WorkspaceTitle } from '@/studyspace/workspace-title';
 
 // The camera is saved this long after a gesture settles (§7.3), and at
@@ -35,10 +76,30 @@ const fadeOut = FadeOut.duration(SWITCH_FADE_MS).reduceMotion(ReduceMotion.Never
 
 type NameAsk = { kind: 'new' } | { kind: 'rename'; workspace: Workspace };
 
+/** The Add menu, with what its pickers offer, read when it opens. */
+type AddMenu = { anchor?: Anchor; notes: Addable[]; publications: Addable[] };
+type Picker = { title: string; items: Addable[]; size: Size };
+
+// What a Move or Size action says once done; and when a size can't change.
+const ACTION_DONE: Partial<Record<CardAction, string>> = {
+  moveLeft: 'Moved left',
+  moveRight: 'Moved right',
+  moveUp: 'Moved up',
+  moveDown: 'Moved down',
+  larger: 'Made larger',
+  smaller: 'Made smaller',
+};
+const ACTION_LIMIT: Partial<Record<CardAction, string>> = {
+  larger: 'Already the largest size',
+  smaller: 'Already the smallest size',
+};
+
 /**
  * Studyspace on a phone (findings §7.3, §8): one workspace's canvas, with
- * the screen title as the workspace menu. Every workspace change goes
- * through the core; the screen keeps only which one is open.
+ * the screen title as the workspace menu and an Add button for notes and
+ * publications. Every change goes through the core; the screen keeps only
+ * which workspace is open (the core remembers it too), which card is
+ * selected, and the one just added.
  */
 export default function StudyspaceScreen() {
   const { look, colors } = useBerean();
@@ -52,13 +113,42 @@ export default function StudyspaceScreen() {
   const [version, setVersion] = useState(0);
   const reread = () => setVersion((v) => v + 1);
   const workspaces = useNotesRead(`workspaces:${version}`, readWorkspaces);
-  const [wanted, setWanted] = useState(lastWorkspace);
+  // The core's last workspace on mount; then the one chosen.
+  const [wanted, setWanted] = useState(readLastWorkspace);
   const current = workspaces.ok ? pickWorkspace(workspaces.value, wanted) : undefined;
-  const cards = useNotesRead(`cards:${current?.id}:${version}`, () =>
-    current === undefined ? [] : readCards(current.id),
+  const currentId = current?.id;
+  const cards = useNotesRead(`cards:${currentId}:${version}`, () =>
+    currentId === undefined ? [] : readCards(currentId),
   );
 
-  useEffect(() => rememberWorkspace(current?.id), [current?.id]);
+  // A switch or a new workspace is remembered as it opens (open()). So is
+  // the fallback: the first workspace, when the remembered one is gone
+  // (deleted, or imported over) or none is remembered.
+  const loaded = workspaces.ok;
+  useEffect(() => {
+    if (!loaded || currentId === wanted) return;
+    // If it has gone too, the next read (on focus, or any change) falls back again.
+    rememberWorkspace(currentId);
+  }, [loaded, currentId, wanted]);
+
+  // A bring-to-front reorders the cards here at once, until they are next read.
+  const [front, setFront] = useState<{ from: CardView[]; cards: CardView[] }>();
+  const shown = useMemo(
+    () => (!cards.ok ? [] : front?.from === cards.value ? front.cards : cards.value),
+    [cards, front],
+  );
+
+  // The selected card (§7.1), for this session only.
+  const [selectedId, setSelectedId] = useState<bigint>();
+  const selected = shown.find((c) => c.id === selectedId);
+  // The card just added, while its highlight shows (§7.2).
+  const [highlighted, setHighlighted] = useState<bigint>();
+  useEffect(() => {
+    if (highlighted === undefined) return;
+    const timer = setTimeout(() => setHighlighted(undefined), HIGHLIGHT_MS);
+    return () => clearTimeout(timer);
+  }, [highlighted]);
+  const canvas = useRef<CanvasHandle>(null);
 
   // The camera, saved through the core once it settles.
   const saver = useMemo(
@@ -83,25 +173,170 @@ export default function StudyspaceScreen() {
   }, [saver]);
   useFocusEffect(useCallback(() => () => saver.flush(), [saver]));
 
-  // Said after a switch (§7.3, §9): VoiceOver's announcement; on Android a
-  // live region TalkBack reads when its text changes.
+  // Said after a switch, an add or a card action (§7.2, §7.3, §9):
+  // VoiceOver's announcement; on Android a live region TalkBack reads when
+  // its text changes.
+  const [live, setLive] = useState('');
+  const announce = useCallback((text: string) => {
+    if (Platform.OS === 'ios') AccessibilityInfo.announceForAccessibility(text);
+    // A no-break space tells a repeat ("Moved left" twice) from no change.
+    else setLive((was) => (was === text ? `${text} ` : text));
+  }, []);
   const [switches, setSwitches] = useState(0);
-  const cardTotal = cards.ok ? cards.value.length : 0;
+  const cardTotal = shown.length;
   const announcement = switches > 0 && current !== undefined ? workspaceAnnouncement(current.name, cardTotal) : '';
   const announcedSwitch = useRef(0);
   useEffect(() => {
-    if (Platform.OS !== 'ios' || announcement === '' || announcedSwitch.current === switches) return;
+    if (announcement === '' || announcedSwitch.current === switches) return;
     announcedSwitch.current = switches;
-    AccessibilityInfo.announceForAccessibility(announcement);
-  }, [announcement, switches]);
+    announce(announcement);
+  }, [announcement, switches, announce]);
 
   const open = (id: bigint) => {
     saver.flush();
-    setSwitches((n) => n + 1);
+    // Gone already (NotFound) if another change took it: the reread below
+    // then opens the first one left, which the effect above remembers.
     rememberWorkspace(id);
+    setSwitches((n) => n + 1);
+    setSelectedId(undefined);
     setWanted(id);
     reread();
   };
+
+  // Bring a card to the front, unless it is there already. A tap shows the
+  // new order at once; a lift draws the card raised until its drop rereads.
+  const bringToFront = (id: bigint, reorder: boolean) => {
+    if (isFront(shown, id)) return;
+    try {
+      userdata().bringToFront(id);
+    } catch {
+      // The card stays where it is in the stack; nothing else depends on it.
+      return;
+    }
+    if (reorder && cards.ok) setFront({ from: cards.value, cards: toFront(shown, id) });
+  };
+
+  const liftCard = (id: bigint) => {
+    setSelectedId(id);
+    bringToFront(id, false);
+  };
+
+  /** Save a card's new frame; read the cards again either way (a failed write puts it back). */
+  const commitFrame = (id: bigint, frame: Rect): boolean => {
+    const card = shown.find((c) => c.id === id);
+    let ok = true;
+    if (card !== undefined && !sameFrame(card.frame, frame)) {
+      try {
+        userdata().setFrames([{ id, frame }]);
+      } catch (e) {
+        ok = false;
+        Alert.alert('Couldn’t move the card', coreErrorMessage(e));
+      }
+    }
+    reread();
+    return ok;
+  };
+
+  const removeCard = (card: CardView) => {
+    try {
+      userdata().removeItem(card.id);
+    } catch (e) {
+      Alert.alert('Couldn’t remove the card', coreErrorMessage(e));
+      return;
+    }
+    if (selectedId === card.id) setSelectedId(undefined);
+    reread();
+    announce(`Removed ${card.title}`);
+  };
+
+  // The accessible way to do what the gestures do (§4.3, WCAG 2.5.7).
+  const cardAction = (card: CardView, action: CardAction) => {
+    if (action === 'remove') {
+      removeCard(card);
+      return;
+    }
+    if (action === 'front') {
+      bringToFront(card.id, true);
+      announce('Brought to front');
+      return;
+    }
+    const frame = nudge(card.frame, action);
+    if (sameFrame(frame, card.frame)) {
+      announce(ACTION_LIMIT[action] ?? '');
+      return;
+    }
+    if (commitFrame(card.id, frame)) announce(ACTION_DONE[action] ?? '');
+  };
+
+  // §7.2: beside the selected card or mid-view, in the nearest free spot,
+  // then the view pans just enough to show it.
+  const add = (make: () => Addable, size: Size) => {
+    if (current === undefined) return;
+    const at = canvas.current?.view();
+    let made: Addable;
+    let item: CanvasItem;
+    try {
+      made = make();
+      const target = landingTarget(size, selected?.frame, at?.camera ?? { x: 0, y: 0, zoom: 1 }, LANDING_GAP);
+      const spot = freeSpot(target, shown.map((c) => c.frame), LANDING_GAP, LANDING_GRID);
+      item = userdata().addItem(current.id, made.card, spot);
+    } catch (e) {
+      Alert.alert('Couldn’t add to the workspace', coreErrorMessage(e));
+      return;
+    }
+    setSelectedId(item.id);
+    setHighlighted(item.id);
+    reread();
+    announce(addedAnnouncement(made.title, current.name));
+    if (at === undefined) return;
+    const to = panIntoView(at.camera, at.size, item.frame, LANDING_MARGIN);
+    if (to !== at.camera) canvas.current?.moveTo(to);
+  };
+
+  const [addMenu, setAddMenu] = useState<AddMenu>();
+  const [picker, setPicker] = useState<Picker>();
+  const openAddMenu = (anchor: Anchor) => {
+    const notes = load(() => readAddableNotes(shown));
+    setAddMenu({
+      anchor: material ? anchor : undefined,
+      notes: notes.ok ? notes.value : [],
+      publications: readAddablePublications(),
+    });
+  };
+  const addItems: SheetItem[] = [
+    {
+      key: 'new-note',
+      label: 'New note',
+      icon: { ios: 'square.and.pencil', android: 'edit_square' },
+      onPress: () => add(newNote, NOTE_CARD),
+    },
+    ...(addMenu === undefined || addMenu.notes.length === 0
+      ? []
+      : [
+          {
+            key: 'note',
+            label: 'Note…',
+            icon: { ios: 'note.text', android: 'sticky_note_2' },
+            onPress: () => setPicker({ title: 'Add a note', items: addMenu.notes, size: NOTE_CARD }),
+          } satisfies SheetItem,
+        ]),
+    ...(addMenu === undefined || addMenu.publications.length === 0
+      ? []
+      : [
+          {
+            key: 'publication',
+            label: 'Publication…',
+            icon: { ios: 'book', android: 'menu_book' },
+            onPress: () =>
+              setPicker({ title: 'Add a publication', items: addMenu.publications, size: PUBLICATION_CARD }),
+          } satisfies SheetItem,
+        ]),
+  ];
+  const pickerItems: SheetItem[] = (picker?.items ?? []).map((a, i) => ({
+    key: String(i),
+    label: a.title,
+    onPress: () => add(() => a, picker?.size ?? NOTE_CARD),
+  }));
 
   const [menu, setMenu] = useState<{ anchor?: Anchor }>();
   const [ask, setAsk] = useState<NameAsk>();
@@ -145,8 +380,11 @@ export default function StudyspaceScreen() {
     } catch (e) {
       Alert.alert('Couldn’t delete the workspace', coreErrorMessage(e));
     }
-    // The first one left opens, and is announced.
+    // The first one left opens, is remembered (by the effect above; none
+    // when none are left), and is announced.
+    rememberWorkspace(undefined);
     setSwitches((n) => n + 1);
+    setSelectedId(undefined);
     setWanted(undefined);
     reread();
   };
@@ -161,6 +399,18 @@ export default function StudyspaceScreen() {
         if (w.id !== current?.id) open(w.id);
       },
     })),
+    // The selected card's Remove, here as well as in its accessibility actions.
+    ...(selected === undefined
+      ? []
+      : [
+          {
+            key: 'remove-card',
+            label: 'Remove from workspace',
+            accessibilityLabel: `Remove ${selected.title} from workspace`,
+            icon: { ios: 'minus.circle', android: 'remove_circle_outline' },
+            onPress: () => removeCard(selected),
+          } satisfies SheetItem,
+        ]),
     {
       key: 'new',
       label: 'New Workspace',
@@ -198,6 +448,10 @@ export default function StudyspaceScreen() {
         onPress={openMenu}
       />
     );
+  const addButton =
+    current === undefined || !cards.ok ? undefined : (
+      <AddButton expanded={addMenu !== undefined} onPress={openAddMenu} />
+    );
 
   const body = !workspaces.ok ? (
     <Message text={workspaces.message} />
@@ -214,12 +468,20 @@ export default function StudyspaceScreen() {
   ) : (
     <Animated.View key={String(current.id)} entering={fadeIn} exiting={fadeOut} style={StyleSheet.absoluteFill}>
       <Canvas
-        cards={cards.value}
+        ref={canvas}
+        cards={shown}
         saved={current.viewport}
         limits={limits}
+        selected={selectedId}
+        highlighted={highlighted}
         onSettle={(camera) => saver.call({ id: current.id, camera })}
+        onLiftCard={liftCard}
+        onTapCard={(id) => bringToFront(id, true)}
+        onCommitCard={commitFrame}
+        onCardAction={cardAction}
+        onTapEmpty={() => setSelectedId(undefined)}
       />
-      {cards.value.length === 0 && (
+      {shown.length === 0 && (
         <View pointerEvents="none" style={styles.emptyCanvas}>
           <UIText secondary style={styles.centred}>
             No cards on this workspace yet.
@@ -237,6 +499,7 @@ export default function StudyspaceScreen() {
           headerLargeTitleEnabled: false,
           headerTitleAlign: material ? 'left' : 'center',
           headerTitle: title === undefined ? undefined : () => title,
+          headerRight: addButton === undefined ? undefined : () => addButton,
         }}
       />
       <View style={[styles.root, { backgroundColor: colors.surface }]}>
@@ -244,12 +507,13 @@ export default function StudyspaceScreen() {
           // The iOS look on Android draws its own bar (tab-chrome.tsx).
           <View style={[styles.inlineBar, { paddingTop: insets.top }]}>
             {title ?? <UIText variant="title">Studyspace</UIText>}
+            {addButton !== undefined && <View style={styles.inlineAction}>{addButton}</View>}
           </View>
         )}
         <View style={styles.root}>{body}</View>
         {Platform.OS === 'android' && (
           <UIText accessibilityLiveRegion="polite" style={styles.liveRegion}>
-            {announcement}
+            {live}
           </UIText>
         )}
       </View>
@@ -260,6 +524,19 @@ export default function StudyspaceScreen() {
         anchor={menu?.anchor}
         anchorEdge="start"
         onClose={() => setMenu(undefined)}
+      />
+      <ActionSheet
+        visible={addMenu !== undefined}
+        title="Add to workspace"
+        items={addItems}
+        anchor={addMenu?.anchor}
+        onClose={() => setAddMenu(undefined)}
+      />
+      <ActionSheet
+        visible={picker !== undefined}
+        title={picker?.title ?? ''}
+        items={pickerItems}
+        onClose={() => setPicker(undefined)}
       />
       {ask !== undefined && (
         <NameDialog
@@ -284,6 +561,39 @@ export default function StudyspaceScreen() {
   );
 }
 
+/**
+ * The Add button: the iOS look's plus in the navigation bar (44 pt), as the
+ * Notes list's New Note; Material's 48 dp top app bar icon button, opening
+ * an M3 menu under it.
+ */
+function AddButton({ expanded, onPress }: { expanded: boolean; onPress: (anchor: Anchor) => void }) {
+  const { look, colors, m3 } = useBerean();
+  const material = look === 'material';
+  const ref = useRef<ComponentRef<typeof Pressable>>(null);
+  const open = () => ref.current?.measureInWindow((x, y, width, height) => onPress({ x, y, width, height }));
+  return (
+    <Pressable
+      ref={ref}
+      accessibilityRole="button"
+      accessibilityLabel="Add to workspace"
+      accessibilityState={{ expanded }}
+      onPress={open}
+      android_ripple={material ? { color: colors.separator, borderless: true } : undefined}
+      style={({ pressed }) => [
+        material ? styles.materialAction : styles.iosAction,
+        !material && { opacity: pressed ? 0.6 : 1 },
+      ]}
+    >
+      <ScaledSymbol
+        name={{ ios: 'plus', android: 'add' }}
+        size={material ? 24 : 22}
+        tintColor={material ? m3.onSurfaceVariant : colors.accent}
+        accessible={false}
+      />
+    </Pressable>
+  );
+}
+
 function Message({ text }: { text: string }) {
   const { colors } = useBerean();
   return <UIText style={[styles.message, { color: colors.accent }]}>{text}</UIText>;
@@ -292,6 +602,9 @@ function Message({ text }: { text: string }) {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   inlineBar: { alignItems: 'center', paddingBottom: spacing.sm },
+  inlineAction: { position: 'absolute', right: spacing.sm, bottom: spacing.sm },
+  iosAction: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  materialAction: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md, padding: spacing.xl },
   emptyCanvas: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
   centred: { textAlign: 'center' },

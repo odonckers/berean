@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { type Ref, useEffect, useImperativeHandle, useMemo, useState } from 'react';
 import { type LayoutChangeEvent, StyleSheet, useWindowDimensions, View } from 'react-native';
 import {
   GestureDetector,
@@ -17,7 +17,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { scheduleOnRN } from 'react-native-worklets';
+import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
 
 import { useBerean } from '@/design/theme';
 import { useWindowClass } from '@/design/use-window-class';
@@ -52,6 +52,7 @@ import {
 import { StudyCard } from '@/studyspace/card';
 import type { CardView } from '@/studyspace/data';
 import { dotGridBackground } from '@/studyspace/dot-grid';
+import type { CardAction } from '@/studyspace/edit';
 
 /** An automatic camera move: zoom in log space, about `focal` if there is one. */
 type Flight = { from: Camera; to: Camera; focal?: Point };
@@ -75,24 +76,49 @@ const DOT_GRIDS = {
   tablet: { spacing: 28, dot: 1.2 },
 } as const;
 
+// The selected card's handle and outline reach this far past it on screen
+// (half the 48 dp hit area); the content layer's box takes them in.
+const HANDLE_REACH = 24;
+
+/** The camera and view size now, and an automatic move of the camera. */
+export type CanvasHandle = {
+  view: () => { camera: Camera; size: Size } | undefined;
+  /** Pan to `camera` with the settle spring; a jump with Reduce Motion (§7.2). */
+  moveTo: (camera: Camera) => void;
+};
+
 type CanvasProps = {
+  ref?: Ref<CanvasHandle>;
   cards: readonly CardView[];
   /** The workspace's saved camera; none the first time (it opens at fit-all). */
   saved: Camera | undefined;
   limits: ZoomLimits;
+  selected: bigint | undefined;
+  /** The card just added, while its landing highlight shows. */
+  highlighted: bigint | undefined;
   /** The camera once a gesture or its animation has come to rest; never per frame. */
   onSettle: (camera: Camera) => void;
+  onLiftCard: (id: bigint) => void;
+  onTapCard: (id: bigint) => void;
+  /** A card's move or resize ended at `frame`. */
+  onCommitCard: (id: bigint, frame: Rect) => void;
+  onCardAction: (card: CardView, action: CardAction) => void;
+  onTapEmpty: () => void;
 };
 
 /**
  * A workspace's canvas (findings §3): one finger pans, pinch zooms about
  * the fingers, rubber-banding past the zoom limits and springing back;
- * double tap on empty canvas toggles 100% at the tap and fit-all. All of it
- * runs on the UI thread on one translated and scaled content layer; the JS
- * thread hears only where the camera settles. Mount one per workspace (key
- * it by id): the saved camera is read once, at the first layout.
+ * double tap on empty canvas toggles 100% at the tap and fit-all; a tap
+ * there clears the selection. Cards lift on a long press and move or
+ * resize (StudyCard). All of it runs on the UI thread on one translated and
+ * scaled content layer; the JS thread hears only where the camera settles
+ * and where a card ends up. Mount one per workspace (key it by id): the
+ * saved camera is read once, at the first layout.
  */
-export function Canvas({ cards, saved, limits, onSettle }: CanvasProps) {
+export function Canvas(props: CanvasProps) {
+  const { ref, cards, saved, limits, selected, highlighted, onSettle, onTapEmpty } = props;
+  const { onLiftCard, onTapCard, onCommitCard, onCardAction } = props;
   const { look, colors } = useBerean();
   const reducedMotion = useReducedMotion();
   const { fontScale } = useWindowDimensions();
@@ -108,11 +134,22 @@ export function Canvas({ cards, saved, limits, onSettle }: CanvasProps) {
   // Levels and title sizes follow the settled zoom, not every frame.
   const [settledZoom, setSettledZoom] = useState(1);
   const frames = useMemo<Rect[]>(() => cards.map((c) => c.frame), [cards]);
-  // The content layer's box holds every card, so Android (which clips a
-  // child's accessibility bounds and touches to its parent's untransformed
-  // box) sees whole cards at any zoom. It is plain style, committed with the
-  // cards; the animated transform doesn't depend on it.
-  const box = useMemo(() => layerBox(frames), [frames]);
+  // The content layer's box holds every card, and the selected one's handle,
+  // so Android (which clips a child's accessibility bounds and touches to
+  // its parent's untransformed box) sees whole cards at any zoom. The cards
+  // sit at their frames less its top-left; both read it from one shared
+  // value, so a card moved by a drag and the box it grows land together.
+  const box = useMemo(() => {
+    const b = layerBox(frames);
+    const reach = HANDLE_REACH / settledZoom;
+    return { x: b.x - reach, y: b.y - reach, width: b.width + 2 * reach, height: b.height + 2 * reach };
+  }, [frames, settledZoom]);
+  const origin = useSharedValue<Rect>(box);
+  useEffect(() => {
+    origin.set(box);
+  }, [box, origin]);
+  // A card is being moved or resized.
+  const editing = useSharedValue(false);
 
   const cx = useSharedValue(0);
   const cy = useSharedValue(0);
@@ -270,7 +307,8 @@ export function Canvas({ cards, saved, limits, onSettle }: CanvasProps) {
     },
     onUpdate: (e) => {
       'worklet';
-      if (pinching.get()) return;
+      // A lifted card's drag cancels this pan; the check keeps the canvas still regardless.
+      if (pinching.get() || editing.get()) return;
       const zoom = cz.get();
       cx.set(cx.get() - e.changeX / zoom);
       cy.set(cy.get() - e.changeY / zoom);
@@ -278,7 +316,7 @@ export function Canvas({ cards, saved, limits, onSettle }: CanvasProps) {
     onDeactivate: (e) => {
       'worklet';
       panning.set(false);
-      if (!pinching.get() && !e.canceled) glide(e.velocityX, e.velocityY);
+      if (!pinching.get() && !editing.get() && !e.canceled) glide(e.velocityX, e.velocityY);
       settle();
     },
     onFinalize: () => {
@@ -352,10 +390,44 @@ export function Canvas({ cards, saved, limits, onSettle }: CanvasProps) {
     },
   });
 
-  const gesture = useSimultaneousGestures(pan, pinch, doubleTap);
+  // A tap on empty canvas clears the selection (§7.1); a card's tap is its own.
+  const tap = useTapGesture({
+    onActivate: (e) => {
+      'worklet';
+      if (hitsFrame(hitFrames.get(), screenToCanvas(camera(), size(), { x: e.x, y: e.y }))) return;
+      scheduleOnRN(onTapEmpty);
+    },
+  });
+
+  const gesture = useSimultaneousGestures(pan, pinch, doubleTap, tap);
+
+  useImperativeHandle(ref, () => ({
+    view: () => {
+      if (view === undefined) return undefined;
+      // Where the camera is headed if it is moving on its own.
+      const f = flight.get();
+      return { camera: f !== null ? f.to : { x: cx.get(), y: cy.get(), zoom: cz.get() }, size: view };
+    },
+    moveTo: (to: Camera) => {
+      scheduleOnUI(() => {
+        'worklet';
+        if (!reducedMotion) {
+          fly(to, undefined, 0);
+          return;
+        }
+        // §9: automatic camera moves jump with Reduce Motion.
+        halt();
+        moved.set(true);
+        setCamera(to);
+        settle();
+      });
+    },
+  }));
 
   // Reads every shared value itself: Reanimated finds a style's inputs in
-  // its own closure, not in the helpers it calls.
+  // its own closure, not in the helpers it calls. Laid out at its box, its
+  // transform about the parent's (0,0): screen = translate + zoom · canvas,
+  // whatever the box.
   const contentStyle = useAnimatedStyle(() => {
     const here = { width: vw.get(), height: vh.get() };
     const f = flight.get();
@@ -364,7 +436,15 @@ export function Canvas({ cards, saved, limits, onSettle }: CanvasProps) {
         ? cameraBetween(f.from, f.to, progress.get(), here, f.focal)
         : { x: cx.get(), y: cy.get(), zoom: cz.get() };
     const t = contentTransform(now, here);
-    return { transform: [{ translateX: t.translateX }, { translateY: t.translateY }, { scale: t.scale }] };
+    const b = origin.get();
+    return {
+      left: b.x,
+      top: b.y,
+      width: b.width,
+      height: b.height,
+      transformOrigin: [-b.x, -b.y, 0],
+      transform: [{ translateX: t.translateX }, { translateY: t.translateY }, { scale: t.scale }],
+    };
   });
 
   // The dot grid keeps its screen size at any zoom and moves with the
@@ -406,22 +486,24 @@ export function Canvas({ cards, saved, limits, onSettle }: CanvasProps) {
           />
         )}
         {view !== undefined && (
-          <Animated.View
-            style={[
-              styles.content,
-              // Laid out at its box, its transform about the parent's (0,0):
-              // screen = translate + zoom · canvas, whatever the box.
-              { left: box.x, top: box.y, width: box.width, height: box.height, transformOrigin: [-box.x, -box.y, 0] },
-              contentStyle,
-            ]}
-          >
-            {cards.map((card) => (
+          <Animated.View style={[styles.content, contentStyle]}>
+            {cards.map((card, index) => (
               <StudyCard
                 key={String(card.id)}
                 card={card}
                 zoom={settledZoom}
                 fontScale={fontScale}
-                origin={box}
+                origin={origin}
+                liveZoom={cz}
+                frames={hitFrames}
+                index={index}
+                editing={editing}
+                selected={card.id === selected}
+                highlighted={card.id === highlighted}
+                onLift={onLiftCard}
+                onTap={onTapCard}
+                onCommit={onCommitCard}
+                onAction={onCardAction}
               />
             ))}
           </Animated.View>
