@@ -102,13 +102,12 @@ export function NameDialog({
             returnKeyType="done"
             onSubmitEditing={submit}
             onFocus={followRing}
-            underlineColorAndroid="transparent"
             style={[
               type.ui.body,
               styles.input,
               { color: colors.text, minHeight: material ? 56 : 44 },
               material
-                ? { borderColor: ink.fieldBorder, borderWidth: 2, borderRadius: 4 }
+                ? { backgroundColor: 'transparent', borderColor: ink.fieldBorder, borderWidth: 2, borderRadius: 4 }
                 : { backgroundColor: colors.surface, borderColor: ink.fieldBorder, borderWidth: 1, borderRadius: 8 },
             ]}
           />
