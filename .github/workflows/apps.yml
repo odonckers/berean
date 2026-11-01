@@ -16,7 +16,8 @@ on:
 jobs:
   build:
     # Owen's Mac, registered as a self-hosted runner. Never GitHub-hosted macOS.
-    # Assumes rustup, xcodegen and Xcode 26 are already installed on it.
+    # Assumes rustup, xcodegen and Xcode 27 (iOS 27 SDK; we target iOS 26.0 /
+    # macOS 26.0) are already installed on it.
     runs-on: [self-hosted, macOS]
     steps:
       - uses: actions/checkout@v4

@@ -28,5 +28,9 @@ let package = Package(
             name: "CupertinoUI",
             dependencies: ["CupertinoCore"]
         ),
+        .testTarget(
+            name: "CupertinoCoreTests",
+            dependencies: ["CupertinoCore"]
+        ),
     ]
 )

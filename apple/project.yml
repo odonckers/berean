@@ -15,7 +15,7 @@ targets:
     type: application
     platform: iOS
     sources:
-      - Apps/Shared
+      - Apps/iOS
     dependencies:
       - package: Cupertino
         product: CupertinoCore
@@ -23,8 +23,28 @@ targets:
         product: CupertinoUI
     settings:
       base:
+        SWIFT_VERSION: "6.0"
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
         GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Berean
         PRODUCT_BUNDLE_IDENTIFIER: com.odonckers.berean
+        # Every iOS 26 device is arm64, and Xcode 27 only runs on Apple
+        # silicon, so arm64 is also the only simulator arch worth building —
+        # which is exactly what the core's iOS slices provide.
+        ARCHS: arm64
+        # iPhone + iPad.
+        TARGETED_DEVICE_FAMILY: "1,2"
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: >-
+          UIInterfaceOrientationPortrait
+          UIInterfaceOrientationLandscapeLeft
+          UIInterfaceOrientationLandscapeRight
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: >-
+          UIInterfaceOrientationPortrait
+          UIInterfaceOrientationPortraitUpsideDown
+          UIInterfaceOrientationLandscapeLeft
+          UIInterfaceOrientationLandscapeRight
 
   Berean-macOS:
     type: application
@@ -74,7 +94,10 @@ targets:
         BUNDLE_LOADER: "$(TEST_HOST)"
 
 # Explicit shared schemes so `xcodebuild -scheme <name>` works on a freshly
-# generated project (before it is ever opened in Xcode).
+# generated project (before it is ever opened in Xcode). The Cupertino package
+# tests are not reachable from an app scheme's test action — XcodeGen can only
+# put project targets there — so they run from the package itself; see
+# apple/README.md.
 schemes:
   Berean-iOS:
     build:
