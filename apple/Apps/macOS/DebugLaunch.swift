@@ -73,21 +73,25 @@ enum DebugLaunch {
     static func startIfRequested() {
         guard windowSize != nil || menuTitle != nil else { return }
 
-        var observer: NSObjectProtocol?
-        observer = NotificationCenter.default.addObserver(
+        launchObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didFinishLaunchingNotification,
             object: nil,
             queue: .main
         ) { _ in
-            if let observer {
-                NotificationCenter.default.removeObserver(observer)
-            }
             MainActor.assumeIsolated {
+                if let observer = launchObserver {
+                    NotificationCenter.default.removeObserver(observer)
+                    launchObserver = nil
+                }
                 applyWindowSize()
                 openMenuIfRequested()
             }
         }
     }
+
+    /// The one-shot launch observer, held here (main actor) rather than
+    /// captured by the `@Sendable` notification closure.
+    private static var launchObserver: NSObjectProtocol?
 
     private static func applyWindowSize() {
         guard let size = windowSize else { return }
