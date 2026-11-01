@@ -1,16 +1,22 @@
 import CupertinoUI
 import Testing
 
-/// WCAG contrast floors for every text-on-background pair the Mac shell draws.
+/// WCAG contrast floors for every foreground-on-background pair the Mac shell
+/// draws.
 ///
 /// The values come from `ThemeTokens`, which is generated from
 /// `docs/design/themes/tokens.json`, so this measures exactly what ships. The
 /// maths is WCAG 2.x relative luminance, in `ThemeColor`.
 ///
-/// themes-spec.md §15 sets the floors. The shell only draws body text, so 4.5:1
-/// is the bar everywhere here; `textPrimary` on the page actually has a 7:1
-/// floor and is checked at that too. `textTertiary` is deliberately absent: it
-/// is under 4.5:1 by design and is only ever a placeholder (§3 rule 10).
+/// themes-spec.md §15 sets the floors. Three bars are in play:
+///
+/// - **4.5:1** for body text, which is nearly everything the shell draws.
+/// - **7:1** for `textPrimary` on the page and on the raised surface.
+/// - **3:1** for the sidebar's SF Symbols, which are non-text graphics
+///   (WCAG 1.4.11) rather than text.
+///
+/// `textTertiary` is deliberately absent: it is under 4.5:1 by design and is
+/// only ever a placeholder (§3 rule 10).
 @Suite("Theme contrast")
 struct ThemeContrastTests {
     /// The shell is Paper-only until the picker lands in Moss 2.
@@ -36,6 +42,11 @@ struct ThemeContrastTests {
 
     private static let bodyTextFloor = 4.5
     private static let enhancedTextFloor = 7.0
+
+    /// WCAG 2.2 [1.4.11 Non-text Contrast](https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast):
+    /// icons and other non-text graphics need 3:1, not 4.5:1. The sidebar's SF
+    /// Symbols are measured against this.
+    private static let nonTextFloor = 3.0
 
     @Test(
         "textPrimary and textSecondary clear 4.5:1 on every surface the shell uses",
@@ -79,9 +90,63 @@ struct ThemeContrastTests {
         }
     }
 
-    /// The selected sidebar row: `onAccent` on `accent`, for every slot, since
-    /// the slot number is what the user picks (§3 rule 2).
-    @Test("onAccent clears 4.5:1 on its accent, in every slot", arguments: ThemeSet.allCases)
+    /// The selected sidebar row's **icon**: the SF Symbol is drawn in `onAccent`
+    /// on the accent fill, so it is a non-text graphic and WCAG 1.4.11's 3:1 is
+    /// its floor. Checked separately from the row's text because the icon is
+    /// what Lumen's review caught being drawn #FFFFFF by AppKit's emphasised
+    /// selection (2.27:1 on Paper dark's accent); the token always passed, so
+    /// this test is the floor the drawing now has to hold.
+    ///
+    /// Every slot and every set, since the slot number is what the user picks
+    /// (§3 rule 2) and the shell swaps palettes under Increase Contrast.
+    @Test(
+        "The selected row's icon clears the 3:1 non-text floor, in every slot",
+        arguments: ThemeSet.allCases
+    )
+    func iconOnAccent(set: ThemeSet) {
+        for slot in Self.palette.accentSlots {
+            let value = slot.value(for: set)
+            let ratio = value.onAccent.contrastRatio(against: value.color)
+            #expect(
+                ratio >= Self.nonTextFloor,
+                """
+                Paper \(set.rawValue) slot \(slot.slot) (\(slot.name)): the selected \
+                row's icon is onAccent \(value.onAccent.hexString) on accent \
+                \(value.color.hexString) at \(ratio), under \(Self.nonTextFloor):1
+                """
+            )
+        }
+    }
+
+    /// The unselected sidebar row's **icon**: `textSecondary` on the sidebar's
+    /// solid surface, also a non-text graphic at 3:1. §3 rule 6 keeps icons
+    /// monochrome in `textPrimary` or `textSecondary` rather than the system
+    /// grey, and `textSecondary` already clears 4.5:1 as text, so this is a
+    /// regression guard rather than a tight floor.
+    @Test(
+        "The unselected row's icon clears the 3:1 non-text floor",
+        arguments: ThemeSet.allCases
+    )
+    func unselectedIconOnSidebar(set: ThemeSet) {
+        let roles = Self.palette.roles(for: set)
+        let ratio = roles.textSecondary.contrastRatio(against: roles.surfaceRaised)
+        #expect(
+            ratio >= Self.nonTextFloor,
+            """
+            Paper \(set.rawValue): the unselected row's icon is textSecondary \
+            \(roles.textSecondary.hexString) on surfaceRaised \
+            \(roles.surfaceRaised.hexString) at \(ratio), under \(Self.nonTextFloor):1
+            """
+        )
+    }
+
+    /// The selected sidebar row's **text**: `onAccent` on `accent` at the body
+    /// text floor, for every slot, since the slot number is what the user picks
+    /// (§3 rule 2). §15 puts `onAccent` on `accent` at 4.5:1.
+    @Test(
+        "The selected row's text clears 4.5:1 on its accent, in every slot",
+        arguments: ThemeSet.allCases
+    )
     func onAccentOnAccent(set: ThemeSet) {
         for slot in Self.palette.accentSlots {
             let value = slot.value(for: set)
@@ -117,6 +182,44 @@ struct ThemeContrastTests {
         }
     }
 
+    /// One pair the shell actually draws, with the floor that pair has to meet.
+    ///
+    /// The floor travels with the pair rather than being one value for the whole
+    /// test, because the shell draws two kinds of thing: text, at 4.5:1 (§15),
+    /// and icons, at WCAG 1.4.11's 3:1.
+    private struct ShellPair {
+        let what: String
+        let foreground: ThemeColor
+        let background: ThemeColor
+        let floor: Double
+
+        static func text(
+            _ what: String,
+            _ foreground: ThemeColor,
+            on background: ThemeColor
+        ) -> ShellPair {
+            ShellPair(
+                what: what,
+                foreground: foreground,
+                background: background,
+                floor: ThemeContrastTests.bodyTextFloor
+            )
+        }
+
+        static func icon(
+            _ what: String,
+            _ foreground: ThemeColor,
+            on background: ThemeColor
+        ) -> ShellPair {
+            ShellPair(
+                what: what,
+                foreground: foreground,
+                background: background,
+                floor: ThemeContrastTests.nonTextFloor
+            )
+        }
+    }
+
     /// The exact pairs the shell draws, named one by one, so a regression says
     /// which bit of UI broke rather than which role did.
     @Test("Every pair the Mac shell draws, by name", arguments: ThemeSet.allCases)
@@ -124,28 +227,38 @@ struct ThemeContrastTests {
         let theme = ThemeTokens.resolve(.default, set: set)
         let roles = theme.roles
 
-        let pairs: [(what: String, foreground: ThemeColor, background: ThemeColor)] = [
-            ("the detail title", roles.textPrimary, roles.background),
-            ("the detail's scripture line", roles.textPrimary, roles.background),
-            ("the detail's secondary lines", roles.textSecondary, roles.background),
-            ("an unselected sidebar row", roles.textPrimary, roles.surfaceRaised),
-            ("the sidebar section headers", roles.textSecondary, roles.surfaceRaised),
-            ("\"Nothing yet\"", roles.textSecondary, roles.surfaceRaised),
-            ("the selected sidebar row", theme.onAccentColor, theme.accentColor),
-            ("the Omnisearch field", roles.textPrimary, roles.surfaceRaised),
-            ("the Omnisearch footer", roles.textSecondary, roles.surfaceRaised),
-            ("the Settings pane title", roles.textPrimary, roles.background),
-            ("the Settings placeholder text", roles.textSecondary, roles.background),
+        let pairs: [ShellPair] = [
+            .text("the detail title", roles.textPrimary, on: roles.background),
+            .text("the detail's scripture line", roles.textPrimary, on: roles.background),
+            .text("the detail's secondary lines", roles.textSecondary, on: roles.background),
+            .text("an unselected sidebar row", roles.textPrimary, on: roles.surfaceRaised),
+            .icon(
+                "an unselected sidebar row's icon",
+                roles.textSecondary,
+                on: roles.surfaceRaised
+            ),
+            .text("the sidebar section headers", roles.textSecondary, on: roles.surfaceRaised),
+            .text("\"Nothing yet\"", roles.textSecondary, on: roles.surfaceRaised),
+            .text("the selected sidebar row", theme.onAccentColor, on: theme.accentColor),
+            .icon(
+                "the selected sidebar row's icon",
+                theme.onAccentColor,
+                on: theme.accentColor
+            ),
+            .text("the Omnisearch field", roles.textPrimary, on: roles.surfaceRaised),
+            .text("the Omnisearch footer", roles.textSecondary, on: roles.surfaceRaised),
+            .text("the Settings pane title", roles.textPrimary, on: roles.background),
+            .text("the Settings placeholder text", roles.textSecondary, on: roles.background),
         ]
 
         for pair in pairs {
             let ratio = pair.foreground.contrastRatio(against: pair.background)
             #expect(
-                ratio >= Self.bodyTextFloor,
+                ratio >= pair.floor,
                 """
                 Paper \(set.rawValue): \(pair.what) is \
                 \(pair.foreground.hexString) on \(pair.background.hexString) at \
-                \(ratio), under \(Self.bodyTextFloor):1
+                \(ratio), under \(pair.floor):1
                 """
             )
         }

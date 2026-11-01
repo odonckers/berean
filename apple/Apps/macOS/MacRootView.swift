@@ -59,8 +59,7 @@ struct MacRootView: View {
         List(selection: sidebarSelection) {
             Section {
                 ForEach(SidebarItem.allCases) { item in
-                    Label(item.title, systemImage: item.symbolName)
-                        .foregroundStyle(rowForeground(for: item))
+                    sidebarRow(for: item)
                         .tag(item)
                         .listRowBackground(rowBackground(for: item))
                 }
@@ -93,27 +92,64 @@ struct MacRootView: View {
         Text(title).foregroundStyle(theme.textSecondary)
     }
 
+    /// One sidebar row, with the icon coloured on its own.
+    ///
+    /// The icon cannot inherit the row's `.foregroundStyle`: in an AppKit
+    /// sidebar the selected row is drawn in the emphasised background style,
+    /// and that style's default foreground is white — which is what put a
+    /// #FFFFFF glyph on the dark accent at 2.27:1. `SystemRowHighlight.off()`
+    /// (in the row background) stops AppKit emphasising the row at all, and
+    /// styling the `Image` explicitly, rather than the whole `Label`, means the
+    /// glyph is pinned to a token either way. `onAccent` on `accent` is 3:1 or
+    /// better in every set and slot (`ThemeContrastTests.iconOnAccent`).
+    ///
+    /// Unselected icons are `textSecondary`, not the system grey: §3 rule 6
+    /// keeps icons monochrome in `textPrimary` or `textSecondary`. The text
+    /// stays `textPrimary`.
+    private func sidebarRow(for item: SidebarItem) -> some View {
+        let isSelected = item == model.selection
+
+        return Label {
+            Text(item.title)
+                .foregroundStyle(isSelected ? theme.onAccent : theme.textPrimary)
+        } icon: {
+            Image(systemName: item.symbolName)
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(isSelected ? theme.onAccent : theme.textSecondary)
+        }
+    }
+
     /// The selected row is drawn from the theme, not from the Mac's accent.
     ///
     /// `.tint` alone is not enough on macOS: when the Mac accent is anything
     /// other than Multicolor — Owen's is Graphite — AppKit draws the sidebar's
-    /// selection highlight in *that* colour, and SwiftUI's `List` gives no hook
-    /// to recolour it. So the row paints its own `accent` background through
-    /// `.listRowBackground`, which sits above the system highlight, and its
-    /// label switches to `onAccent` (4.5:1 or better in every set, §15).
-    /// Selection itself still goes through `List(selection:)`, so arrow keys,
-    /// Full Keyboard Access and VoiceOver behave exactly as before.
-    @ViewBuilder private func rowBackground(for item: SidebarItem) -> some View {
-        if item == model.selection {
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(theme.accent)
-        } else {
-            Color.clear
-        }
-    }
+    /// selection highlight in *that* colour. `SystemRowHighlight.off()` turns
+    /// that drawing off through the table behind the `List`, so this fill is the
+    /// only selection there is, and it can be inset to the native shape without
+    /// grey showing around it. See `SidebarSelection.swift` for why that bridge
+    /// is the root fix and not a workaround.
+    ///
+    /// The shape is the system's, from `SidebarSelectionMetrics`: inset 10 pt on
+    /// each side, the row's own height, 8 pt continuous corners — measured off
+    /// AppKit rather than chosen, and re-measured by
+    /// `SidebarSelectionTests.matchesTheSystemHighlight`.
+    ///
+    /// The fill stays `theme.accent`
+    /// whether or not the window is key. Native macOS dims an unemphasised
+    /// selection to a system grey; doing that here would put the system palette
+    /// back on Berean's chrome (§3 rule 7, §10) and would need a second pair of
+    /// contrast floors. Holding the accent keeps `onAccent` correct in every
+    /// window state.
+    private func rowBackground(for item: SidebarItem) -> some View {
+        ZStack {
+            if item == model.selection {
+                SidebarSelectionMetrics.shape
+                    .fill(theme.accent)
+                    .padding(.horizontal, SidebarSelectionMetrics.horizontalInset)
+            }
 
-    private func rowForeground(for item: SidebarItem) -> Color {
-        item == model.selection ? theme.onAccent : theme.textPrimary
+            SystemRowHighlight.off()
+        }
     }
 
     /// Selecting in the sidebar goes through the model, so it records history.
