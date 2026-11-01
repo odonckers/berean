@@ -20,6 +20,7 @@ import { byModified, noteTitle } from '@/notes/note-list';
 import { spanReference } from '@/reader/bible-nav';
 import type { Rect } from '@/studyspace/camera';
 import { cardAccessibilityLabel, type CardKind } from '@/studyspace/cards';
+import { placeOrDiscard, type Remembered, rememberOutcome } from '@/studyspace/writes';
 
 export type CardView = {
   id: bigint;
@@ -55,18 +56,20 @@ export function readLastWorkspace(): bigint | undefined {
   return read.ok ? read.value : undefined;
 }
 
+/** Whether `e` is the core's NotFound. */
+function isNotFound(e: unknown): boolean {
+  // Not `instanceof`: Babel breaks Error subclassing (see ffi/errors.ts).
+  return typeof e === 'object' && e !== null && CoreError.instanceOf(e) && e.tag === CoreError_Tags.NotFound;
+}
+
 /**
  * Remember `id` as the workspace open last (none clears it). A workspace
- * that has gone (NotFound) isn't remembered; the screen's next read falls
- * back to the first. Any other failure only means a different workspace
- * opens next launch, so neither is shown.
+ * that has gone (NotFound) isn't remembered: 'gone', so the screen reads
+ * again and falls back to the first. Any other failure only means a
+ * different workspace opens next launch. Neither is shown.
  */
-export function rememberWorkspace(id: bigint | undefined) {
-  try {
-    userdata().setLastWorkspace(id);
-  } catch {
-    // See above: nothing to tell the reader.
-  }
+export function rememberWorkspace(id: bigint | undefined): Remembered {
+  return rememberOutcome(() => userdata().setLastWorkspace(id), isNotFound);
 }
 
 /** Workspace `id`'s cards, back to front, with their titles. */
@@ -117,8 +120,11 @@ export function readCards(id: bigint): CardView[] {
   });
 }
 
-/** Something to add to a workspace, with its title for the announcement. */
-export type Addable = { card: CardRef; title: string };
+/**
+ * Something to add to a workspace, with its title for the announcement;
+ * and the note made for it, if New note made one.
+ */
+export type Addable = { card: CardRef; title: string; createdNoteId?: string };
 
 /**
  * The notes not on the workspace with `cards` yet (the core takes a note
@@ -135,7 +141,18 @@ export function readAddableNotes(cards: readonly CardView[]): Addable[] {
 export function newNote(): Addable {
   const note = userdata().addNote('', '', undefined, undefined, undefined);
   notesChanged();
-  return { card: CardRef.Note.new({ noteId: note.id }), title: noteTitle(note) };
+  return { card: CardRef.Note.new({ noteId: note.id }), title: noteTitle(note), createdNoteId: note.id };
+}
+
+/**
+ * `place()`'s result; if it throws, the note New note made for `made` is
+ * removed (the core has no make-and-place call), and the error rethrown.
+ */
+export function placeAddable<T>(made: Addable, place: () => T): T {
+  return placeOrDiscard(made, place, (id) => {
+    userdata().removeNote(id);
+    notesChanged();
+  });
 }
 
 /** Every installed publication, as a whole-publication card: a location with only its key. */
