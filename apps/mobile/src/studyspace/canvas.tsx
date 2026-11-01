@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Image, type LayoutChangeEvent, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { type LayoutChangeEvent, StyleSheet, useWindowDimensions, View } from 'react-native';
 import {
   GestureDetector,
   usePanGesture,
@@ -51,6 +51,7 @@ import {
 } from '@/studyspace/camera';
 import { StudyCard } from '@/studyspace/card';
 import type { CardView } from '@/studyspace/data';
+import { dotGridBackground } from '@/studyspace/dot-grid';
 
 /** An automatic camera move: zoom in log space, about `focal` if there is one. */
 type Flight = { from: Camera; to: Camera; focal?: Point };
@@ -67,10 +68,11 @@ const DOUBLE_TAP_MS = 450;
 const MAX_SEED = 10;
 
 // Guide §4's dot grid: 1 px dots every 14 px on phones, 1.2 px every 28 px
-// on tablets, white tiles tinted canvasDot (scripts/make-dot-tiles.py).
+// on tablets, in canvasDot, drawn as a repeating radial-gradient background
+// (dotGridBackground) so it needs no image assets.
 const DOT_GRIDS = {
-  phone: { spacing: 14, tile: require('../../assets/studyspace/dot-14.png') },
-  tablet: { spacing: 28, tile: require('../../assets/studyspace/dot-28.png') },
+  phone: { spacing: 14, dot: 1 },
+  tablet: { spacing: 28, dot: 1.2 },
 } as const;
 
 type CanvasProps = {
@@ -97,6 +99,10 @@ export function Canvas({ cards, saved, limits, onSettle }: CanvasProps) {
   const decay = look === 'ios' ? IOS_DECAY : ANDROID_DECAY;
   const grid = DOT_GRIDS[useWindowClass() === 'compact' ? 'phone' : 'tablet'];
   const gridSpacing = grid.spacing;
+  const gridBackground = useMemo(
+    () => dotGridBackground(colors.canvasDot, grid.spacing, grid.dot),
+    [colors.canvasDot, grid],
+  );
 
   const [view, setView] = useState<Size>();
   // Levels and title sizes follow the settled zoom, not every frame.
@@ -394,16 +400,10 @@ export function Canvas({ cards, saved, limits, onSettle }: CanvasProps) {
             style={[
               styles.grid,
               { width: view.width + 2 * gridSpacing, height: view.height + 2 * gridSpacing },
+              gridBackground,
               gridStyle,
             ]}
-          >
-            <Image
-              source={grid.tile}
-              resizeMode="repeat"
-              tintColor={colors.canvasDot}
-              style={StyleSheet.absoluteFill}
-            />
-          </Animated.View>
+          />
         )}
         {view !== undefined && (
           <Animated.View
