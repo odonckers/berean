@@ -16,11 +16,11 @@ import { ScaledSymbol } from '@/components/scaled-symbol';
 import { useBerean } from '@/design/theme';
 import { radii, spacing } from '@/design/tokens';
 import type { SymbolName } from '@/notes/list-rows';
-import type { Rect } from '@/studyspace/camera';
+import type { LiveFrame, Rect } from '@/studyspace/camera';
 import { cardEdge, cardFill, cardText, kindFill, titleScale, type CardKind } from '@/studyspace/cards';
 import type { CardView } from '@/studyspace/data';
-import { type CardAction, moveBy, resizeBy, SNAP_DISTANCE, snapFrame } from '@/studyspace/edit';
-import { liftHaptic, resizeHaptic, snapHaptic } from '@/studyspace/haptics';
+import { type CardAction, moveBy, SNAP_DISTANCE, snapFrame } from '@/studyspace/edit';
+import { liftHaptic, snapHaptic } from '@/studyspace/haptics';
 
 const GLYPHS: Record<CardKind, SymbolName> = {
   note: { ios: 'note.text', android: 'sticky_note_2' },
@@ -34,7 +34,7 @@ const hidden = {
   accessibilityElementsHidden: true,
 } as const;
 
-// The resize handle replaces none of these: they are the accessible way to
+// The resize handle (the canvas's selection overlay) replaces none of these: they are the accessible way to
 // move and size a card (§4.3, WCAG 2.5.7). Each step is 24 canvas units (NUDGE).
 const ACTIONS: { name: CardAction; label: string }[] = [
   { name: 'moveLeft', label: 'Move left' },
@@ -52,10 +52,6 @@ const LONG_PRESS_MS = 500;
 // The lift: a slight grow while the card follows the finger.
 const LIFT_SCALE = 1.02;
 const LIFT_MS = 120;
-// §7.1: the selected outline is 2 pt, 3 pt off the card; the handle 8 pt.
-const SELECTED_WIDTH = 2;
-const SELECTED_OFFSET = 3;
-const HANDLE = 8;
 // §7.2: the landing highlight is a 3 pt outline that fades by about 1.5 s.
 const HIGHLIGHT_WIDTH = 3;
 const HIGHLIGHT_FADE_MS = 400;
@@ -73,14 +69,20 @@ type StudyCardProps = {
   /** Every card's frame, back to front; this card's is at `index`. */
   frames: SharedValue<Rect[]>;
   index: number;
+  /**
+   * The frame a drag or resize has now, ahead of the committed one; the card
+   * at its index draws it. The canvas clears it when it reads the frames back.
+   */
+  live: SharedValue<LiveFrame | null>;
   /** Set while any card is moved or resized, so the canvas stays put. */
   editing: SharedValue<boolean>;
+  /** Spoken; the canvas's selection overlay draws the outline and handle. */
   selected: boolean;
   /** Just added: the landing highlight shows. */
   highlighted: boolean;
   onLift: (id: bigint) => void;
   onTap: (id: bigint) => void;
-  /** A move or resize ended at `frame`. */
+  /** A move ended at `frame`. */
   onCommit: (id: bigint, frame: Rect) => void;
   onAction: (card: CardView, action: CardAction) => void;
 };
@@ -95,11 +97,12 @@ type StudyCardProps = {
  * placeholders until they become live readers.
  *
  * A long press lifts the card and it follows the finger, snapping to other
- * cards (§4.2); a selected card has one resize handle at its bottom-right
- * corner. Both run on the UI thread and tell JS once, on release.
+ * cards (§4.2), on the UI thread, telling JS once, on release. A selected
+ * card's outline and resize handle are the canvas's selection overlay,
+ * above every card; a resize reaches the card through `live`.
  */
 export function StudyCard(props: StudyCardProps) {
-  const { card, zoom, fontScale, origin, liveZoom, frames, index, editing, selected, highlighted } = props;
+  const { card, zoom, fontScale, origin, liveZoom, frames, index, live, editing, selected, highlighted } = props;
   const { onLift, onTap, onCommit, onAction } = props;
   const { look, scheme, colors, m3, type } = useBerean();
   const material = look === 'material';
@@ -147,11 +150,20 @@ export function StudyCard(props: StudyCardProps) {
     'worklet';
     active.set(true);
     editing.set(true);
-    start.set({ x: x.get(), y: y.get(), width: w.get(), height: h.get() });
+    // From the live frame if a resize's is still showing, ahead of the read-back.
+    const l = live.get();
+    const from = l !== null && l.index === index ? l.frame : { x: x.get(), y: y.get(), width: w.get(), height: h.get() };
+    x.set(from.x);
+    y.set(from.y);
+    w.set(from.width);
+    h.set(from.height);
+    start.set(from);
     startX.set(tx);
     startY.set(ty);
   };
 
+  // `live` keeps the frame until the canvas reads the cards back, so the
+  // card doesn't snap back between the commit and the read.
   const finish = () => {
     'worklet';
     if (!active.get()) return;
@@ -183,6 +195,8 @@ export function StudyCard(props: StudyCardProps) {
       const snap = snapFrame(to, others.get(), SNAP_DISTANCE, z);
       x.set(snap.frame.x);
       y.set(snap.frame.y);
+      // The selection overlay follows the card.
+      live.set({ index, frame: snap.frame });
       const caught =
         (snap.x !== undefined && snap.x !== snapX.get()) || (snap.y !== undefined && snap.y !== snapY.get());
       snapX.set(snap.x ?? NaN);
@@ -207,34 +221,16 @@ export function StudyCard(props: StudyCardProps) {
 
   const gesture = useExclusiveGestures(drag, tap);
 
-  // The handle takes the finger at once, ahead of the canvas's pan.
-  const resize = usePanGesture({
-    minDistance: 0,
-    maxPointers: 1,
-    onActivate: (e) => {
-      'worklet';
-      begin(e.translationX, e.translationY);
-      scheduleOnRN(resizeHaptic);
-    },
-    onUpdate: (e) => {
-      'worklet';
-      const to = resizeBy(start.get(), e.translationX - startX.get(), e.translationY - startY.get(), liveZoom.get());
-      w.set(to.width);
-      h.set(to.height);
-    },
-    onDeactivate: () => {
-      'worklet';
-      finish();
-    },
-  });
-
+  // The live frame, a resize's or this card's drag's, wins until the read-back.
   const frameStyle = useAnimatedStyle(() => {
     const o = origin.get();
+    const l = live.get();
+    const f = l !== null && l.index === index ? l.frame : { x: x.get(), y: y.get(), width: w.get(), height: h.get() };
     return {
-      left: x.get() - o.x,
-      top: y.get() - o.y,
-      width: w.get(),
-      height: h.get(),
+      left: f.x - o.x,
+      top: f.y - o.y,
+      width: f.width,
+      height: f.height,
       zIndex: raised.get() ? 1 : 0,
       transform: [
         { scale: withTiming(moving.get() ? LIFT_SCALE : 1, { duration: LIFT_MS, reduceMotion: ReduceMotion.System }) },
@@ -286,7 +282,7 @@ export function StudyCard(props: StudyCardProps) {
   const edge = cardEdge(scheme === 'dark', material ? m3.outline : colors.outline);
   // L1 is a solid block in its kind's colour with the glyph on it.
   const block = level === 1 ? kindFill(card.kind, look, colors, m3) : undefined;
-  // Outlines and the handle are in screen points, so divided by the zoom.
+  // The edge and the landing highlight are in screen points, so divided by the zoom.
   const pt = 1 / zoom;
   const ring = (width: number, offset: number) => ({
     top: -(width + offset) * pt,
@@ -297,8 +293,6 @@ export function StudyCard(props: StudyCardProps) {
     borderRadius: radii.studyCard + (width + offset) * pt,
     borderColor: accent,
   });
-  // §4.1: the handle's hit area is 44 pt (iOS look) or 48 dp (Material), centred on it.
-  const hit = (material ? 48 : 44) * pt;
 
   return (
     <GestureDetector gesture={gesture}>
@@ -359,28 +353,6 @@ export function StudyCard(props: StudyCardProps) {
         {highlighted && (
           <Animated.View {...hidden} pointerEvents="none" style={[styles.ring, ring(HIGHLIGHT_WIDTH, 0), glowStyle]} />
         )}
-        {selected && (
-          <>
-            {/* Selected is never colour alone: the outline's weight, and "selected" spoken (§7.1). */}
-            <View {...hidden} pointerEvents="none" style={[styles.ring, ring(SELECTED_WIDTH, SELECTED_OFFSET)]} />
-            {/* Hidden from screen readers: the Size actions replace it. */}
-            <GestureDetector gesture={resize}>
-              <View
-                {...hidden}
-                style={[styles.handle, { width: hit, height: hit, right: -hit / 2, bottom: -hit / 2 }]}
-              >
-                <View
-                  style={{
-                    width: HANDLE * pt,
-                    height: HANDLE * pt,
-                    borderRadius: (HANDLE / 2) * pt,
-                    backgroundColor: accent,
-                  }}
-                />
-              </View>
-            </GestureDetector>
-          </>
-        )}
       </Animated.View>
     </GestureDetector>
   );
@@ -393,5 +365,4 @@ const styles = StyleSheet.create({
   glyphOnly: { padding: 0, alignItems: 'center', justifyContent: 'center' },
   title: { fontWeight: '600' },
   ring: { position: 'absolute' },
-  handle: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
 });

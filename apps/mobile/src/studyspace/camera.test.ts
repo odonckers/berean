@@ -26,6 +26,7 @@ import {
   rubberBandOvershoot,
   rubberBandZoom,
   screenToCanvas,
+  selectionRect,
   settleZoom,
   zoomAbout,
   zoomLimits,
@@ -403,5 +404,39 @@ describe('pan inertia (§3.5)', () => {
     // The slope at the start, in pt/ms, is the fling's 1 pt/ms.
     const h = 1e-6;
     near((inertiaProgress(h, IOS_DECAY, duration) * distance) / (h * duration), 1, 1e-3);
+  });
+});
+
+describe('selection overlay', () => {
+  const frames: Rect[] = [
+    { x: 0, y: 0, width: 100, height: 60 },
+    { x: 120, y: 80, width: 200, height: 100 },
+  ];
+
+  test('maps the frame to the screen at 100%', () => {
+    const camera = { x: 100, y: 50, zoom: 1 };
+    assert.deepEqual(selectionRect(frames, null, 1, camera, view), { x: 215, y: 380, width: 200, height: 100 });
+  });
+
+  test('maps the frame to the screen at 25%, about the view centre', () => {
+    const camera = { x: 100, y: 50, zoom: 0.25 };
+    const rect = selectionRect(frames, null, 1, camera, view);
+    assert.deepEqual(rect, { x: 200, y: 357.5, width: 50, height: 25 });
+    // The same corner canvasToScreen gives.
+    assert.deepEqual(canvasToScreen(camera, view, frames[1]), { x: rect?.x, y: rect?.y });
+  });
+
+  test('a live frame overrides only its own index', () => {
+    const camera = { x: 0, y: 0, zoom: 1 };
+    const live = { index: 1, frame: { x: 120, y: 80, width: 300, height: 150 } };
+    assert.deepEqual(selectionRect(frames, live, 1, camera, view), { x: 315, y: 430, width: 300, height: 150 });
+    assert.deepEqual(selectionRect(frames, live, 0, camera, view), { x: 195, y: 350, width: 100, height: 60 });
+  });
+
+  test('no card at the index is undefined', () => {
+    const camera = { x: 0, y: 0, zoom: 1 };
+    assert.equal(selectionRect(frames, null, -1, camera, view), undefined);
+    assert.equal(selectionRect(frames, null, 2, camera, view), undefined);
+    assert.equal(selectionRect([], { index: 0, frame: frames[0] }, 1, camera, view), undefined);
   });
 });

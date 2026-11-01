@@ -12,6 +12,7 @@ import Animated, {
   Easing,
   ReduceMotion,
   useAnimatedStyle,
+  useDerivedValue,
   useReducedMotion,
   useSharedValue,
   withSpring,
@@ -20,6 +21,7 @@ import Animated, {
 import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
 
 import { useBerean } from '@/design/theme';
+import { radii } from '@/design/tokens';
 import { useWindowClass } from '@/design/use-window-class';
 import {
   ANDROID_DECAY,
@@ -42,17 +44,20 @@ import {
   inertia,
   inertiaProgress,
   layerBox,
+  type LiveFrame,
   nearZoom,
   restoreCamera,
   rubberBandZoom,
   screenToCanvas,
+  selectionRect,
   settleZoom,
   zoomAbout,
 } from '@/studyspace/camera';
 import { StudyCard } from '@/studyspace/card';
 import type { CardView } from '@/studyspace/data';
 import { dotGridBackground } from '@/studyspace/dot-grid';
-import type { CardAction } from '@/studyspace/edit';
+import { type CardAction, resizeBy } from '@/studyspace/edit';
+import { resizeHaptic } from '@/studyspace/haptics';
 
 /** An automatic camera move: zoom in log space, about `focal` if there is one. */
 type Flight = { from: Camera; to: Camera; focal?: Point };
@@ -76,9 +81,10 @@ const DOT_GRIDS = {
   tablet: { spacing: 28, dot: 1.2 },
 } as const;
 
-// The selected card's handle and outline reach this far past it on screen
-// (half the 48 dp hit area); the content layer's box takes them in.
-const HANDLE_REACH = 24;
+// §7.1: the selected outline is 2 pt, 3 pt off the card; the handle 8 pt.
+const SELECTED_WIDTH = 2;
+const SELECTED_OFFSET = 3;
+const HANDLE = 8;
 
 /** The camera and view size now, and an automatic move of the camera. */
 export type CanvasHandle = {
@@ -110,16 +116,18 @@ type CanvasProps = {
  * A workspace's canvas (findings §3): one finger pans, pinch zooms about
  * the fingers, rubber-banding past the zoom limits and springing back;
  * double tap on empty canvas toggles 100% at the tap and fit-all; a tap
- * there clears the selection. Cards lift on a long press and move or
- * resize (StudyCard). All of it runs on the UI thread on one translated and
- * scaled content layer; the JS thread hears only where the camera settles
+ * there clears the selection. Cards lift on a long press and move
+ * (StudyCard); the selected one resizes by the handle in the selection
+ * overlay, drawn in screen points above the content layer. All of it runs
+ * on the UI thread on one translated and scaled content layer (and the
+ * overlay that tracks it); the JS thread hears only where the camera settles
  * and where a card ends up. Mount one per workspace (key it by id): the
  * saved camera is read once, at the first layout.
  */
 export function Canvas(props: CanvasProps) {
   const { ref, cards, saved, limits, selected, highlighted, onSettle, onTapEmpty } = props;
   const { onLiftCard, onTapCard, onCommitCard, onCardAction } = props;
-  const { look, colors } = useBerean();
+  const { look, colors, m3 } = useBerean();
   const reducedMotion = useReducedMotion();
   const { fontScale } = useWindowDimensions();
   const decay = look === 'ios' ? IOS_DECAY : ANDROID_DECAY;
@@ -134,22 +142,24 @@ export function Canvas(props: CanvasProps) {
   // Levels and title sizes follow the settled zoom, not every frame.
   const [settledZoom, setSettledZoom] = useState(1);
   const frames = useMemo<Rect[]>(() => cards.map((c) => c.frame), [cards]);
-  // The content layer's box holds every card, and the selected one's handle,
-  // so Android (which clips a child's accessibility bounds and touches to
-  // its parent's untransformed box) sees whole cards at any zoom. The cards
-  // sit at their frames less its top-left; both read it from one shared
-  // value, so a card moved by a drag and the box it grows land together.
-  const box = useMemo(() => {
-    const b = layerBox(frames);
-    const reach = HANDLE_REACH / settledZoom;
-    return { x: b.x - reach, y: b.y - reach, width: b.width + 2 * reach, height: b.height + 2 * reach };
-  }, [frames, settledZoom]);
+  // The content layer's box holds every card, so Android (which clips a
+  // child's accessibility bounds and touches to its parent's untransformed
+  // box) sees whole cards at any zoom. The cards sit at their frames less
+  // its top-left; both read it from one shared value, so a card moved by a
+  // drag and the box it grows land together.
+  const box = useMemo(() => layerBox(frames), [frames]);
   const origin = useSharedValue<Rect>(box);
   useEffect(() => {
     origin.set(box);
   }, [box, origin]);
   // A card is being moved or resized.
   const editing = useSharedValue(false);
+  // The frame a card's drag or the handle's resize has now. It stays after
+  // the release until the frames are read back (below), so nothing snaps
+  // back between the commit and the read.
+  const live = useSharedValue<LiveFrame | null>(null);
+  const selectedIndex = cards.findIndex((c) => c.id === selected);
+  const chosen = useSharedValue(selectedIndex);
 
   const cx = useSharedValue(0);
   const cy = useSharedValue(0);
@@ -173,8 +183,14 @@ export function Canvas(props: CanvasProps) {
 
   useEffect(() => {
     hitFrames.set(frames);
+    live.set(null);
+  }, [frames, hitFrames, live]);
+  useEffect(() => {
     if (view !== undefined) fit.set(fitAll(frames, view, fitPadding(view), limits));
-  }, [frames, view, limits, fit, hitFrames]);
+  }, [frames, view, limits, fit]);
+  useEffect(() => {
+    chosen.set(selectedIndex);
+  }, [selectedIndex, chosen]);
 
   const onLayout = (e: LayoutChangeEvent) => {
     const size = { width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height };
@@ -401,6 +417,55 @@ export function Canvas(props: CanvasProps) {
 
   const gesture = useSimultaneousGestures(pan, pinch, doubleTap, tap);
 
+  const resizeStart = useSharedValue<Rect>({ x: 0, y: 0, width: 0, height: 0 });
+  const resizeIndex = useSharedValue(-1);
+  const resizeX = useSharedValue(0);
+  const resizeY = useSharedValue(0);
+
+  const resized = (x: number, y: number, width: number, height: number) => {
+    if (selected !== undefined) onCommitCard(selected, { x, y, width, height });
+  };
+
+  // The selected card's resize handle (§4.3), in the selection overlay. It
+  // takes the finger on its first move, and blocks the canvas's gestures
+  // meanwhile; the cards' own gestures are not under it.
+  const resize = usePanGesture({
+    minDistance: 0,
+    maxPointers: 1,
+    block: [pan, tap, doubleTap],
+    onActivate: (e) => {
+      'worklet';
+      const index = chosen.get();
+      const l = live.get();
+      const from = l !== null && l.index === index ? l.frame : hitFrames.get()[index];
+      if (from === undefined) return;
+      resizeIndex.set(index);
+      resizeStart.set(from);
+      resizeX.set(e.translationX);
+      resizeY.set(e.translationY);
+      editing.set(true);
+      scheduleOnRN(resizeHaptic);
+    },
+    onUpdate: (e) => {
+      'worklet';
+      const index = resizeIndex.get();
+      if (index < 0) return;
+      const to = resizeBy(resizeStart.get(), e.translationX - resizeX.get(), e.translationY - resizeY.get(), cz.get());
+      live.set({ index, frame: to });
+    },
+    onDeactivate: () => {
+      'worklet';
+      const index = resizeIndex.get();
+      if (index < 0) return;
+      resizeIndex.set(-1);
+      editing.set(false);
+      // `live` keeps the new frame until the frames are read back.
+      const l = live.get();
+      const to = l !== null && l.index === index ? l.frame : resizeStart.get();
+      scheduleOnRN(resized, to.x, to.y, to.width, to.height);
+    },
+  });
+
   useImperativeHandle(ref, () => ({
     view: () => {
       if (view === undefined) return undefined;
@@ -465,6 +530,47 @@ export function Canvas(props: CanvasProps) {
     };
   });
 
+  // The selected card's frame on screen and the zoom, through the live
+  // camera, so the overlay tracks pans, pinches and flights on the UI thread.
+  const selection = useDerivedValue(() => {
+    const here = { width: vw.get(), height: vh.get() };
+    const f = flight.get();
+    const now =
+      f !== null
+        ? cameraBetween(f.from, f.to, progress.get(), here, f.focal)
+        : { x: cx.get(), y: cy.get(), zoom: cz.get() };
+    const rect = selectionRect(hitFrames.get(), live.get(), chosen.get(), now, here);
+    return rect === undefined ? null : { rect, zoom: now.zoom };
+  });
+
+  // Screen points, so no division by the zoom.
+  const ringStyle = useAnimatedStyle(() => {
+    const s = selection.get();
+    if (s === null) return { display: 'none' as const };
+    const reach = SELECTED_WIDTH + SELECTED_OFFSET;
+    return {
+      display: 'flex' as const,
+      left: s.rect.x - reach,
+      top: s.rect.y - reach,
+      width: s.rect.width + 2 * reach,
+      height: s.rect.height + 2 * reach,
+      borderRadius: radii.studyCard * s.zoom + reach,
+    };
+  });
+
+  // §4.1: the handle's hit area is 44 pt (iOS look) or 48 dp (Material), centred on the corner.
+  const hit = look === 'material' ? 48 : 44;
+  const handleStyle = useAnimatedStyle(() => {
+    const s = selection.get();
+    if (s === null) return { display: 'none' as const };
+    return {
+      display: 'flex' as const,
+      left: s.rect.x + s.rect.width - hit / 2,
+      top: s.rect.y + s.rect.height - hit / 2,
+    };
+  });
+  const accent = look === 'material' ? m3.primary : colors.accent;
+
   return (
     <GestureDetector gesture={gesture}>
       <View
@@ -497,6 +603,7 @@ export function Canvas(props: CanvasProps) {
                 liveZoom={cz}
                 frames={hitFrames}
                 index={index}
+                live={live}
                 editing={editing}
                 selected={card.id === selected}
                 highlighted={card.id === highlighted}
@@ -507,6 +614,34 @@ export function Canvas(props: CanvasProps) {
               />
             ))}
           </Animated.View>
+        )}
+        {/*
+          The selection overlay: after the content layer, so the selected
+          card's outline and handle stay on top of every card, even one
+          brought in front of it (as in Freeform and Keynote, selection
+          chrome is always on top). Outside the content layer, so Android
+          hit-tests the whole handle and the cards' gestures never see it.
+        */}
+        {view !== undefined && selectedIndex >= 0 && (
+          <View
+            pointerEvents="box-none"
+            accessible={false}
+            importantForAccessibility="no-hide-descendants"
+            accessibilityElementsHidden
+            style={StyleSheet.absoluteFill}
+          >
+            {/* Selected is never colour alone: the outline's weight, and "selected" spoken (§7.1). */}
+            <Animated.View
+              pointerEvents="none"
+              style={[styles.overlaid, { borderWidth: SELECTED_WIDTH, borderColor: accent }, ringStyle]}
+            />
+            {/* Hidden from screen readers: the Size actions replace it. */}
+            <GestureDetector gesture={resize}>
+              <Animated.View style={[styles.handle, { width: hit, height: hit }, handleStyle]}>
+                <View style={{ width: HANDLE, height: HANDLE, borderRadius: HANDLE / 2, backgroundColor: accent }} />
+              </Animated.View>
+            </GestureDetector>
+          </View>
         )}
       </View>
     </GestureDetector>
@@ -519,4 +654,6 @@ const styles = StyleSheet.create({
   content: { position: 'absolute' },
   // One spacing past the view on each side, so its offset in [−spacing, 0) always covers it.
   grid: { position: 'absolute', left: 0, top: 0 },
+  overlaid: { position: 'absolute' },
+  handle: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
 });
