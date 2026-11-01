@@ -22,6 +22,13 @@ type NameDialogProps = {
   title: string;
   initial: string;
   confirmLabel: string;
+  /** The field's spoken name. Default "Folder name". */
+  fieldLabel?: string;
+  /**
+   * Why the core refused the last name submitted (empty, taken), shown
+   * under the field until the name is edited. The dialog stays open.
+   */
+  error?: string;
   onSubmit: (name: string) => void;
   onCancel: () => void;
 };
@@ -29,19 +36,31 @@ type NameDialogProps = {
 const followRing = (e: NativeSyntheticEvent<TargetedEvent>) => followFocusRingIn(e.nativeEvent.target);
 
 /**
- * New Folder and Rename: a name field and two buttons. Material: an M3
+ * New Folder, New Workspace and Rename: a name field and two buttons. Material: an M3
  * dialog. iOS look: an alert-style card. Mounted only while open, so each
  * opening starts from `initial`.
  */
-export function NameDialog({ title, initial, confirmLabel, onSubmit, onCancel }: NameDialogProps) {
+export function NameDialog({
+  title,
+  initial,
+  confirmLabel,
+  fieldLabel = 'Folder name',
+  error,
+  onSubmit,
+  onCancel,
+}: NameDialogProps) {
   const { look, scheme, colors, m3, type } = useBerean();
   const material = look === 'material';
   const keyboard = useKeyboardHeight();
   const [text, setText] = useState(initial);
+  const [submitted, setSubmitted] = useState<string>();
   const name = folderName(text);
   const submit = () => {
-    if (name !== undefined) onSubmit(name);
+    if (name === undefined) return;
+    setSubmitted(name);
+    onSubmit(name);
   };
+  const shownError = error !== undefined && submitted !== undefined && name === submitted ? error : undefined;
 
   return (
     <Modal visible transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={onCancel}>
@@ -75,7 +94,8 @@ export function NameDialog({ title, initial, confirmLabel, onSubmit, onCancel }:
             onChangeText={setText}
             autoFocus
             selectTextOnFocus
-            accessibilityLabel="Folder name"
+            accessibilityLabel={fieldLabel}
+            accessibilityHint={shownError}
             placeholder="Name"
             placeholderTextColor={colors.textSecondary}
             returnKeyType="done"
@@ -86,10 +106,20 @@ export function NameDialog({ title, initial, confirmLabel, onSubmit, onCancel }:
               styles.input,
               { color: colors.text, minHeight: material ? 56 : 44 },
               material
-                ? { borderColor: m3.primary, borderWidth: 2, borderRadius: 4 }
+                ? { borderColor: shownError ? colors.destructive : m3.primary, borderWidth: 2, borderRadius: 4 }
                 : { backgroundColor: colors.surface, borderRadius: 8 },
             ]}
           />
+          {shownError !== undefined && (
+            // Not colour alone: the message is the signal; read out as it appears.
+            <UIText
+              variant="caption"
+              accessibilityLiveRegion="polite"
+              style={[styles.error, { color: colors.destructive }]}
+            >
+              {shownError}
+            </UIText>
+          )}
           <View style={[styles.buttons, !material && styles.iosButtons]}>
             <TextButton title="Cancel" onPress={onCancel} onFocus={followRing} />
             <TextButton title={confirmLabel} disabled={name === undefined} onPress={submit} onFocus={followRing} />
@@ -107,6 +137,8 @@ const styles = StyleSheet.create({
   materialTitle: { fontSize: 24, lineHeight: 32 },
   iosTitle: { fontSize: 17, lineHeight: 22, fontWeight: '600', textAlign: 'center' },
   input: { paddingHorizontal: spacing.md },
+  // Pulled up into the card's gap, under the field it belongs to.
+  error: { marginTop: -spacing.sm, paddingHorizontal: spacing.md },
   buttons: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
   iosButtons: { justifyContent: 'space-between' },
 });
