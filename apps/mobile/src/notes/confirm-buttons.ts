@@ -37,3 +37,26 @@ export function dialogSurface(
 ): string {
   return look === 'material' && dark ? m3.surfaceContainerHigh : colors.surfaceRaised;
 }
+
+export type NameDialogInk = { error: string; fieldBorder: string; confirmBold: boolean };
+
+/**
+ * The name dialog's inks. The inline error in the destructive red. The
+ * field's border: Material, primary (error while the name is refused); iOS
+ * look, the outline, as the field's fill is barely off the card's. iOS look
+ * bolds the confirm action (nothing destructive beside it); Material bolds
+ * neither.
+ */
+export function nameDialogInk(
+  look: 'ios' | 'material',
+  refused: boolean,
+  colors: Pick<ColorSet, 'destructive' | 'outline'>,
+  m3: Pick<M3Roles, 'primary'>,
+): NameDialogInk {
+  const material = look === 'material';
+  return {
+    error: colors.destructive,
+    fieldBorder: material ? (refused ? colors.destructive : m3.primary) : colors.outline,
+    confirmBold: !material,
+  };
+}

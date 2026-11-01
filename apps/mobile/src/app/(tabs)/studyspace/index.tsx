@@ -263,7 +263,7 @@ export default function StudyspaceScreen() {
       />
       {ask !== undefined && (
         <NameDialog
-          title={ask.kind === 'new' ? 'New Workspace' : 'Rename Workspace'}
+          title={ask.kind === 'new' ? 'New workspace' : 'Rename workspace'}
           initial={ask.kind === 'new' ? '' : ask.workspace.name}
           confirmLabel={ask.kind === 'new' ? 'Create' : 'Rename'}
           fieldLabel="Workspace name"

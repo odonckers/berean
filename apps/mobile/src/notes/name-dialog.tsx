@@ -14,6 +14,7 @@ import { TextButton } from '@/components/text-button';
 import { systemBarStyle, useBerean } from '@/design/theme';
 import { radii, spacing } from '@/design/tokens';
 import { useKeyboardHeight } from '@/design/use-keyboard-height';
+import { dialogSurface, nameDialogInk } from '@/notes/confirm-buttons';
 import { folderName } from '@/notes/folders';
 import { followFocusRingIn } from '../../modules/berean-shortcuts';
 import { ModalNavigationBarStyle } from '../../modules/berean-system-bars';
@@ -61,6 +62,7 @@ export function NameDialog({
     onSubmit(name);
   };
   const shownError = error !== undefined && submitted !== undefined && name === submitted ? error : undefined;
+  const ink = nameDialogInk(look, shownError !== undefined, colors, m3);
 
   return (
     <Modal visible transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={onCancel}>
@@ -75,9 +77,8 @@ export function NameDialog({
           accessibilityViewIsModal
           style={[
             styles.card,
-            material
-              ? { backgroundColor: m3.surfaceContainerHigh, borderRadius: radii.sheet, padding: spacing.xl }
-              : { backgroundColor: colors.surfaceRaised, borderRadius: 14, padding: spacing.lg },
+            { backgroundColor: dialogSurface(look, scheme === 'dark', colors, m3) },
+            material ? { borderRadius: radii.sheet, padding: spacing.xl } : { borderRadius: 14, padding: spacing.lg },
           ]}
         >
           <UIText
@@ -101,13 +102,14 @@ export function NameDialog({
             returnKeyType="done"
             onSubmitEditing={submit}
             onFocus={followRing}
+            underlineColorAndroid="transparent"
             style={[
               type.ui.body,
               styles.input,
               { color: colors.text, minHeight: material ? 56 : 44 },
               material
-                ? { borderColor: shownError ? colors.destructive : m3.primary, borderWidth: 2, borderRadius: 4 }
-                : { backgroundColor: colors.surface, borderRadius: 8 },
+                ? { borderColor: ink.fieldBorder, borderWidth: 2, borderRadius: 4 }
+                : { backgroundColor: colors.surface, borderColor: ink.fieldBorder, borderWidth: 1, borderRadius: 8 },
             ]}
           />
           {shownError !== undefined && (
@@ -115,14 +117,20 @@ export function NameDialog({
             <UIText
               variant="caption"
               accessibilityLiveRegion="polite"
-              style={[styles.error, { color: colors.destructive }]}
+              style={[styles.error, { color: ink.error }]}
             >
               {shownError}
             </UIText>
           )}
           <View style={[styles.buttons, !material && styles.iosButtons]}>
             <TextButton title="Cancel" onPress={onCancel} onFocus={followRing} />
-            <TextButton title={confirmLabel} disabled={name === undefined} onPress={submit} onFocus={followRing} />
+            <TextButton
+              title={confirmLabel}
+              bold={ink.confirmBold}
+              disabled={name === undefined}
+              onPress={submit}
+              onFocus={followRing}
+            />
           </View>
         </View>
       </View>

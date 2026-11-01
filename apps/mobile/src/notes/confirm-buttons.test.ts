@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 
 import { colorSets, type ColorSetName, m3Roles } from '../design/colors.ts';
 import { contrast } from '../design/contrast.ts';
-import { confirmButtons, dialogSurface } from './confirm-buttons.ts';
+import { confirmButtons, dialogSurface, nameDialogInk } from './confirm-buttons.ts';
 import { sheetItemInk, sheetSurface } from './sheet-colors.ts';
 
 describe('confirmButtons', () => {
@@ -66,6 +66,12 @@ describe('destructive labels read at 4.5:1 on their own surface', () => {
       assert.ok(contrast(color, surface) >= 4.5, `${color} on ${surface}: ${contrast(color, surface).toFixed(2)}`);
     });
 
+    test(`${t.name}: the name dialog's inline error`, () => {
+      const surface = dialogSurface(t.look, t.dark, t.colors, t.m3);
+      const { error } = nameDialogInk(t.look, true, t.colors, t.m3);
+      assert.ok(contrast(error, surface) >= 4.5, `${error} on ${surface}: ${contrast(error, surface).toFixed(2)}`);
+    });
+
     // Delete Workspace… and the Notes ⋮ menu's Delete: an anchored menu on
     // the Material look, a sheet otherwise.
     for (const menu of [true, false]) {
@@ -76,6 +82,31 @@ describe('destructive labels read at 4.5:1 on their own surface', () => {
       });
     }
   }
+
+  // The iOS-look field is the paper on the raised paper (about 1:1); its
+  // border is what shows where it is.
+  for (const name of Object.keys(colorSets) as ColorSetName[]) {
+    test(`iOS ${name}: the name dialog's field border reads at 3:1`, () => {
+      const colors = colorSets[name];
+      const m3 = m3Roles[name === 'dark' ? 'dark' : 'light'];
+      const surface = dialogSurface('ios', name === 'dark', colors, m3);
+      const { fieldBorder } = nameDialogInk('ios', false, colors, m3);
+      assert.ok(
+        contrast(fieldBorder, surface) >= 3,
+        `${fieldBorder} on ${surface}: ${contrast(fieldBorder, surface).toFixed(2)}`,
+      );
+    });
+  }
+
+  test('nameDialogInk: iOS look bolds the confirm action; Material bolds neither', () => {
+    assert.equal(nameDialogInk('ios', false, colorSets.light, m3Roles.light).confirmBold, true);
+    assert.equal(nameDialogInk('material', false, colorSets.light, m3Roles.light).confirmBold, false);
+  });
+
+  test('nameDialogInk: Material field border is primary, error while refused', () => {
+    assert.equal(nameDialogInk('material', false, colorSets.light, m3Roles.light).fieldBorder, m3Roles.light.primary);
+    assert.equal(nameDialogInk('material', true, colorSets.light, m3Roles.light).fieldBorder, colorSets.light.destructive);
+  });
 
   test('the Material light dialog is the raised paper', () => {
     assert.equal(dialogSurface('material', false, colorSets.light, m3Roles.light), '#FFFCF5');
