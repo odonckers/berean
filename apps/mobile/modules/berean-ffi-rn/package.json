@@ -14,8 +14,8 @@
     "directory": "apps/mobile/modules/berean-ffi-rn"
   },
   "scripts": {
-    "ubrn:android": "ubrn build android --config ubrn.config.yaml --and-generate --release",
-    "ubrn:generate": "ubrn build android --config ubrn.config.yaml --and-generate --release --no-cargo",
+    "ubrn:android": "ubrn build android --config ubrn.config.yaml --and-generate --release && touch android/proguard-rules.pro",
+    "ubrn:generate": "ubrn build android --config ubrn.config.yaml --and-generate --release --no-cargo && touch android/proguard-rules.pro",
     "ubrn:ios": "ubrn build ios --config ubrn.config.yaml --and-generate --release",
     "ubrn:clean": "rm -rf android ios cpp build src/generated src/index.tsx src/Native*.ts *.podspec"
   },
