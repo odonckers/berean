@@ -3,7 +3,9 @@
 // canvas and back, fit-all, restoring a saved camera, the double-tap
 // toggle, pinch detents, zoom steps and pan inertia. Pure and free of React
 // Native so `node --test` can run it; every function is a worklet so the
-// canvas's gestures call it on the UI thread.
+// canvas's gestures call it on the UI thread, and none reads a module
+// constant in a default parameter, which the worklets plugin doesn't
+// capture (worklets.test.ts checks both).
 //
 // A camera is the core's Viewport: x, y is the canvas point at the CENTRE
 // of the view, zoom 1 is 100%. Frames are canvas points at zoom 1, x, y
@@ -83,10 +85,13 @@ export function lerpZoom(a: number, b: number, t: number): number {
 
 /**
  * The shown overshoot, in octaves, for a finger overshoot of `x` octaves:
- * (1 − 1 / (x · 0.55 / d + 1)) · d. It never reaches d.
+ * (1 − 1 / (x · 0.55 / d + 1)) · d, d = RUBBER_BAND_OCTAVES. It never reaches d.
  */
-export function rubberBandOvershoot(x: number, d: number = RUBBER_BAND_OCTAVES): number {
+export function rubberBandOvershoot(x: number): number {
   'worklet';
+  // Read in the body, not as a default parameter: the worklets plugin
+  // captures only what a worklet's body reads (worklets.test.ts).
+  const d = RUBBER_BAND_OCTAVES;
   return (1 - 1 / ((x * RUBBER_BAND_STIFFNESS) / d + 1)) * d;
 }
 
@@ -226,9 +231,9 @@ export function restoreCamera(
 }
 
 /** Whether `zoom` is within the detent window of `detent`. */
-export function nearZoom(zoom: number, detent: number, window: number = DETENT_WINDOW): boolean {
+export function nearZoom(zoom: number, detent: number): boolean {
   'worklet';
-  return Math.abs(Math.log(zoom / detent)) <= window;
+  return Math.abs(Math.log(zoom / detent)) <= DETENT_WINDOW;
 }
 
 /**

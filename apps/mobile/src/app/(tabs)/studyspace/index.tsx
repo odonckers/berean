@@ -31,8 +31,6 @@ const SAVE_CAMERA_MS = 300;
 const SWITCH_FADE_MS = 150;
 const fadeIn = FadeIn.duration(SWITCH_FADE_MS).reduceMotion(ReduceMotion.Never);
 const fadeOut = FadeOut.duration(SWITCH_FADE_MS).reduceMotion(ReduceMotion.Never);
-// The M3 menu's width (action-sheet.tsx), so a dropdown under the title starts at its leading edge.
-const MENU_WIDTH = 224;
 
 type NameAsk = { kind: 'new' } | { kind: 'rename'; workspace: Workspace };
 
@@ -194,9 +192,8 @@ export default function StudyspaceScreen() {
         ]),
   ];
 
-  // Material opens an M3 menu under the title; the iOS look, a sheet.
-  const openMenu = (anchor: Anchor) =>
-    setMenu({ anchor: material ? { ...anchor, width: Math.max(anchor.width, MENU_WIDTH) } : undefined });
+  // Material opens an M3 dropdown under the title, at its start edge; the iOS look, a sheet.
+  const openMenu = (anchor: Anchor) => setMenu({ anchor: material ? anchor : undefined });
 
   const title =
     current === undefined ? undefined : (
@@ -267,6 +264,7 @@ export default function StudyspaceScreen() {
         title="Workspaces"
         items={menuItems}
         anchor={menu?.anchor}
+        anchorEdge="start"
         onClose={() => setMenu(undefined)}
       />
       {ask !== undefined && (

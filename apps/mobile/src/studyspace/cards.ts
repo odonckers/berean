@@ -59,3 +59,44 @@ export function cardLevel(widthOnScreen: number, fontScale: number): CardLevel {
 export function titleScale(zoom: number): number {
   return 1 / Math.min(zoom, 1);
 }
+
+/** §5 L2: a note's title wraps to 2 lines, then truncates. */
+const MAX_TITLE_LINES = 2;
+
+export type CardText = {
+  /** Glyph only, or title only at L2 and up in this slice. */
+  level: CardLevel;
+  /** Whole title lines that fit; 0 at L1. */
+  titleLines: number;
+  /** Whether the one-line "missing" caption fits under the title. */
+  caption: boolean;
+};
+
+/**
+ * What a card can draw without slicing text (§5). Its text is laid out at
+ * the card's frame / titleScale(zoom) and scaled back up, so in that layout
+ * a line is the reader's line height (at any zoom). Only whole lines are
+ * drawn, the last with an ellipsis; a card too short for one whole title
+ * line, or too narrow (cardLevel), drops to L1. `lineHeight` and
+ * `captionLineHeight` are already multiplied by the font scale.
+ */
+export function cardText(
+  frame: { width: number; height: number },
+  zoom: number,
+  fontScale: number,
+  text: { padding: number; gap: number; lineHeight: number; captionLineHeight: number },
+  missing: boolean,
+): CardText {
+  const widthLevel = cardLevel(frame.width * zoom, fontScale);
+  const room = frame.height / titleScale(zoom) - 2 * text.padding;
+  // A hair of slack, so a height that is exactly n lines isn't floored to n − 1.
+  const fits = (height: number) => Math.floor(height / text.lineHeight + 1e-6);
+  const titleLines = Math.min(MAX_TITLE_LINES, Math.max(0, fits(room)));
+  if (widthLevel === 1 || titleLines === 0) return { level: 1, titleLines: 0, caption: false };
+  if (!missing) return { level: widthLevel, titleLines, caption: false };
+  // The caption takes the last title line's room if it needs to; the title keeps at least one.
+  const withCaption = Math.min(titleLines, fits(room - text.gap - text.captionLineHeight));
+  return withCaption >= 1
+    ? { level: widthLevel, titleLines: withCaption, caption: true }
+    : { level: widthLevel, titleLines, caption: false };
+}

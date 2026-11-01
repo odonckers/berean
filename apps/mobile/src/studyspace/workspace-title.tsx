@@ -39,6 +39,10 @@ export function WorkspaceTitle({ name, detail, expanded, onPress }: WorkspaceTit
       style={({ pressed }) => [
         styles.button,
         { minHeight: material ? 48 : 44 },
+        // Android's native-stack puts a start-aligned title in a flex: 1
+        // column, which would stretch the button (its ripple and the menu's
+        // anchor) across the bar; it hugs the title instead.
+        material && styles.start,
         !material && { opacity: pressed ? 0.6 : 1 },
       ]}
     >
@@ -65,6 +69,7 @@ export function WorkspaceTitle({ name, detail, expanded, onPress }: WorkspaceTit
 
 const styles = StyleSheet.create({
   button: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingHorizontal: spacing.xs },
+  start: { alignSelf: 'flex-start' },
   text: { flexShrink: 1 },
   iosTitle: { fontSize: 17, lineHeight: 22, fontWeight: '600' },
 });

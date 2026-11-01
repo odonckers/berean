@@ -5,6 +5,7 @@ import {
   cardAccessibilityLabel,
   cardCount,
   cardLevel,
+  cardText,
   deleteWorkspacePrompt,
   pickWorkspace,
   titleScale,
@@ -64,5 +65,52 @@ describe('levels (§5)', () => {
     assert.equal(titleScale(0.1) * 0.1, 1);
     assert.equal(titleScale(1), 1);
     assert.equal(titleScale(3), 1);
+  });
+});
+
+describe('cardText (§5): only whole title lines', () => {
+  // The iOS look's body (22 pt lines), caption (18 pt), 12 pt padding, 4 pt gap.
+  const ios = { padding: 12, gap: 4, lineHeight: 22, captionLineHeight: 18 };
+  const card = { width: 260, height: 180 };
+
+  test('two lines at 100% and above, however far it zooms in', () => {
+    // Above 100% the text and the card grow together, so the lines that fit don't change.
+    assert.deepEqual(cardText(card, 1, 1, ios, false), { level: 3, titleLines: 2, caption: false });
+    for (const zoom of [2, 4, 8]) assert.deepEqual(cardText(card, zoom, 1, ios, false), { level: 4, titleLines: 2, caption: false });
+  });
+
+  test('lines follow the on-screen height below 100%', () => {
+    // 180 × 0.25 = 45 pt on screen, 21 after padding: not one 22 pt line.
+    assert.deepEqual(cardText(card, 0.25, 1, ios, false), { level: 1, titleLines: 0, caption: false });
+    // 180 × 0.3 = 54 pt, 30 after padding: one line, ellipsised.
+    assert.deepEqual(cardText(card, 0.3, 1, ios, false), { level: 2, titleLines: 1, caption: false });
+    // 180 × 0.4 = 72 pt, 48 after padding: two.
+    assert.equal(cardText(card, 0.4, 1, ios, false).titleLines, 2);
+  });
+
+  test('a height of exactly n lines fits n', () => {
+    assert.equal(cardText({ width: 200, height: 24 + 44 }, 1, 1, ios, false).titleLines, 2);
+    assert.equal(cardText({ width: 200, height: 24 + 43.9 }, 1, 1, ios, false).titleLines, 1);
+  });
+
+  test('narrow cards are L1 whatever their height', () => {
+    assert.equal(cardText({ width: 40, height: 400 }, 1, 1, ios, false).level, 1);
+  });
+
+  test('the font scale grows the lines it needs', () => {
+    // 60 pt after padding: two 22 pt lines, one 44 pt line, none of 66.
+    const tall = { width: 400, height: 84 };
+    assert.equal(cardText(tall, 1, 1, { ...ios, lineHeight: 22 }, false).titleLines, 2);
+    assert.equal(cardText(tall, 1, 2, { ...ios, lineHeight: 44 }, false).titleLines, 1);
+    assert.equal(cardText(tall, 1, 3, { ...ios, lineHeight: 66 }, false).level, 1);
+  });
+
+  test('the missing caption takes a title line, never the last one', () => {
+    // 60 after padding: 2 title lines, or 1 plus the caption's 4 + 18.
+    assert.deepEqual(cardText({ width: 300, height: 84 }, 1, 1, ios, true), { level: 3, titleLines: 1, caption: true });
+    // 30 after padding: one title line and no room for the caption.
+    assert.deepEqual(cardText({ width: 300, height: 54 }, 1, 1, ios, true), { level: 3, titleLines: 1, caption: false });
+    // 70 after padding: both title lines and the caption (44 + 4 + 18 = 66).
+    assert.deepEqual(cardText({ width: 300, height: 94 }, 1, 1, ios, true), { level: 3, titleLines: 2, caption: true });
   });
 });
