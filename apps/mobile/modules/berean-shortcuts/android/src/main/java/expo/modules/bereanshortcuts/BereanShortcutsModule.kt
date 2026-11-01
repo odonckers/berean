@@ -31,10 +31,11 @@ class BereanShortcutsModule : Module() {
       view.setOnKeyListener(null)
     }.runOnQueue(Queues.MAIN)
 
-    // The keyboard focus ring's color (#RRGGBB, the theme's accent) and width
-    // in dp. Kept, so a recreated activity's window gets the ring too.
-    AsyncFunction("setFocusRing") { color: String, widthDp: Double ->
-      focusRingStyle = Color.parseColor(color) to widthDp
+    // The keyboard focus ring's color (#RRGGBB, the theme's accent) and its
+    // width, corner radius and offset outside the view, in dp. Kept, so a
+    // recreated activity's window gets the ring too.
+    AsyncFunction("setFocusRing") { color: String, widthDp: Double, radiusDp: Double, offsetDp: Double ->
+      focusRingStyle = FocusRingStyle(Color.parseColor(color), widthDp, radiusDp, offsetDp)
       attachFocusRing()
       dialogRings.forEach { (root, ring) -> attachFocusRing(ring, root) }
     }.runOnQueue(Queues.MAIN)
@@ -52,7 +53,8 @@ class BereanShortcutsModule : Module() {
   }
 
   private val focusRing = KeyboardFocusRing()
-  private var focusRingStyle: Pair<Int, Double>? = null
+  private class FocusRingStyle(val color: Int, val widthDp: Double, val radiusDp: Double, val offsetDp: Double)
+  private var focusRingStyle: FocusRingStyle? = null
   // Rings for other windows (Modals), by root view, each dropped when its
   // root leaves the window.
   private val dialogRings = mutableMapOf<View, KeyboardFocusRing>()
@@ -63,9 +65,15 @@ class BereanShortcutsModule : Module() {
   }
 
   private fun attachFocusRing(ring: KeyboardFocusRing, root: View) {
-    val (color, widthDp) = focusRingStyle ?: return
-    val widthPx = (widthDp * root.resources.displayMetrics.density).roundToInt()
-    ring.attach(root, color, widthPx)
+    val style = focusRingStyle ?: return
+    val density = root.resources.displayMetrics.density
+    ring.attach(
+      root,
+      style.color,
+      (style.widthDp * density).roundToInt(),
+      (style.radiusDp * density).roundToInt(),
+      (style.offsetDp * density).roundToInt(),
+    )
   }
 
   private fun followFocusRingIn(root: View) {

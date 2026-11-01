@@ -16,7 +16,7 @@ function RootStack() {
   const barStyle = systemBarStyle(scheme);
   useNavigationBarStyle(barStyle);
   const ring = focusRing(colors.accent);
-  useKeyboardFocusRing(ring.color, ring.width);
+  useKeyboardFocusRing(ring.color, ring.width, ring.radius, ring.offset);
   return (
     // One search for every entry, so the query carries over between them.
     <SearchProvider>
@@ -28,7 +28,7 @@ function RootStack() {
         />
         <Stack.Screen
           name="note-editor"
-          options={{ presentation: 'modal', title: 'New Note', headerShown: true, gestureEnabled: false }}
+          options={{ presentation: 'modal', title: '', headerShown: true }}
         />
       </Stack>
       <SearchShortcut />

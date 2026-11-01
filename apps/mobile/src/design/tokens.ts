@@ -10,6 +10,8 @@ export type ColorSet = {
   textSecondary: string;
   accent: string;
   separator: string;
+  /** Borders controls such as segmented buttons; at least 3:1 on surface (guide, Lumen, #57). */
+  outline: string;
   /** A present link's underline (guide §7.1 Read). */
   linkUnderline: string;
   /** Destructive actions in the iOS look (Delete Folder…, Delete). */
@@ -30,6 +32,7 @@ export const colorSets: Record<ColorSetName, ColorSet> = {
     textSecondary: '#5C544A',
     accent: '#9B3F2A',
     separator: '#E6DCC2',
+    outline: '#8B8275',
     linkUnderline: '#C9A493',
     destructive: '#D70015',
     onAccent: '#FFFCF5',
@@ -41,6 +44,7 @@ export const colorSets: Record<ColorSetName, ColorSet> = {
     textSecondary: '#A39A8B',
     accent: '#E59A7C',
     separator: '#38312A',
+    outline: '#7A7165',
     linkUnderline: '#734F40',
     destructive: '#FF453A',
     onAccent: '#211D18',
@@ -56,6 +60,7 @@ export const colorSets: Record<ColorSetName, ColorSet> = {
     textSecondary: '#66523D',
     accent: '#8A3A22',
     separator: '#D8C39B',
+    outline: '#7E7466',
     linkUnderline: '#BD8E73',
     destructive: '#D70015',
     onAccent: '#F7EBD3',
@@ -67,6 +72,7 @@ export const colorSets: Record<ColorSetName, ColorSet> = {
     textSecondary: '#2E2821',
     accent: '#7A2E1C',
     separator: '#8B8275',
+    outline: '#5C544A',
     linkUnderline: '#7A2E1C',
     destructive: '#D70015',
     onAccent: '#FFFDF8',
@@ -169,7 +175,7 @@ export const m3Roles: Record<'light' | 'dark', M3Roles> = {
     surfaceContainerHighest: '#E9E0CC',
     onSurface: colorSets.light.text,
     onSurfaceVariant: colorSets.light.textSecondary,
-    outline: colorSets.light.separator,
+    outline: colorSets.light.outline,
     // Derived pending Lumen. Deliberately darker than the 'outline' separator so the
     // unselected filter-chip edge stays visible (M3 baseline outlineVariant is ~1.6:1
     // against surface).
@@ -189,7 +195,7 @@ export const m3Roles: Record<'light' | 'dark', M3Roles> = {
     surfaceContainerHighest: '#312B25',
     onSurface: colorSets.dark.text,
     onSurfaceVariant: colorSets.dark.textSecondary,
-    outline: colorSets.dark.separator,
+    outline: colorSets.dark.outline,
     // Derived pending Lumen. Deliberately darker than the 'outline' separator so the
     // unselected filter-chip edge stays visible (M3 baseline outlineVariant is ~1.6:1
     // against surface).

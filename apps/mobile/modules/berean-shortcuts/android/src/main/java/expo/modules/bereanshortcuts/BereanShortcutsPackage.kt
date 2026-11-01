@@ -12,18 +12,27 @@ class BereanShortcutsPackage : Package {
     listOf(
       object : ReactActivityHandler {
         override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-          if (keyCode != KeyEvent.KEYCODE_K || event == null || !isCtrlOrMetaOnly(event)) {
+          val key = shortcutKeys[keyCode]
+          if (key == null || event == null || !isCtrlOrMetaOnly(event)) {
             return false
           }
           val module = BereanShortcutsModule.current.get() ?: return false
-          module.emitShortcut("k")
+          module.emitShortcut(key)
           return true
         }
       }
     )
 
+  // K opens search; 1 and 2 switch the note editor to Write and Read.
+  private val shortcutKeys =
+    mapOf(
+      KeyEvent.KEYCODE_K to "k",
+      KeyEvent.KEYCODE_1 to "1",
+      KeyEvent.KEYCODE_2 to "2"
+    )
+
   // metaStateHasModifiers folds left/right variants and ignores lock keys, so
-  // this is true only for Ctrl+K or Meta+K with nothing else held.
+  // this is true only for Ctrl or Meta with the key and nothing else held.
   private fun isCtrlOrMetaOnly(event: KeyEvent): Boolean =
     KeyEvent.metaStateHasModifiers(event.metaState, KeyEvent.META_CTRL_ON) ||
       KeyEvent.metaStateHasModifiers(event.metaState, KeyEvent.META_META_ON)

@@ -28,10 +28,7 @@ export default function NotesLayout() {
             stack options hide it (iOS look on Android). */}
         <Stack.Screen name="list" options={{ title: '', headerShown: true, ...back }} />
         <Stack.Screen name="note" options={{ title: '', headerShown: true, headerLargeTitleEnabled: false, ...back }} />
-        <Stack.Screen
-          name="edit"
-          options={{ title: 'Edit Note', headerShown: true, headerLargeTitleEnabled: false, gestureEnabled: false }}
-        />
+        <Stack.Screen name="edit" options={{ title: '', headerShown: true, headerLargeTitleEnabled: false, ...back }} />
       </Stack>
     </UndoProvider>
   );

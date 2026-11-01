@@ -23,7 +23,7 @@ export function openNote(id: string) {
   );
 }
 
-/** The editor; `fresh` for a note just made, which Cancel removes again. */
+/** The editor, in Write; `fresh` for a note just made, removed again if left empty. */
 export function openEditor(id: string, fresh = false) {
   router.push({ pathname: '/notes/edit', params: fresh ? { id, fresh: '1' } : { id } });
 }
@@ -34,7 +34,7 @@ export function bigintParam(value: string | undefined): bigint | undefined {
   return BigInt(value);
 }
 
-/** The editor over the tabs, for a note just made at a verse: Save and Cancel return to the reader. */
+/** The editor over the tabs, for a note just made at a verse: leaving returns to the reader. */
 export function openVerseEditor(id: string) {
   router.push({ pathname: '/note-editor', params: { id, fresh: '1', stay: '1' } });
 }

@@ -26,7 +26,7 @@ import { useSearch } from '@/search/search-context';
 // and the keyboard, padded so the last row scrolls clear of both (see
 // keyboardBottom for how the two combine on each platform).
 export function MaterialSearchView() {
-  const { m3, spacing } = useBerean();
+  const { colors, m3, spacing } = useBerean();
   const insets = useSafeAreaInsets();
   const keyboardHeight = useKeyboardHeight();
   const { text, setText, total } = useSearch();
@@ -53,7 +53,7 @@ export function MaterialSearchView() {
           accessibilityRole="button"
           accessibilityLabel="Back"
           onPress={() => router.back()}
-          android_ripple={{ color: m3.outline, borderless: true }}
+          android_ripple={{ color: colors.separator, borderless: true }}
           style={styles.iconButton}
         >
           <ScaledSymbol
@@ -73,7 +73,7 @@ export function MaterialSearchView() {
             accessibilityRole="button"
             accessibilityLabel="Clear search"
             onPress={clear}
-            android_ripple={{ color: m3.outline, borderless: true }}
+            android_ripple={{ color: colors.separator, borderless: true }}
             style={styles.iconButton}
           >
             <ScaledSymbol
