@@ -21,6 +21,7 @@ import { systemBarStyle, useBerean } from '@/design/theme';
 import { hairline, radii, spacing } from '@/design/tokens';
 import type { Anchor, SymbolName } from '@/notes/list-rows';
 import { type MenuEdge, menuPlacement } from '@/notes/menu-placement';
+import { sheetItemInk, sheetSurface } from '@/notes/sheet-colors';
 import { moveAccessibilityFocus } from '@/reader/study-pane';
 import { followFocusRingIn } from '../../modules/berean-shortcuts';
 import { ModalNavigationBarStyle } from '../../modules/berean-system-bars';
@@ -110,18 +111,7 @@ export function ActionSheet({ visible, title, items, anchor, anchorEdge = 'end',
     ) : null;
 
   const row = (item: SheetItem, index: number, menu: boolean) => {
-    // Material marks a destructive sheet item with primary and a
-    // destructive menu item (label and icon) with error; the iOS look draws
-    // destructive items in the destructive red, as iOS does.
-    const ink = material
-      ? item.destructive
-        ? menu
-          ? m3.error
-          : m3.primary
-        : m3.onSurface
-      : item.destructive
-        ? colors.destructive
-        : colors.accent;
+    const ink = sheetItemInk(look, item.destructive === true, menu, colors, m3);
     const iconInk = material && item.destructive && menu ? m3.error : m3.onSurfaceVariant;
     return (
       <Pressable
@@ -179,7 +169,7 @@ export function ActionSheet({ visible, title, items, anchor, anchorEdge = 'end',
           accessibilityViewIsModal
           accessibilityRole="menu"
           accessibilityLabel={title}
-          style={[styles.menu, { top, ...across, backgroundColor: m3.surfaceContainer }]}
+          style={[styles.menu, { top, ...across, backgroundColor: sheetSurface(look, colors, m3) }]}
         >
           {items.map((item, i) => row(item, i, true))}
         </View>
@@ -204,7 +194,7 @@ export function ActionSheet({ visible, title, items, anchor, anchorEdge = 'end',
             styles.sheet,
             {
               maxHeight: window.height * 0.8,
-              backgroundColor: material ? m3.surfaceContainer : colors.surfaceRaised,
+              backgroundColor: sheetSurface(look, colors, m3),
               borderTopLeftRadius: material ? radii.sheet : radii.studyPane,
               borderTopRightRadius: material ? radii.sheet : radii.studyPane,
               paddingBottom: insets.bottom + spacing.lg,

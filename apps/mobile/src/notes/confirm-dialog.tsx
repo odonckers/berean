@@ -4,7 +4,7 @@ import { UIText } from '@/components/text';
 import { TextButton } from '@/components/text-button';
 import { systemBarStyle, useBerean } from '@/design/theme';
 import { radii, spacing } from '@/design/tokens';
-import { confirmButtons } from '@/notes/confirm-buttons';
+import { confirmButtons, dialogSurface } from '@/notes/confirm-buttons';
 import { followFocusRingIn } from '../../modules/berean-shortcuts';
 import { ModalNavigationBarStyle } from '../../modules/berean-system-bars';
 
@@ -42,9 +42,8 @@ export function ConfirmDialog({ title, message, confirmLabel, onConfirm, onCance
           accessibilityViewIsModal
           style={[
             styles.card,
-            material
-              ? { backgroundColor: m3.surfaceContainerHigh, borderRadius: radii.sheet, padding: spacing.xl }
-              : { backgroundColor: colors.surfaceRaised, borderRadius: 14, padding: spacing.lg },
+            { backgroundColor: dialogSurface(look, scheme === 'dark', colors, m3) },
+            material ? { borderRadius: radii.sheet, padding: spacing.xl } : { borderRadius: 14, padding: spacing.lg },
           ]}
         >
           <UIText

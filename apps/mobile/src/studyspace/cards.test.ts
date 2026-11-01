@@ -7,6 +7,7 @@ import {
   cardAccessibilityLabel,
   cardCount,
   cardEdge,
+  cardFill,
   cardLevel,
   cardText,
   deleteWorkspacePrompt,
@@ -129,7 +130,6 @@ const looks = [
     colors: colorSets[name],
     m3: m3Roles[name === 'dark' ? 'dark' : 'light'],
     outline: colorSets[name].outline,
-    subtle: colorSets[name].separator,
     surface: colorSets[name].surface,
   })),
   ...(['light', 'dark'] as const).map((mode) => ({
@@ -139,27 +139,25 @@ const looks = [
     colors: colorSets[mode],
     m3: m3Roles[mode],
     outline: m3Roles[mode].outline,
-    subtle: m3Roles[mode].outlineVariant,
     surface: m3Roles[mode].surface,
   })),
 ];
 
 describe('card edges against the canvas (WCAG 1.4.11)', () => {
   for (const s of looks) {
-    test(s.name, () => {
-      const edge = cardEdge(s.dark, s.outline, s.subtle);
+    test(`${s.name}: the outline clears 3:1, light adds the shadow`, () => {
+      const edge = cardEdge(s.dark, s.outline);
       assert.notEqual(s.colors.canvas.toUpperCase(), s.surface.toUpperCase());
-      if (s.dark) {
-        assert.equal(edge.border, s.outline);
-        assert.equal(edge.shadow, undefined);
-        assert.ok(contrast(edge.border, s.colors.canvas) >= 3, `${edge.border} on ${s.colors.canvas}`);
-      } else {
-        // The light edge is the subtle border plus the shadow, not a 3:1 line.
-        assert.equal(edge.border, s.subtle);
-        assert.equal(edge.shadow, LIGHT_CARD_SHADOW);
-      }
+      assert.equal(edge.border, s.outline);
+      assert.equal(edge.shadow, s.dark ? undefined : LIGHT_CARD_SHADOW);
+      assert.ok(contrast(edge.border, s.colors.canvas) >= 3, `${edge.border} on ${s.colors.canvas}`);
     });
   }
+
+  test('the Material light card is the raised paper; dark keeps surfaceContainerLow', () => {
+    assert.equal(cardFill('material', false, colorSets.light, m3Roles.light), '#FFFCF5');
+    assert.equal(cardFill('material', true, colorSets.dark, m3Roles.dark), m3Roles.dark.surfaceContainerLow);
+  });
 });
 
 describe('L1 blocks (§5)', () => {

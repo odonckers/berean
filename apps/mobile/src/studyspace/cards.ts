@@ -10,19 +10,31 @@ export type CardKind = 'note' | 'passage' | 'publication';
 export const LIGHT_CARD_SHADOW = '0 1px 2px rgba(42,37,32,0.06), 0 4px 10px -2px rgba(42,37,32,0.08)';
 
 /**
- * A card's edge against the canvas (WCAG 1.4.11, 3:1). Dark: the theme's
- * outline, which clears 3:1 on the dark canvas. Light: the subtle border
- * (separator / outlineVariant) with the guide's soft shadow, which carries
- * the edge instead.
+ * A card's edge against the canvas (WCAG 1.4.11, 3:1): the theme's outline,
+ * which clears 3:1 on every canvas. Light canvases add the guide's soft
+ * shadow on top; dark has none.
  */
-export function cardEdge(dark: boolean, outline: string, subtle: string): { border: string; shadow: string | undefined } {
-  return dark ? { border: outline, shadow: undefined } : { border: subtle, shadow: LIGHT_CARD_SHADOW };
+export function cardEdge(dark: boolean, outline: string): { border: string; shadow: string | undefined } {
+  return { border: outline, shadow: dark ? undefined : LIGHT_CARD_SHADOW };
+}
+
+/**
+ * A card's fill: the raised paper (#FFFCF5 in light), and on the Material
+ * look in dark, surfaceContainerLow.
+ */
+export function cardFill(
+  look: 'ios' | 'material',
+  dark: boolean,
+  colors: Pick<ColorSet, 'surfaceRaised'>,
+  m3: Pick<M3Roles, 'surfaceContainerLow'>,
+): string {
+  return look === 'material' && dark ? m3.surfaceContainerLow : colors.surfaceRaised;
 }
 
 /**
  * L1's solid block (§5): its fill by kind, and the glyph's ink on it. Notes
  * are the accent / primary; passages and publications are the secondary
- * text colour with the raised paper / surface as ink (derived, pending Lumen).
+ * text colour with the raised paper / surface as ink.
  */
 export function kindFill(
   kind: CardKind,

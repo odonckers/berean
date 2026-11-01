@@ -5,7 +5,7 @@ import { useBerean } from '@/design/theme';
 import { radii, spacing } from '@/design/tokens';
 import type { SymbolName } from '@/notes/list-rows';
 import type { Point } from '@/studyspace/camera';
-import { cardEdge, cardText, kindFill, titleScale, type CardKind } from '@/studyspace/cards';
+import { cardEdge, cardFill, cardText, kindFill, titleScale, type CardKind } from '@/studyspace/cards';
 import type { CardView } from '@/studyspace/data';
 
 const GLYPHS: Record<CardKind, SymbolName> = {
@@ -62,11 +62,7 @@ export function StudyCard({ card, zoom, fontScale, origin }: StudyCardProps) {
   );
   const ink = material ? m3.onSurface : colors.text;
   const secondary = material ? m3.onSurfaceVariant : colors.textSecondary;
-  const edge = cardEdge(
-    scheme === 'dark',
-    material ? m3.outline : colors.outline,
-    material ? m3.outlineVariant : colors.separator,
-  );
+  const edge = cardEdge(scheme === 'dark', material ? m3.outline : colors.outline);
   // L1 is a solid block in its kind's colour with the glyph on it.
   const block = level === 1 ? kindFill(card.kind, look, colors, m3) : undefined;
 
@@ -86,7 +82,7 @@ export function StudyCard({ card, zoom, fontScale, origin }: StudyCardProps) {
           top: frame.y - origin.y,
           width: frame.width,
           height: frame.height,
-          backgroundColor: block?.fill ?? (material ? m3.surfaceContainerLow : colors.surfaceRaised),
+          backgroundColor: block?.fill ?? cardFill(look, scheme === 'dark', colors, m3),
           // 1 pt on screen once the camera settles. The L1 block needs no
           // edge beyond its fill, except a missing card's dashes.
           borderColor: block === undefined ? edge.border : block.ink,

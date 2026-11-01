@@ -23,3 +23,17 @@ export function confirmButtons(
     { role: 'confirm', label: confirmLabel, color: material ? m3.error : colors.destructive, bold: false },
   ];
 }
+
+/**
+ * The dialog's surface. iOS look: the raised paper. Material: the raised
+ * paper in light, so error clears 4.5:1 on it (it is 4.3:1 on
+ * surfaceContainerHigh); surfaceContainerHigh in dark.
+ */
+export function dialogSurface(
+  look: 'ios' | 'material',
+  dark: boolean,
+  colors: Pick<ColorSet, 'surfaceRaised'>,
+  m3: Pick<M3Roles, 'surfaceContainerHigh'>,
+): string {
+  return look === 'material' && dark ? m3.surfaceContainerHigh : colors.surfaceRaised;
+}

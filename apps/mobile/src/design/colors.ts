@@ -53,7 +53,7 @@ export const colorSets: Record<ColorSetName, ColorSet> = {
     linkUnderline: '#734F40',
     destructive: '#FF453A',
     onAccent: '#211D18',
-    // Derived, pending Lumen: tokens.json surfaceContainerLowest, one step
+    // Derived: tokens.json surfaceContainerLowest, one step
     // below the surface; the dots a quiet warm step above it.
     canvas: '#0F0D0A',
     canvasDot: '#2E2822',
@@ -73,7 +73,7 @@ export const colorSets: Record<ColorSetName, ColorSet> = {
     linkUnderline: '#BD8E73',
     destructive: '#BE222A',
     onAccent: '#F7EBD3',
-    // Derived, pending Lumen: light's canvas and dot steps off sepia's surface.
+    // Derived: light's canvas and dot steps off sepia's surface.
     canvas: '#EADAB9',
     canvasDot: '#CDB78C',
   },
@@ -88,7 +88,7 @@ export const colorSets: Record<ColorSetName, ColorSet> = {
     linkUnderline: '#7A2E1C',
     destructive: '#A1000D',
     onAccent: '#FFFDF8',
-    // Derived, pending Lumen: light's canvas, with stronger dots.
+    // Derived: light's canvas, with stronger dots.
     canvas: '#F5EFE0',
     canvasDot: '#C4B694',
   },
