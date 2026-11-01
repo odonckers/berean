@@ -30,7 +30,11 @@ targets:
     type: application
     platform: macOS
     sources:
-      - Apps/Shared
+      # BereanApp.swift is the iOS @main; the Mac app has its own in Apps/macOS.
+      - path: Apps/Shared
+        excludes:
+          - BereanApp.swift
+      - path: Apps/macOS
     dependencies:
       - package: Cupertino
         product: CupertinoCore
@@ -38,8 +42,36 @@ targets:
         product: CupertinoUI
     settings:
       base:
+        SWIFT_VERSION: "6.0"
+        MACOSX_DEPLOYMENT_TARGET: "26.0"
+        PRODUCT_NAME: Berean
         GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Berean
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.reference
         PRODUCT_BUNDLE_IDENTIFIER: com.odonckers.berean.mac
+        # Ad-hoc signed, no sandbox and no entitlements in this pass.
+        CODE_SIGN_IDENTITY: "-"
+        ENABLE_HARDENED_RUNTIME: NO
+
+  BereanTests-macOS:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Tests/macOS
+    dependencies:
+      - target: Berean-macOS
+      - package: Cupertino
+        product: CupertinoCore
+      - package: Cupertino
+        product: CupertinoUI
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: YES
+        # Spelled out because PRODUCT_NAME (Berean) differs from the host
+        # target's name, which is what XcodeGen's default would use.
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Berean.app/Contents/MacOS/Berean"
+        BUNDLE_LOADER: "$(TEST_HOST)"
 
 # Explicit shared schemes so `xcodebuild -scheme <name>` works on a freshly
 # generated project (before it is ever opened in Xcode).
@@ -52,3 +84,7 @@ schemes:
     build:
       targets:
         Berean-macOS: all
+        BereanTests-macOS: [test]
+    test:
+      targets:
+        - BereanTests-macOS
