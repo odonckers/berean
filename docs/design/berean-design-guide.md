@@ -24,6 +24,25 @@ Built with Kerning & Co. (Iris, Nova, Hinge, Pebble).
 6. **Adaptation and accessibility:** a matrix across iPhone, iPad, Mac, Android phone, Android tablet, and foldable, plus Dynamic Type, Reduce Transparency, Increase Contrast, VoiceOver and TalkBack, keyboard, and Reduce Motion. The matrix includes a Notes row.
 7. **Notes:**
    - 7.1, the list and editor: notes are Markdown, organized in nested folders, with tags from inline #tags or the note's info. On Mac and iPad, there's a sidebar folder tree with All Notes, Recents and Tags, and tag search tokens; drag a note onto a folder to move it. iPhone and Android phone drill in from a Folders list, with filter chips (M3 filter chips on Android). Android tablet has a navigation rail plus a drawer. The column widths are three at 1000 pt and wider and two at 640 to 999 pt. The editor has a Read view (fully rendered) and a Write view (styled live, with syntax dimmed but visible), a formatting bar, and ⌘1 and ⌘2 (Ctrl+1 and Ctrl+2 on Android) to switch views. Notes save as you type, with no Save or Cancel, and a new note left empty is discarded. A note opens in Read from a list and in Write when it's new or its body is empty. The title is a plain-text field above the body. A note started from a verse has Done on iOS and a close X on Material, with Write | Read in the title slot. The formatting bar (heading, bold, italic, list, checklist, quote, link, tag) hides with the keyboard on phones and docks with a hardware keyboard. Passage and publication links are typed or picked through Omnisearch and stored as standard Markdown links. A Markdown source sample sits next to its rendered view. Folder actions with an undo: deleting a folder unfiles its notes (they stay in All Notes, just no longer in that folder) and shows an Undo snackbar or toast. Notes don't go to Recently Deleted in this pass; Recently Deleted is deferred to its own Holding row (#31). Download-row states.
+   - **Keyboard shortcuts (macOS and iPadOS).** ⌘ on Apple, Ctrl on Android. Same list as the HTML guide.
+
+     | Key | Action |
+     | --- | --- |
+     | ⌘ 1 | Read · Write mode in the note editor · first tab when the study pane has focus |
+     | ⌘ 2 | Studyspace · Read mode in the note editor · second tab when the study pane has focus |
+     | ⌘ 3 | Notes · third pane tab when the pane has focus |
+     | ⌘ 4 | Library · fourth pane tab when the pane has focus |
+     | ⌘ [ | Back |
+     | ⌘ ] | Forward |
+     | ⌘ N | New Note |
+     | ⌥⌘ N | New Window (Mac) |
+     | ⌘ \ | Dock or undock the study pane |
+     | ⌘ K | Search palette (same search as the field) |
+     | ⌘ + | Zoom in · larger reader text |
+     | ⌘ − | Zoom out · smaller reader text |
+     | ⌘ , | Settings |
+
+     Holding ⌘ on iPad shows them in the system shortcut overlay. Tab and arrow keys move between verse numbers; Space opens the pane. Focus decides ⌘1–⌘4: the note editor and the study pane take them while focused, and the menu items retitle to match. ⌘⇧[ / ⌘⇧] stay previous and next card in Studyspace.
    - 7.2, notes in the reader: margin markers where there's room. Below about 400 pt, a count badge sits on the verse number, and markers on one line merge. Tapping the verse number opens the last-used tab. Tapping a margin marker opens My notes. VoiceOver and TalkBack read "Verse 4, 2 notes", with Study and Show notes actions. It uses custom shared marker glyphs. Underlines are only for links; highlights use a fill and a spoken color name. Exception: Pencil underline annotations on reader cards (Studyspace) draw as a thick coloured stroke in the highlight colour, at least 3 pt and set below the baseline. That's clearly heavier than the 1 pt link underline in body ink, and it's never tappable.
    - 7.3, Studyspace notes: opening a note in Studyspace from the reader, Show in reader, and an arrival highlight.
    - The 640 and 1000 pt column widths are placeholders.
