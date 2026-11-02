@@ -45,6 +45,11 @@ export type CardReader = {
   saved: { at: Location; charOffset: number } | undefined;
   /** Names the text the card reads (its chapter or document), so it is read once per card. */
   textKey: string;
+  /**
+   * The text and the saved place in it: a new one when the place was saved
+   * elsewhere (the full-screen reader), so the card reads it again there.
+   */
+  readKey: string;
 };
 
 export type CardView = {
@@ -169,7 +174,8 @@ function readerOf(card: CardReader['card'], item: CanvasItem): CardReader {
     card.kind === 'passage'
       ? `${card.span.start.pubKey}:${saved?.at.book ?? card.span.start.book}:${saved?.at.chapter ?? card.span.start.chapter}`
       : `${card.location.pubKey}:${saved?.at.docId ?? card.location.docId ?? 'toc'}`;
-  return { card, saved, textKey };
+  const place = saved === undefined ? '' : `${saved.at.verse ?? ''}:${saved.at.paragraph ?? ''}:${saved.charOffset}`;
+  return { card, saved, textKey, readKey: `${textKey}|${place}` };
 }
 
 /** A reader card's live text: its rows, what they are (for saving), and the anchor to start at. */

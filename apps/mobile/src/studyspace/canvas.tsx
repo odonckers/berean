@@ -26,6 +26,7 @@ import { useWindowClass } from '@/design/use-window-class';
 import {
   ANDROID_DECAY,
   type Camera,
+  type DeviceClass,
   IOS_DECAY,
   type Point,
   type Rect,
@@ -57,8 +58,10 @@ import { StudyCard } from '@/studyspace/card';
 import type { CardView } from '@/studyspace/data';
 import { dotGridBackground } from '@/studyspace/dot-grid';
 import { type CardAction, type Guide, guideOnScreen, resizeBy } from '@/studyspace/edit';
+import { canvasMoved, enterFocus, type Focus, leaveFocus } from '@/studyspace/focus';
 import { resizeHaptic } from '@/studyspace/haptics';
 import { focusCamera, LANDING_MARGIN } from '@/studyspace/landing';
+import { tapAction } from '@/studyspace/open';
 
 /** An automatic camera move: zoom in log space, about `focal` if there is one. */
 type Flight = { from: Camera; to: Camera; focal?: Point };
@@ -104,16 +107,25 @@ type CanvasProps = {
   /** The workspace's saved camera; none the first time (it opens at fit-all). */
   saved: Camera | undefined;
   limits: ZoomLimits;
+  /** A phone opens a tapped card full screen; a tablet focuses a reader card in place (§8). */
+  device: DeviceClass;
   selected: bigint | undefined;
   /** The card just added, while its landing highlight shows. */
   highlighted: bigint | undefined;
   /** The camera once a gesture or its animation has come to rest; never per frame. */
   onSettle: (camera: Camera) => void;
   onLiftCard: (id: bigint) => void;
+  /** A tap on a card (or a reader card's Read) on a tablet: bring it to the front. */
   onTapCard: (id: bigint) => void;
+  /** A tap on a card (or a reader card's Read) on a phone: open it full screen. */
+  onOpenCard: (card: CardView) => void;
+  /** A reader card was focused (§6.1); `verse` is a passage's verse now, for the announcement. */
+  onFocusCard: (card: CardView, verse: number | undefined) => void;
+  /** The focused card was left. */
+  onLeaveCard: (card: CardView) => void;
   /**
    * A reader card became the one being read (§6.6): `focused` when a tap
-   * zoomed the camera to it, else its text began to scroll.
+   * focused it, else its text began to scroll.
    */
   onReadCard: (id: bigint, focused: boolean) => void;
   /** A card's move or resize ended at `frame`. */
@@ -127,8 +139,10 @@ type CanvasProps = {
  * the fingers, rubber-banding past the zoom limits and springing back;
  * double tap on empty canvas toggles 100% at the tap and fit-all; a tap
  * there clears the selection. A live reader card's text scrolls under one
- * finger instead of the pan (§6.1), and a tap on a smaller reader card
- * zooms to it; pinch always moves the canvas. Cards lift on a long press and move
+ * finger instead of the pan (§6.1). On a tablet a tap on a reader card
+ * focuses it (the focus zoom; Done, a tap on empty canvas or on another
+ * card leaves, back to the view before if the canvas didn't move); on a
+ * phone a tap opens a card full screen (§8). Pinch always moves the canvas. Cards lift on a long press and move
  * (StudyCard); the selected one resizes by the handle in the selection
  * overlay, drawn in screen points above the content layer. All of it runs
  * on the UI thread on one translated and scaled content layer (and the
@@ -137,8 +151,8 @@ type CanvasProps = {
  * saved camera is read once, at the first layout.
  */
 export function Canvas(props: CanvasProps) {
-  const { ref, cards, saved, limits, selected, highlighted, onSettle, onTapEmpty } = props;
-  const { onLiftCard, onTapCard, onReadCard, onCommitCard, onCardAction } = props;
+  const { ref, cards, saved, limits, device, selected, highlighted, onSettle, onTapEmpty } = props;
+  const { onLiftCard, onTapCard, onOpenCard, onFocusCard, onLeaveCard, onReadCard, onCommitCard, onCardAction } = props;
   const { look, colors, m3 } = useBerean();
   const reducedMotion = useReducedMotion();
   const { fontScale } = useWindowDimensions();
@@ -198,6 +212,24 @@ export function Canvas(props: CanvasProps) {
   const pinchMax = useSharedValue(limits.max);
   const focalX = useSharedValue(0);
   const focalY = useSharedValue(0);
+
+  // The focused reader card (§6.1), for this session only. The gestures
+  // tell JS of a pan or zoom only while a card is focused and not yet moved.
+  const [focus, setFocus] = useState<Focus>(null);
+  const watching = useSharedValue(false);
+  useEffect(() => {
+    watching.set(focus !== null && !focus.moved);
+  }, [focus, watching]);
+  const userMoved = () => setFocus(canvasMoved);
+  // The card a Done left, until its view gets the screen reader's focus back.
+  const refocus = useRef<bigint>(undefined);
+  useEffect(() => {
+    const id = refocus.current;
+    if (id === undefined) return;
+    refocus.current = undefined;
+    const node = cardViews.current.get(id);
+    if (node !== undefined) AccessibilityInfo.sendAccessibilityEvent(node, 'focus');
+  });
 
   useEffect(() => {
     hitFrames.set(frames);
@@ -263,6 +295,14 @@ export function Canvas(props: CanvasProps) {
       cancelAnimation(cx);
       cancelAnimation(cy);
     }
+  };
+
+  /** A pan, pinch or double tap moved the canvas: leaving focus keeps the view (§6.1). Automatic moves don't count. */
+  const userMove = () => {
+    'worklet';
+    if (!watching.get()) return;
+    watching.set(false);
+    scheduleOnRN(userMoved);
   };
 
   /** Tell JS where the camera came to rest, once nothing moves it. */
@@ -338,6 +378,7 @@ export function Canvas(props: CanvasProps) {
       'worklet';
       panning.set(true);
       moved.set(true);
+      userMove();
     },
     onUpdate: (e) => {
       'worklet';
@@ -366,6 +407,7 @@ export function Canvas(props: CanvasProps) {
       halt();
       pinching.set(true);
       moved.set(true);
+      userMove();
       const zoom = cz.get();
       const range = gestureRange(limits, zoom);
       pinchStart.set(zoom);
@@ -412,6 +454,7 @@ export function Canvas(props: CanvasProps) {
       const now = camera();
       const tap = { x: e.x, y: e.y };
       if (hitsFrame(hitFrames.get(), screenToCanvas(now, here, tap))) return;
+      userMove();
       const target = doubleTapTarget(now, here, tap, fit.get());
       if (reducedMotion) {
         // §9: automatic camera moves jump with Reduce Motion.
@@ -424,12 +467,16 @@ export function Canvas(props: CanvasProps) {
     },
   });
 
-  // A tap on empty canvas clears the selection (§7.1); a card's tap is its own.
+  // A tap on empty canvas clears the selection (§7.1) and leaves focus (§6.1); a card's tap is its own.
+  const tappedEmpty = () => {
+    leave(false);
+    onTapEmpty();
+  };
   const tap = useTapGesture({
     onActivate: (e) => {
       'worklet';
       if (hitsFrame(hitFrames.get(), screenToCanvas(camera(), size(), { x: e.x, y: e.y }))) return;
-      scheduleOnRN(onTapEmpty);
+      scheduleOnRN(tappedEmpty);
     },
   });
 
@@ -505,17 +552,54 @@ export function Canvas(props: CanvasProps) {
     });
   };
 
-  // §6.1, touch: a tap on a reader card too small to scroll zooms to it
-  // (100% centred if below, else panned into view), and it is now read.
-  const tapCard = (id: bigint, zoomTo: boolean) => {
-    onTapCard(id);
+  /**
+   * Leave the focused card (§6.1): back to the view before the focus zoom,
+   * with the same automatic move, unless the canvas moved meanwhile. After
+   * Done, the screen reader's focus goes back to the card.
+   */
+  const leave = (done: boolean) => {
+    if (focus === null) return;
+    const back = leaveFocus(focus);
+    const card = cards.find((c) => c.id === focus.id);
+    setFocus(null);
+    if (back !== undefined) moveTo(back);
+    if (card === undefined) return;
+    if (done) refocus.current = card.id;
+    onLeaveCard(card);
+  };
+
+  // A tap (or Read) on a card (§6.1, §8). On a tablet a reader card is
+  // focused: the focus zoom (100% centred if below, else panned into view),
+  // and it is now read. Another card's focus is left first, its view kept.
+  const tapCard = (id: bigint, verse: number | undefined) => {
     const card = cards.find((c) => c.id === id);
-    if (!zoomTo || view === undefined || card === undefined) return;
+    if (card === undefined) return;
+    const action = tapAction(card.kind, device, card.missing);
+    if (action === 'openReader' || action === 'openNote') {
+      onOpenCard(card);
+      return;
+    }
+    onTapCard(id);
+    if (action !== 'focus') {
+      leave(false);
+      return;
+    }
+    if (focus?.id === id || view === undefined) return;
+    if (focus !== null) {
+      const left = cards.find((c) => c.id === focus.id);
+      if (left !== undefined) onLeaveCard(left);
+    }
     const now = headed();
+    setFocus(enterFocus(id, now));
     const to = focusCamera(now, view, card.frame, LANDING_MARGIN);
     if (to !== now) moveTo(to);
     onReadCard(id, true);
+    onFocusCard(card, verse);
   };
+
+  // A focused card that has gone (removed, or another workspace's) is no longer focused.
+  const focusGone = focus !== null && !cards.some((c) => c.id === focus.id);
+  if (focusGone) setFocus(null);
 
   useImperativeHandle(ref, () => ({
     view: () => (view === undefined ? undefined : { camera: headed(), size: view }),
@@ -683,9 +767,11 @@ export function Canvas(props: CanvasProps) {
                 editing={editing}
                 selected={card.id === selected}
                 highlighted={card.id === highlighted}
+                focused={card.id === focus?.id}
                 canvasPan={pan}
                 onLift={onLiftCard}
                 onTap={tapCard}
+                onDone={() => leave(true)}
                 onRead={(id) => onReadCard(id, false)}
                 onCommit={onCommitCard}
                 onAction={onCardAction}

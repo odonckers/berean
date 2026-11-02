@@ -1,8 +1,9 @@
-import { type ComponentRef, type Ref, useEffect, useMemo, useState } from 'react';
+import { type ComponentRef, type Ref, useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import {
   GestureDetector,
   type PanGesture,
+  Pressable,
   useExclusiveGestures,
   usePanGesture,
   useTapGesture,
@@ -21,11 +22,11 @@ import Animated, {
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { ScaledSymbol } from '@/components/scaled-symbol';
+import { UIText } from '@/components/text';
 import { useBerean } from '@/design/theme';
-import { radii, spacing } from '@/design/tokens';
+import { hairline, radii, spacing } from '@/design/tokens';
 import type { SymbolName } from '@/notes/list-rows';
 import type { LiveFrame, Rect } from '@/studyspace/camera';
-import { load, type Loaded } from '@/library/load';
 import {
   cardEdge,
   cardFill,
@@ -37,12 +38,10 @@ import {
   touchScrolls,
   type CardKind,
 } from '@/studyspace/cards';
-import { type CardView, readReaderText, type ReaderTextRead, saveReaderState } from '@/studyspace/data';
-import { debounce } from '@/studyspace/debounce';
+import type { CardView } from '@/studyspace/data';
 import { type CardAction, dragFrame, type Guide, lineChanged, SNAP_DISTANCE, snapGuides } from '@/studyspace/edit';
 import { liftHaptic, snapHaptic } from '@/studyspace/haptics';
-import { LiveReader, ReaderSnippet } from '@/studyspace/reader-card';
-import { type Position, positionAt, restorePosition, type RowPosition } from '@/studyspace/reader-state';
+import { LiveReader, ReaderSnippet, useReaderPlace } from '@/studyspace/reader-card';
 
 const GLYPHS: Record<CardKind, SymbolName> = {
   note: { ios: 'note.text', android: 'sticky_note_2' },
@@ -68,6 +67,9 @@ const ACTIONS: { name: CardAction; label: string }[] = [
   { name: 'front', label: 'Bring to front' },
   { name: 'remove', label: 'Remove from workspace' },
 ];
+// §9: a reader card's Read does what its tap does: focus it, or on a phone open the full-screen reader.
+const READ_ACTION = { name: 'read', label: 'Read' } as const;
+const READER_ACTIONS = [READ_ACTION, ...ACTIONS];
 
 // §4.1: a long press lifts a card.
 const LONG_PRESS_MS = 500;
@@ -83,8 +85,10 @@ export const HIGHLIGHT_MS = 1500;
 const SNAP_SPRING = { duration: 160, dampingRatio: 1, reduceMotion: ReduceMotion.System } as const;
 // The snap guides run this far past the cards they join, in screen points.
 const GUIDE_OVERHANG = 8;
-// §6.6: a reader card's place is saved this long after its scroll settles.
-const SAVE_READER_MS = 500;
+// §6.1: a focused reader card's outline is 3 pt.
+const FOCUS_WIDTH = 3;
+// Room the card's title leaves for Done, in screen points.
+const DONE_ROOM = 80;
 
 type StudyCardProps = {
   ref?: Ref<ComponentRef<typeof View>>;
@@ -118,11 +122,18 @@ type StudyCardProps = {
   selected: boolean;
   /** Just added: the landing highlight shows. */
   highlighted: boolean;
+  /** The focused reader card (§6.1): its 3 pt outline and Done show, and "focused" is spoken. */
+  focused: boolean;
   /** The canvas's one-finger pan, which a live reader card's scroll blocks (§6.1). */
   canvasPan: PanGesture;
   onLift: (id: bigint) => void;
-  /** A tap; `zoomTo` for a reader card too small to scroll, which the camera zooms to (§6.1). */
-  onTap: (id: bigint, zoomTo: boolean) => void;
+  /**
+   * A tap, or a reader card's Read action; `verse` is a passage card's
+   * verse now (where its reader is, else its first), for the announcement.
+   */
+  onTap: (id: bigint, verse: number | undefined) => void;
+  /** Done on the focused card. */
+  onDone: (id: bigint) => void;
   /** A live reader card's text began to scroll (§6.6 touch_item, once a session). */
   onRead: (id: bigint) => void;
   /** A move ended at `frame`. */
@@ -148,8 +159,8 @@ type StudyCardProps = {
  */
 export function StudyCard(props: StudyCardProps) {
   const { ref, card, zoom, fontScale, origin, liveZoom, frames, index, live, editing, selected, highlighted } = props;
-  const { springX, springY, guides } = props;
-  const { canvasPan, onLift, onTap, onRead, onCommit, onAction } = props;
+  const { springX, springY, guides, focused } = props;
+  const { canvasPan, onLift, onTap, onDone, onRead, onCommit, onAction } = props;
   const { look, scheme, colors, m3, type } = useBerean();
   const material = look === 'material';
   const reducedMotion = useReducedMotion();
@@ -184,40 +195,24 @@ export function StudyCard(props: StudyCardProps) {
         );
 
   // A reader card's text, read once it first draws at L3 or L4 and kept
-  // for this card's text (textKey), so pans and zooms never read it again.
-  const [text, setText] = useState<{ key: string; read: Loaded<ReaderTextRead> }>();
-  if (reader !== undefined && bodyLines > 0 && text?.key !== reader.textKey) {
-    setText({ key: reader.textKey, read: load(() => readReaderText(reader)) });
-  }
-  const read = text !== undefined && text.key === reader?.textKey ? text.read : undefined;
-  const shown = read?.ok === true && bodyLines > 0 ? read.value : undefined;
-  // Where this card's reader is now: the last settled scroll this session, else the saved anchor.
-  const [position, setPosition] = useState<{ key: string; position: Position }>();
-  const wanted = position !== undefined && position.key === text?.key ? position.position : shown?.wanted;
-  const at = useMemo(() => (shown === undefined ? undefined : restorePosition(shown.rows, wanted)), [shown, wanted]);
+  // for this card's text, so pans and zooms never read it again; and where
+  // its reader is (useReaderPlace).
+  const { key: textKey, read, shown: text, place, at, saver, settled } = useReaderPlace(card.id, reader, bodyLines > 0);
+  const shown = bodyLines > 0 ? text : undefined;
+  // A focused card scrolls at any level with live text; that is L4 only, as for touch.
   const scrolls = shown !== undefined && touchScrolls(card.kind, level);
 
   // §6.6: saved once a scroll settles, debounced; flushed when the card
-  // stops scrolling (it left L4) or unmounts.
-  const saver = useMemo(
-    () =>
-      debounce<{ scope: ReaderTextRead['scope']; position: Position }>(
-        ({ scope, position: p }) => saveReaderState(card.id, scope, p),
-        SAVE_READER_MS,
-      ),
-    [card.id],
-  );
+  // stops scrolling (it left L4), leaves focus, or unmounts.
   useEffect(() => {
-    if (!scrolls) saver.flush();
-  }, [scrolls, saver]);
-  useEffect(() => () => saver.flush(), [saver]);
-  const settled = (rowAt: RowPosition) => {
-    if (shown === undefined || text === undefined) return;
-    const p = positionAt(shown.rows, rowAt);
-    if (p === undefined) return;
-    setPosition({ key: text.key, position: p });
-    saver.call({ scope: shown.scope, position: p });
-  };
+    if (!scrolls || !focused) saver.flush();
+  }, [scrolls, focused, saver]);
+
+  // The verse a focus announces (§9): where a passage card's reader is, else the span's first.
+  const verse =
+    reader?.card.kind !== 'passage'
+      ? undefined
+      : (place?.key ?? reader.saved?.at.verse ?? reader.card.span.start.verse);
 
   // The frame as drawn: the committed one, or where a drag has it now.
   const x = useSharedValue(frame.x);
@@ -252,8 +247,7 @@ export function StudyCard(props: StudyCardProps) {
     onLift(card.id);
   };
   const snapped = () => snapHaptic(look);
-  // §6.1, touch: a reader card too small to scroll is zoomed to.
-  const tapped = () => onTap(card.id, reader !== undefined && !scrolls);
+  const tapped = () => onTap(card.id, verse);
   const committed = (fx: number, fy: number, fw: number, fh: number) =>
     onCommit(card.id, { x: fx, y: fy, width: fw, height: fh });
 
@@ -347,9 +341,9 @@ export function StudyCard(props: StudyCardProps) {
     },
   });
 
-  // A tap brings the card to the front; on a reader card too small to
-  // scroll, the camera zooms to it (§6.1). TODO(Expo 7 slice 4): a tap
-  // opens the note editor or the full-screen reader on phones (§8).
+  // A tap, by mouse or finger: the canvas decides what it does (tapAction):
+  // on a tablet a reader card is focused (§6.1), on a phone it opens the
+  // full-screen reader or the note editor (§8); either way it comes to the front.
   const tap = useTapGesture({
     onActivate: () => {
       'worklet';
@@ -405,7 +399,7 @@ export function StudyCard(props: StudyCardProps) {
   const edge = cardEdge(scheme === 'dark', material ? m3.outline : colors.outline);
   // L1 is a solid block in its kind's colour with the glyph on it.
   const block = level === 1 ? kindFill(card.kind, look, colors, m3) : undefined;
-  // The edge and the landing highlight are in screen points, so divided by the zoom.
+  // The edge, the landing highlight, the focus outline and Done are in screen points, so divided by the zoom.
   const pt = 1 / zoom;
   const ring = (width: number, offset: number) => ({
     top: -(width + offset) * pt,
@@ -419,16 +413,21 @@ export function StudyCard(props: StudyCardProps) {
 
   // The card as one button: its label and actions. A reader card showing
   // text (L3, L4) is the button behind its text instead, so a screen reader
-  // reads the text, and scrolls it at L4, on its own (§9).
+  // reads the text, and scrolls it at L4, on its own (§9). So is a focused
+  // card, so its Done is an element of its own.
   const withBody = bodyLines > 0;
+  const behind = withBody || focused;
   const button = {
     accessible: true,
     accessibilityRole: 'button',
     accessibilityLabel: card.accessibilityLabel,
     accessibilityState: { selected },
-    accessibilityActions: ACTIONS,
-    onAccessibilityAction: (e: { nativeEvent: { actionName: string } }) =>
-      onAction(card, e.nativeEvent.actionName as CardAction),
+    accessibilityValue: focused ? { text: 'focused' } : undefined,
+    accessibilityActions: reader === undefined || card.missing ? ACTIONS : READER_ACTIONS,
+    onAccessibilityAction: (e: { nativeEvent: { actionName: string } }) => {
+      if (e.nativeEvent.actionName === READ_ACTION.name) tapped();
+      else onAction(card, e.nativeEvent.actionName as CardAction);
+    },
   } as const;
 
   const content = (
@@ -450,7 +449,8 @@ export function StudyCard(props: StudyCardProps) {
           <Text
             {...(withBody ? hidden : {})}
             numberOfLines={titleLines}
-            style={[type.ui.body, styles.title, { color: ink }]}
+            // Clear of Done, in screen points (content points are 1 / (zoom × up) of one).
+            style={[type.ui.body, styles.title, { color: ink }, focused && { marginEnd: (DONE_ROOM * pt) / up }]}
           >
             {card.title}
           </Text>
@@ -469,8 +469,9 @@ export function StudyCard(props: StudyCardProps) {
           )}
           {shown !== undefined && at !== undefined && level === 4 && (
             <LiveReader
-              // Reflowed text (a new size or width) opens again at the anchor (§6.3).
-              key={`${bodyScale}:${frame.width}`}
+              // Reflowed text (a new size or width) opens again at the anchor (§6.3); so
+              // does a place saved elsewhere (the full-screen reader).
+              key={`${bodyScale}:${frame.width}:${textKey}`}
               rows={shown.rows}
               start={at}
               scale={bodyScale}
@@ -488,13 +489,13 @@ export function StudyCard(props: StudyCardProps) {
   return (
     <GestureDetector gesture={gesture}>
       <Animated.View
-        ref={withBody ? undefined : ref}
-        {...(withBody ? { accessible: false } : button)}
+        ref={behind ? undefined : ref}
+        {...(behind ? { accessible: false } : button)}
         style={[styles.frame, frameStyle]}
       >
         <View
-          ref={withBody ? ref : undefined}
-          {...(withBody ? button : hidden)}
+          ref={behind ? ref : undefined}
+          {...(behind ? button : hidden)}
           style={[
             styles.card,
             {
@@ -517,8 +518,64 @@ export function StudyCard(props: StudyCardProps) {
         {highlighted && (
           <Animated.View {...hidden} pointerEvents="none" style={[styles.ring, ring(HIGHLIGHT_WIDTH, 0), glowStyle]} />
         )}
+        {/* Focused is never colour alone: the outline's weight, Done, and "focused" spoken (§6.1, §9). */}
+        {focused && <View {...hidden} pointerEvents="none" style={[styles.ring, ring(FOCUS_WIDTH, 0)]} />}
+        {focused && (
+          <DoneButton
+            title={card.title}
+            scale={pt}
+            onPress={() => onDone(card.id)}
+            // Done takes its own taps, not the card's tap or lift.
+            block={[tap, drag]}
+          />
+        )}
       </Animated.View>
     </GestureDetector>
+  );
+}
+
+/**
+ * The focused card's Done (§6.1), at the trailing end of its header, the
+ * same size on screen at any zoom (`scale` is 1 / zoom). The iOS look: a
+ * glass capsule, approximated as the search field's (a raised translucent
+ * capsule with a hairline edge), 44 pt hit. Material: a tonal text button,
+ * 48 dp hit. A real button, so Switch Control finds it (§9).
+ */
+function DoneButton({ title, scale, onPress, block }: {
+  title: string;
+  scale: number;
+  onPress: () => void;
+  block: Parameters<typeof Pressable>[0]['block'];
+}) {
+  const { look, colors, m3 } = useBerean();
+  const material = look === 'material';
+  const hit = material ? 48 : 44;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Done"
+      accessibilityHint={`Leaves ${title}`}
+      onPress={onPress}
+      block={block}
+      style={[
+        styles.done,
+        { minHeight: hit, minWidth: hit, transform: [{ scale }] },
+      ]}
+    >
+      {({ pressed }) => (
+        <View
+          style={[
+            styles.doneFace,
+            material
+              ? { backgroundColor: m3.secondaryContainer }
+              : { backgroundColor: colors.surfaceRaised, borderColor: colors.separator, borderWidth: hairline },
+            { opacity: pressed ? 0.6 : 1 },
+          ]}
+        >
+          <UIText style={[styles.doneLabel, { color: material ? m3.onSecondaryContainer : colors.accent }]}>Done</UIText>
+        </View>
+      )}
+    </Pressable>
   );
 }
 
@@ -529,4 +586,16 @@ const styles = StyleSheet.create({
   glyphOnly: { padding: 0, alignItems: 'center', justifyContent: 'center' },
   title: { fontWeight: '600' },
   ring: { position: 'absolute' },
+  // At the card's top trailing corner, scaled about it.
+  done: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    transformOrigin: 'right top',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xs,
+  },
+  doneFace: { paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: radii.capsule },
+  doneLabel: { fontWeight: '600' },
 });
