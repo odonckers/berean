@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { type LayoutChangeEvent, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { type ComponentRef, type Ref, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { AccessibilityInfo, type LayoutChangeEvent, StyleSheet, useWindowDimensions, View } from 'react-native';
 import {
   GestureDetector,
   usePanGesture,
@@ -12,14 +12,16 @@ import Animated, {
   Easing,
   ReduceMotion,
   useAnimatedStyle,
+  useDerivedValue,
   useReducedMotion,
   useSharedValue,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { scheduleOnRN } from 'react-native-worklets';
+import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
 
 import { useBerean } from '@/design/theme';
+import { radii } from '@/design/tokens';
 import { useWindowClass } from '@/design/use-window-class';
 import {
   ANDROID_DECAY,
@@ -42,16 +44,20 @@ import {
   inertia,
   inertiaProgress,
   layerBox,
+  type LiveFrame,
   nearZoom,
   restoreCamera,
   rubberBandZoom,
   screenToCanvas,
+  selectionRect,
   settleZoom,
   zoomAbout,
 } from '@/studyspace/camera';
 import { StudyCard } from '@/studyspace/card';
 import type { CardView } from '@/studyspace/data';
 import { dotGridBackground } from '@/studyspace/dot-grid';
+import { type CardAction, type Guide, guideOnScreen, resizeBy } from '@/studyspace/edit';
+import { resizeHaptic } from '@/studyspace/haptics';
 
 /** An automatic camera move: zoom in log space, about `focal` if there is one. */
 type Flight = { from: Camera; to: Camera; focal?: Point };
@@ -75,25 +81,57 @@ const DOT_GRIDS = {
   tablet: { spacing: 28, dot: 1.2 },
 } as const;
 
+// §7.1: the selected outline is 2 pt, 3 pt off the card; the handle 8 pt.
+const SELECTED_WIDTH = 2;
+const SELECTED_OFFSET = 3;
+const HANDLE = 8;
+// §4.2: a snap guide is a 1 pt line.
+const GUIDE_WIDTH = 1;
+
+/** The camera and view size now, an automatic move of the camera, and a card's screen-reader focus. */
+export type CanvasHandle = {
+  view: () => { camera: Camera; size: Size } | undefined;
+  /** Pan to `camera` with the settle spring; a jump with Reduce Motion (§7.2). */
+  moveTo: (camera: Camera) => void;
+  /** Move VoiceOver / TalkBack focus to card `id`; false if it hasn't rendered yet. */
+  focusCard: (id: bigint) => boolean;
+};
+
 type CanvasProps = {
+  ref?: Ref<CanvasHandle>;
   cards: readonly CardView[];
   /** The workspace's saved camera; none the first time (it opens at fit-all). */
   saved: Camera | undefined;
   limits: ZoomLimits;
+  selected: bigint | undefined;
+  /** The card just added, while its landing highlight shows. */
+  highlighted: bigint | undefined;
   /** The camera once a gesture or its animation has come to rest; never per frame. */
   onSettle: (camera: Camera) => void;
+  onLiftCard: (id: bigint) => void;
+  onTapCard: (id: bigint) => void;
+  /** A card's move or resize ended at `frame`. */
+  onCommitCard: (id: bigint, frame: Rect) => void;
+  onCardAction: (card: CardView, action: CardAction) => void;
+  onTapEmpty: () => void;
 };
 
 /**
  * A workspace's canvas (findings §3): one finger pans, pinch zooms about
  * the fingers, rubber-banding past the zoom limits and springing back;
- * double tap on empty canvas toggles 100% at the tap and fit-all. All of it
- * runs on the UI thread on one translated and scaled content layer; the JS
- * thread hears only where the camera settles. Mount one per workspace (key
- * it by id): the saved camera is read once, at the first layout.
+ * double tap on empty canvas toggles 100% at the tap and fit-all; a tap
+ * there clears the selection. Cards lift on a long press and move
+ * (StudyCard); the selected one resizes by the handle in the selection
+ * overlay, drawn in screen points above the content layer. All of it runs
+ * on the UI thread on one translated and scaled content layer (and the
+ * overlay that tracks it); the JS thread hears only where the camera settles
+ * and where a card ends up. Mount one per workspace (key it by id): the
+ * saved camera is read once, at the first layout.
  */
-export function Canvas({ cards, saved, limits, onSettle }: CanvasProps) {
-  const { look, colors } = useBerean();
+export function Canvas(props: CanvasProps) {
+  const { ref, cards, saved, limits, selected, highlighted, onSettle, onTapEmpty } = props;
+  const { onLiftCard, onTapCard, onCommitCard, onCardAction } = props;
+  const { look, colors, m3 } = useBerean();
   const reducedMotion = useReducedMotion();
   const { fontScale } = useWindowDimensions();
   const decay = look === 'ios' ? IOS_DECAY : ANDROID_DECAY;
@@ -110,9 +148,28 @@ export function Canvas({ cards, saved, limits, onSettle }: CanvasProps) {
   const frames = useMemo<Rect[]>(() => cards.map((c) => c.frame), [cards]);
   // The content layer's box holds every card, so Android (which clips a
   // child's accessibility bounds and touches to its parent's untransformed
-  // box) sees whole cards at any zoom. It is plain style, committed with the
-  // cards; the animated transform doesn't depend on it.
+  // box) sees whole cards at any zoom. The cards sit at their frames less
+  // its top-left; both read it from one shared value, so a card moved by a
+  // drag and the box it grows land together.
   const box = useMemo(() => layerBox(frames), [frames]);
+  const origin = useSharedValue<Rect>(box);
+  useEffect(() => {
+    origin.set(box);
+  }, [box, origin]);
+  // A card is being moved or resized.
+  const editing = useSharedValue(false);
+  // The frame a card's drag or the handle's resize has now. It stays after
+  // the release until the frames are read back (below), so nothing snaps
+  // back between the commit and the read.
+  const live = useSharedValue<LiveFrame | null>(null);
+  // A snap's spring on the live frame's card, and the guides its drag has caught.
+  const springX = useSharedValue(0);
+  const springY = useSharedValue(0);
+  const guides = useSharedValue<Guide[]>([]);
+  // Each card's view, for moving screen-reader focus to it.
+  const cardViews = useRef(new Map<bigint, ComponentRef<typeof View>>());
+  const selectedIndex = cards.findIndex((c) => c.id === selected);
+  const chosen = useSharedValue(selectedIndex);
 
   const cx = useSharedValue(0);
   const cy = useSharedValue(0);
@@ -136,8 +193,14 @@ export function Canvas({ cards, saved, limits, onSettle }: CanvasProps) {
 
   useEffect(() => {
     hitFrames.set(frames);
+    live.set(null);
+  }, [frames, hitFrames, live]);
+  useEffect(() => {
     if (view !== undefined) fit.set(fitAll(frames, view, fitPadding(view), limits));
-  }, [frames, view, limits, fit, hitFrames]);
+  }, [frames, view, limits, fit]);
+  useEffect(() => {
+    chosen.set(selectedIndex);
+  }, [selectedIndex, chosen]);
 
   const onLayout = (e: LayoutChangeEvent) => {
     const size = { width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height };
@@ -270,7 +333,8 @@ export function Canvas({ cards, saved, limits, onSettle }: CanvasProps) {
     },
     onUpdate: (e) => {
       'worklet';
-      if (pinching.get()) return;
+      // A lifted card's drag cancels this pan; the check keeps the canvas still regardless.
+      if (pinching.get() || editing.get()) return;
       const zoom = cz.get();
       cx.set(cx.get() - e.changeX / zoom);
       cy.set(cy.get() - e.changeY / zoom);
@@ -278,7 +342,7 @@ export function Canvas({ cards, saved, limits, onSettle }: CanvasProps) {
     onDeactivate: (e) => {
       'worklet';
       panning.set(false);
-      if (!pinching.get() && !e.canceled) glide(e.velocityX, e.velocityY);
+      if (!pinching.get() && !editing.get() && !e.canceled) glide(e.velocityX, e.velocityY);
       settle();
     },
     onFinalize: () => {
@@ -352,10 +416,99 @@ export function Canvas({ cards, saved, limits, onSettle }: CanvasProps) {
     },
   });
 
-  const gesture = useSimultaneousGestures(pan, pinch, doubleTap);
+  // A tap on empty canvas clears the selection (§7.1); a card's tap is its own.
+  const tap = useTapGesture({
+    onActivate: (e) => {
+      'worklet';
+      if (hitsFrame(hitFrames.get(), screenToCanvas(camera(), size(), { x: e.x, y: e.y }))) return;
+      scheduleOnRN(onTapEmpty);
+    },
+  });
+
+  const gesture = useSimultaneousGestures(pan, pinch, doubleTap, tap);
+
+  const resizeStart = useSharedValue<Rect>({ x: 0, y: 0, width: 0, height: 0 });
+  const resizeIndex = useSharedValue(-1);
+  const resizeX = useSharedValue(0);
+  const resizeY = useSharedValue(0);
+
+  const resized = (x: number, y: number, width: number, height: number) => {
+    if (selected !== undefined) onCommitCard(selected, { x, y, width, height });
+  };
+
+  // The selected card's resize handle (§4.3), in the selection overlay. It
+  // takes the finger on its first move, and blocks the canvas's gestures
+  // meanwhile; the cards' own gestures are not under it.
+  const resize = usePanGesture({
+    minDistance: 0,
+    maxPointers: 1,
+    block: [pan, tap, doubleTap],
+    onActivate: (e) => {
+      'worklet';
+      const index = chosen.get();
+      const l = live.get();
+      const from = l !== null && l.index === index ? l.frame : hitFrames.get()[index];
+      if (from === undefined) return;
+      resizeIndex.set(index);
+      resizeStart.set(from);
+      resizeX.set(e.translationX);
+      resizeY.set(e.translationY);
+      editing.set(true);
+      scheduleOnRN(resizeHaptic);
+    },
+    onUpdate: (e) => {
+      'worklet';
+      const index = resizeIndex.get();
+      if (index < 0) return;
+      const to = resizeBy(resizeStart.get(), e.translationX - resizeX.get(), e.translationY - resizeY.get(), cz.get());
+      live.set({ index, frame: to });
+    },
+    onDeactivate: () => {
+      'worklet';
+      const index = resizeIndex.get();
+      if (index < 0) return;
+      resizeIndex.set(-1);
+      editing.set(false);
+      // `live` keeps the new frame until the frames are read back.
+      const l = live.get();
+      const to = l !== null && l.index === index ? l.frame : resizeStart.get();
+      scheduleOnRN(resized, to.x, to.y, to.width, to.height);
+    },
+  });
+
+  useImperativeHandle(ref, () => ({
+    view: () => {
+      if (view === undefined) return undefined;
+      // Where the camera is headed if it is moving on its own.
+      const f = flight.get();
+      return { camera: f !== null ? f.to : { x: cx.get(), y: cy.get(), zoom: cz.get() }, size: view };
+    },
+    moveTo: (to: Camera) => {
+      scheduleOnUI(() => {
+        'worklet';
+        if (!reducedMotion) {
+          fly(to, undefined, 0);
+          return;
+        }
+        // §9: automatic camera moves jump with Reduce Motion.
+        halt();
+        moved.set(true);
+        setCamera(to);
+        settle();
+      });
+    },
+    focusCard: (id: bigint) => {
+      const node = cardViews.current.get(id);
+      if (node === undefined) return false;
+      AccessibilityInfo.sendAccessibilityEvent(node, 'focus');
+      return true;
+    },
+  }));
 
   // Reads every shared value itself: Reanimated finds a style's inputs in
-  // its own closure, not in the helpers it calls.
+  // its own closure, not in the helpers it calls. Laid out at its box, its
+  // transform about the parent's (0,0): screen = translate + zoom · canvas,
+  // whatever the box.
   const contentStyle = useAnimatedStyle(() => {
     const here = { width: vw.get(), height: vh.get() };
     const f = flight.get();
@@ -364,7 +517,15 @@ export function Canvas({ cards, saved, limits, onSettle }: CanvasProps) {
         ? cameraBetween(f.from, f.to, progress.get(), here, f.focal)
         : { x: cx.get(), y: cy.get(), zoom: cz.get() };
     const t = contentTransform(now, here);
-    return { transform: [{ translateX: t.translateX }, { translateY: t.translateY }, { scale: t.scale }] };
+    const b = origin.get();
+    return {
+      left: b.x,
+      top: b.y,
+      width: b.width,
+      height: b.height,
+      transformOrigin: [-b.x, -b.y, 0],
+      transform: [{ translateX: t.translateX }, { translateY: t.translateY }, { scale: t.scale }],
+    };
   });
 
   // The dot grid keeps its screen size at any zoom and moves with the
@@ -384,6 +545,74 @@ export function Canvas({ cards, saved, limits, onSettle }: CanvasProps) {
       ],
     };
   });
+
+  // The camera and view size now, through any flight, so the overlay
+  // tracks pans, pinches and flights on the UI thread, every frame.
+  const lens = useDerivedValue(() => {
+    const here = { width: vw.get(), height: vh.get() };
+    const f = flight.get();
+    const now =
+      f !== null
+        ? cameraBetween(f.from, f.to, progress.get(), here, f.focal)
+        : { x: cx.get(), y: cy.get(), zoom: cz.get() };
+    return { camera: now, view: here };
+  });
+
+  // The selected card's frame on screen and the zoom, with a snap's spring as the card draws it.
+  const selection = useDerivedValue(() => {
+    const { camera: now, view: here } = lens.get();
+    const l = live.get();
+    const drawn =
+      l === null
+        ? null
+        : { index: l.index, frame: { ...l.frame, x: l.frame.x + springX.get(), y: l.frame.y + springY.get() } };
+    const rect = selectionRect(hitFrames.get(), drawn, chosen.get(), now, here);
+    return rect === undefined ? null : { rect, zoom: now.zoom };
+  });
+
+  // The snap guides (§4.2), one per axis at most, 1 pt on screen.
+  const guideXStyle = useAnimatedStyle(() => {
+    const g = guides.get().find((d) => d.axis === 'x');
+    if (g === undefined) return { display: 'none' as const };
+    const { camera: now, view: here } = lens.get();
+    const r = guideOnScreen(g, now, here, GUIDE_WIDTH);
+    return { display: 'flex' as const, left: r.x, top: r.y, width: r.width, height: r.height };
+  });
+  const guideYStyle = useAnimatedStyle(() => {
+    const g = guides.get().find((d) => d.axis === 'y');
+    if (g === undefined) return { display: 'none' as const };
+    const { camera: now, view: here } = lens.get();
+    const r = guideOnScreen(g, now, here, GUIDE_WIDTH);
+    return { display: 'flex' as const, left: r.x, top: r.y, width: r.width, height: r.height };
+  });
+
+  // Screen points, so no division by the zoom.
+  const ringStyle = useAnimatedStyle(() => {
+    const s = selection.get();
+    if (s === null) return { display: 'none' as const };
+    const reach = SELECTED_WIDTH + SELECTED_OFFSET;
+    return {
+      display: 'flex' as const,
+      left: s.rect.x - reach,
+      top: s.rect.y - reach,
+      width: s.rect.width + 2 * reach,
+      height: s.rect.height + 2 * reach,
+      borderRadius: radii.studyCard * s.zoom + reach,
+    };
+  });
+
+  // §4.1: the handle's hit area is 44 pt (iOS look) or 48 dp (Material), centred on the corner.
+  const hit = look === 'material' ? 48 : 44;
+  const handleStyle = useAnimatedStyle(() => {
+    const s = selection.get();
+    if (s === null) return { display: 'none' as const };
+    return {
+      display: 'flex' as const,
+      left: s.rect.x + s.rect.width - hit / 2,
+      top: s.rect.y + s.rect.height - hit / 2,
+    };
+  });
+  const accent = look === 'material' ? m3.primary : colors.accent;
 
   return (
     <GestureDetector gesture={gesture}>
@@ -406,25 +635,79 @@ export function Canvas({ cards, saved, limits, onSettle }: CanvasProps) {
           />
         )}
         {view !== undefined && (
-          <Animated.View
-            style={[
-              styles.content,
-              // Laid out at its box, its transform about the parent's (0,0):
-              // screen = translate + zoom · canvas, whatever the box.
-              { left: box.x, top: box.y, width: box.width, height: box.height, transformOrigin: [-box.x, -box.y, 0] },
-              contentStyle,
-            ]}
-          >
-            {cards.map((card) => (
+          <Animated.View style={[styles.content, contentStyle]}>
+            {cards.map((card, index) => (
               <StudyCard
                 key={String(card.id)}
+                ref={(node) => {
+                  if (node === null) return;
+                  cardViews.current.set(card.id, node);
+                  return () => {
+                    cardViews.current.delete(card.id);
+                  };
+                }}
                 card={card}
                 zoom={settledZoom}
                 fontScale={fontScale}
-                origin={box}
+                origin={origin}
+                liveZoom={cz}
+                frames={hitFrames}
+                index={index}
+                live={live}
+                springX={springX}
+                springY={springY}
+                guides={guides}
+                editing={editing}
+                selected={card.id === selected}
+                highlighted={card.id === highlighted}
+                onLift={onLiftCard}
+                onTap={onTapCard}
+                onCommit={onCommitCard}
+                onAction={onCardAction}
               />
             ))}
           </Animated.View>
+        )}
+        {/* A drag's snap guides, in screen points above the cards, mounted before the lift selects the card. */}
+        {view !== undefined && (
+          <View
+            pointerEvents="none"
+            accessible={false}
+            importantForAccessibility="no-hide-descendants"
+            accessibilityElementsHidden
+            style={StyleSheet.absoluteFill}
+          >
+            <Animated.View style={[styles.overlaid, { backgroundColor: accent }, guideXStyle]} />
+            <Animated.View style={[styles.overlaid, { backgroundColor: accent }, guideYStyle]} />
+          </View>
+        )}
+        {/*
+          The selection overlay: after the content layer, so the selected
+          card's outline and handle stay on top of every card, even one
+          brought in front of it (as in Freeform and Keynote, selection
+          chrome is always on top). Outside the content layer, so Android
+          hit-tests the whole handle and the cards' gestures never see it.
+        */}
+        {view !== undefined && selectedIndex >= 0 && (
+          <View
+            pointerEvents="box-none"
+            accessible={false}
+            importantForAccessibility="no-hide-descendants"
+            accessibilityElementsHidden
+            style={StyleSheet.absoluteFill}
+          >
+            {/* Selected is never colour alone: the outline's weight, and "selected" spoken (§7.1). */}
+            <Animated.View
+              pointerEvents="none"
+              style={[styles.overlaid, { borderWidth: SELECTED_WIDTH, borderColor: accent }, ringStyle]}
+            />
+            {/* Hidden from screen readers: the Size actions replace it. */}
+            <GestureDetector gesture={resize}>
+              <Animated.View style={[styles.handle, { width: hit, height: hit }, handleStyle]}>
+                <View style={{ width: HANDLE, height: HANDLE, borderRadius: HANDLE / 2, backgroundColor: accent }} />
+              </Animated.View>
+            </GestureDetector>
+          </View>
         )}
       </View>
     </GestureDetector>
@@ -437,4 +720,6 @@ const styles = StyleSheet.create({
   content: { position: 'absolute' },
   // One spacing past the view on each side, so its offset in [−spacing, 0) always covers it.
   grid: { position: 'absolute', left: 0, top: 0 },
+  overlaid: { position: 'absolute' },
+  handle: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
 });

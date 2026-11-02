@@ -134,6 +134,29 @@ export function canvasToScreen(camera: Camera, view: Size, canvas: Point): Point
   };
 }
 
+/** A card's frame while a drag or resize has it, ahead of the committed one at `index`. */
+export type LiveFrame = { index: number; frame: Rect };
+
+/**
+ * Where the selected card (at `index`) is on screen: its live frame if a
+ * drag or resize has it, else its committed one, mapped through `camera`.
+ * Undefined for an index with no card.
+ */
+// Declared after canvasToScreen: a worklet captures the functions it calls when it is created.
+export function selectionRect(
+  frames: readonly Rect[],
+  live: LiveFrame | null,
+  index: number,
+  camera: Camera,
+  view: Size,
+): Rect | undefined {
+  'worklet';
+  const frame = live !== null && live.index === index ? live.frame : frames[index];
+  if (frame === undefined) return undefined;
+  const at = canvasToScreen(camera, view, frame);
+  return { x: at.x, y: at.y, width: frame.width * camera.zoom, height: frame.height * camera.zoom };
+}
+
 /**
  * The camera at `zoom` that keeps canvas point `canvas` under screen point
  * `screen`: the focal-point rule for pinch and the double tap.

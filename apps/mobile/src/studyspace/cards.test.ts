@@ -4,6 +4,7 @@ import { describe, test } from 'node:test';
 import { colorSets, type ColorSetName, m3Roles } from '../design/colors.ts';
 import { contrast } from '../design/contrast.ts';
 import {
+  addedAnnouncement,
   cardAccessibilityLabel,
   cardCount,
   cardEdge,
@@ -13,8 +14,10 @@ import {
   deleteWorkspacePrompt,
   kindFill,
   LIGHT_CARD_SHADOW,
+  isFront,
   pickWorkspace,
   titleScale,
+  toFront,
   workspaceAnnouncement,
 } from './cards.ts';
 
@@ -23,6 +26,10 @@ describe('wording', () => {
     assert.equal(workspaceAnnouncement('Workspace 2', 14), 'Workspace 2, 14 cards');
     assert.equal(workspaceAnnouncement('Romans', 1), 'Romans, 1 card');
     assert.equal(cardCount(0), '0 cards');
+  });
+
+  test('an add names the item and the workspace (§7.2)', () => {
+    assert.equal(addedAnnouncement('Romans 8', 'Workspace 2'), 'Added Romans 8 to Workspace 2');
   });
 
   test('delete says the notes are kept', () => {
@@ -43,11 +50,47 @@ describe('wording', () => {
 describe('pickWorkspace', () => {
   const list = [{ id: 1n }, { id: 2n }];
 
-  test('the wanted one, else the first, else none', () => {
+  test('the remembered workspace when it is still there', () => {
     assert.equal(pickWorkspace(list, 2n)?.id, 2n);
+  });
+
+  test('the first when the remembered one is gone (deleted, or imported over)', () => {
     assert.equal(pickWorkspace(list, 9n)?.id, 1n);
+  });
+
+  test('the first when none is remembered', () => {
     assert.equal(pickWorkspace(list, undefined)?.id, 1n);
+  });
+
+  test('none when there are no workspaces', () => {
     assert.equal(pickWorkspace([], 1n), undefined);
+    assert.equal(pickWorkspace([], undefined), undefined);
+  });
+});
+
+describe('z-order', () => {
+  const cards = [{ id: 1n }, { id: 2n }, { id: 3n }];
+
+  test('the last card (back to front) is already in front: no write', () => {
+    assert.equal(isFront(cards, 3n), true);
+    assert.equal(isFront(cards, 1n), false);
+    assert.equal(isFront([], 1n), false);
+  });
+
+  test('brought to the front, a card draws last', () => {
+    assert.deepEqual(
+      toFront(cards, 1n).map((c) => c.id),
+      [2n, 3n, 1n],
+    );
+    assert.deepEqual(
+      toFront(cards, 3n).map((c) => c.id),
+      [1n, 2n, 3n],
+    );
+    assert.deepEqual(
+      toFront(cards, 9n).map((c) => c.id),
+      [1n, 2n, 3n],
+    );
+    assert.equal(isFront(toFront(cards, 2n), 2n), true);
   });
 });
 

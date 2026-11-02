@@ -57,6 +57,11 @@ export function workspaceAnnouncement(name: string, cards: number): string {
   return `${name}, ${cardCount(cards)}`;
 }
 
+/** Said once a card is added (§7.2): "Added Romans 8 to Workspace 2". */
+export function addedAnnouncement(title: string, workspace: string): string {
+  return `Added ${title} to ${workspace}`;
+}
+
 /** Delete Workspace's confirmation. The core keeps the notes; the prompt says so. */
 export function deleteWorkspacePrompt(name: string, cards: number): { title: string; message: string } {
   const what = cards === 0 ? 'It has no cards.' : `Its ${cardCount(cards)} come off the canvas.`;
@@ -73,11 +78,23 @@ export function cardAccessibilityLabel(kind: CardKind, title: string, missing: b
 }
 
 /**
- * The open workspace: `wanted` if it is still there, else the first. None
- * when there are no workspaces.
+ * The workspace that opens: `wanted` (the core's last workspace, or the one
+ * just chosen) if it is still there, else the first. None when there are
+ * no workspaces.
  */
 export function pickWorkspace<T extends { id: bigint }>(workspaces: readonly T[], wanted: bigint | undefined): T | undefined {
   return workspaces.find((w) => w.id === wanted) ?? workspaces[0];
+}
+
+/** Whether card `id` already draws on top of `cards` (back to front), so bringing it to the front writes nothing. */
+export function isFront<T extends { id: bigint }>(cards: readonly T[], id: bigint): boolean {
+  return cards.at(-1)?.id === id;
+}
+
+/** `cards` (back to front) with card `id` moved to the end, where it draws on top. */
+export function toFront<T extends { id: bigint }>(cards: readonly T[], id: bigint): T[] {
+  const card = cards.find((c) => c.id === id);
+  return card === undefined ? [...cards] : [...cards.filter((c) => c.id !== id), card];
 }
 
 /** §5's breakpoints at 17 pt text, in on-screen points; they scale with the text size. */

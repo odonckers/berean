@@ -4,17 +4,17 @@ import { describe, test } from 'node:test';
 
 import ts from 'typescript';
 
-// The canvas runs gestures, animation callbacks and useAnimatedStyle on the
-// UI thread, calling camera.ts. There a function runs only if it is a
+// The canvas and its cards run gestures, animation callbacks and
+// useAnimatedStyle on the UI thread, calling camera.ts and edit.ts. There a function runs only if it is a
 // worklet, and the worklets plugin captures the module constants a worklet
 // reads in its body but not those read only in a default parameter: on the
 // UI runtime the name is undefined (the "Property 'DETENT_WINDOW' doesn't
 // exist" crash on releasing a pinch).
 
 /** Modules whose every top-level function is called on the UI thread. */
-const WORKLET_MODULES = ['camera.ts'];
+const WORKLET_MODULES = ['camera.ts', 'edit.ts'];
 /** Modules with worklets in them, checked for default parameters. */
-const UI_THREAD_FILES = ['camera.ts', 'canvas.tsx'];
+const UI_THREAD_FILES = ['camera.ts', 'edit.ts', 'canvas.tsx', 'card.tsx'];
 
 function parse(file: string): ts.SourceFile {
   const text = readFileSync(new URL(file, import.meta.url), 'utf8');
