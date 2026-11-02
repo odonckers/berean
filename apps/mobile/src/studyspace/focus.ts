@@ -41,3 +41,17 @@ export function readingAnnouncement(title: string, verse: number | undefined): s
 export function leftAnnouncement(title: string): string {
   return `Left ${title}`;
 }
+
+/**
+ * A card's label and value for its focus. Android's BaseViewManager clears the
+ * content description when accessibilityValue goes back to undefined and
+ * doesn't rebuild it from the label, so there "focused" goes in the label.
+ */
+export function focusedLabel(
+  label: string,
+  focused: boolean,
+  os: string,
+): { accessibilityLabel: string; accessibilityValue?: { text: string } } {
+  if (os === 'android') return { accessibilityLabel: focused ? `${label}, focused` : label };
+  return focused ? { accessibilityLabel: label, accessibilityValue: { text: 'focused' } } : { accessibilityLabel: label };
+}

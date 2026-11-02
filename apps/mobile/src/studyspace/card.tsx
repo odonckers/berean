@@ -1,5 +1,5 @@
 import { type ComponentRef, type Ref, useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import {
   GestureDetector,
   type PanGesture,
@@ -40,6 +40,7 @@ import {
 } from '@/studyspace/cards';
 import type { CardView } from '@/studyspace/data';
 import { type CardAction, dragFrame, type Guide, lineChanged, SNAP_DISTANCE, snapGuides } from '@/studyspace/edit';
+import { focusedLabel } from '@/studyspace/focus';
 import { liftHaptic, snapHaptic } from '@/studyspace/haptics';
 import { LiveReader, ReaderSnippet, useReaderPlace } from '@/studyspace/reader-card';
 
@@ -420,9 +421,9 @@ export function StudyCard(props: StudyCardProps) {
   const button = {
     accessible: true,
     accessibilityRole: 'button',
-    accessibilityLabel: card.accessibilityLabel,
+    // Not on the look: Android's bridge drops the label when the value goes away (focusedLabel).
+    ...focusedLabel(card.accessibilityLabel, focused, Platform.OS),
     accessibilityState: { selected },
-    accessibilityValue: focused ? { text: 'focused' } : undefined,
     accessibilityActions: reader === undefined || card.missing ? ACTIONS : READER_ACTIONS,
     onAccessibilityAction: (e: { nativeEvent: { actionName: string } }) => {
       if (e.nativeEvent.actionName === READ_ACTION.name) tapped();

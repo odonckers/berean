@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { canvasMoved, enterFocus, leaveFocus, leftAnnouncement, readingAnnouncement } from './focus.ts';
+import { canvasMoved, enterFocus, focusedLabel, leaveFocus, leftAnnouncement, readingAnnouncement } from './focus.ts';
 
 const before = { x: 120, y: -40, zoom: 0.62 };
 
@@ -43,5 +43,34 @@ describe('focus announcements', () => {
 
   test('left', () => {
     assert.equal(leftAnnouncement('Romans 8'), 'Left Romans 8');
+  });
+});
+
+describe('focused card label', () => {
+  const label = 'John 1:1–14, passage';
+
+  test('Android, focused: in the label, no value', () => {
+    const props = focusedLabel(label, true, 'android');
+    assert.deepEqual(props, { accessibilityLabel: 'John 1:1–14, passage, focused' });
+    assert.equal('accessibilityValue' in props, false);
+  });
+
+  test('Android, not focused: the plain label and no value key at all', () => {
+    const props = focusedLabel(label, false, 'android');
+    assert.deepEqual(props, { accessibilityLabel: label });
+    assert.equal('accessibilityValue' in props, false);
+  });
+
+  test('iOS, focused: the plain label and the value', () => {
+    assert.deepEqual(focusedLabel(label, true, 'ios'), {
+      accessibilityLabel: label,
+      accessibilityValue: { text: 'focused' },
+    });
+  });
+
+  test('iOS, not focused: no value', () => {
+    const props = focusedLabel(label, false, 'ios');
+    assert.deepEqual(props, { accessibilityLabel: label });
+    assert.equal('accessibilityValue' in props, false);
   });
 });
