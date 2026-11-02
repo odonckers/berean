@@ -60,7 +60,7 @@ const hidden = {
 } as const;
 
 const MENU_ITEM = 48;
-const MENU_WIDTH = 224;
+const MENU_WIDTH = 280;
 
 /**
  * A row's context menu, or a Move to… folder picker. A long press opens it
@@ -133,7 +133,7 @@ export function ActionSheet({ visible, title, items, anchor, anchorEdge = 'end',
         {material && item.icon !== undefined && (
           <ScaledSymbol name={item.icon} size={24} tintColor={iconInk} {...hidden} />
         )}
-        <UIText numberOfLines={1} style={[styles.label, { color: ink }]}>
+        <UIText numberOfLines={2} style={[styles.label, { color: ink }]}>
           {item.label}
         </UIText>
         {check(item)}
