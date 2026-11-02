@@ -5,7 +5,7 @@ import type { Look } from '@/design/look';
 import { coreErrorMessage } from '@/ffi/errors';
 import { seedSampleNotes } from '@/notes/dev-seed';
 import { setSimulatingCoreFailure, simulatingCoreFailure } from '@/search/dev-fault';
-import { seedSampleWorkspace } from '@/studyspace/dev-seed';
+import { seedReaderWorkspace, seedSampleWorkspace } from '@/studyspace/dev-seed';
 
 // Dev-only. Imported solely from inside `if (__DEV__)` in look.tsx, so it and
 // expo-dev-menu's JS never reach a release bundle.
@@ -55,6 +55,19 @@ export function registerLookMenu(current: Look, setLook: (look: Look) => void) {
           message = coreErrorMessage(e);
         }
         Alert.alert('Sample workspace', message);
+      },
+      shouldCollapse: true,
+    },
+    {
+      name: 'Studyspace: seed reader workspace',
+      callback: () => {
+        let message: string;
+        try {
+          message = seedReaderWorkspace();
+        } catch (e) {
+          message = coreErrorMessage(e);
+        }
+        Alert.alert('Reader workspace', message);
       },
       shouldCollapse: true,
     },

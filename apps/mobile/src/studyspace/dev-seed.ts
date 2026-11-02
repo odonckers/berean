@@ -1,11 +1,11 @@
-// Dev-only: a sample workspace of note cards spread over the canvas, made
-// through the core API only. Imported solely from dev-look-menu.ts, inside
-// `if (__DEV__)`.
-import { CardRef, type Frame } from 'berean-ffi-rn';
+// Dev-only: sample workspaces made through the core API only. Imported solely
+// from dev-look-menu.ts, inside `if (__DEV__)`.
+import { CardRef, type Frame, type Location } from 'berean-ffi-rn';
 
-import { userdata } from '@/ffi/core';
+import { library, userdata } from '@/ffi/core';
+import { displayTitle } from '@/library/labels';
 import { notesChanged } from '@/notes/changes';
-import { allNotes } from '@/notes/data';
+import { allNotes, firstInstalledBible } from '@/notes/data';
 
 const NAME = 'Sample workspace';
 
@@ -43,4 +43,46 @@ export function seedSampleWorkspace(): string {
   // Studyspace reads again when the notes change.
   notesChanged();
   return `Seeded “${NAME}” with ${notes.length} note cards.`;
+}
+
+const READER_NAME = 'Reader workspace';
+const JOHN = 43;
+
+/** Seeds two reader cards (a passage, a publication) and a note; says what it did. Skips if it exists. */
+export function seedReaderWorkspace(): string {
+  const ud = userdata();
+  if (ud.workspaces().some((w) => w.name === READER_NAME)) return `“${READER_NAME}” is already there.`;
+
+  const said: string[] = [];
+  const workspace = ud.createWorkspace(READER_NAME);
+
+  // §6.2's default reader size, side by side.
+  const bible = firstInstalledBible();
+  if (bible) {
+    const at = (verse: number): Location => ({ pubKey: bible.pubKey, book: JOHN, chapter: 1, verse });
+    const card = CardRef.Passage.new({ span: { start: at(1), end: at(14) }, missing: false });
+    ud.addItem(workspace.id, card, { x: 0, y: 0, width: 634, height: 568 });
+    said.push(`John 1:1–14 in ${displayTitle(bible)}`);
+  } else {
+    said.push('no passage card (no Bible installed)');
+  }
+
+  const pub = library()
+    .installed()
+    .find((p) => p.pubKey !== bible?.pubKey);
+  if (pub) {
+    const card = CardRef.Publication.new({ location: { pubKey: pub.pubKey }, missing: false });
+    ud.addItem(workspace.id, card, { x: 700, y: 0, width: 634, height: 568 });
+    said.push(displayTitle(pub));
+  } else {
+    said.push('no publication card (no other publication installed)');
+  }
+
+  if (allNotes().length === 0) ud.addNote('Reading notes', '', undefined, undefined, undefined);
+  const note = allNotes()[0];
+  ud.addItem(workspace.id, CardRef.Note.new({ noteId: note.id }), { x: -320, y: 0, width: 260, height: 180 });
+  said.push('a note card');
+
+  notesChanged();
+  return `Seeded “${READER_NAME}”: ${said.join('; ')}.`;
 }
