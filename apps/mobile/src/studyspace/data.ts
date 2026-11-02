@@ -8,19 +8,44 @@ import {
   ItemOrder,
   type BibleBook,
   type CanvasItem,
+  type Location,
+  type LocationSpan,
+  ReaderState,
   type Workspace,
 } from 'berean-ffi-rn';
 
 import { library, reader, userdata } from '@/ffi/core';
+import { coreErrorMessage } from '@/ffi/errors';
 import { displayTitle } from '@/library/labels';
 import { load } from '@/library/load';
 import { notesChanged } from '@/notes/changes';
 import { allNotes, makeReferencer } from '@/notes/data';
 import { byModified, noteTitle } from '@/notes/note-list';
 import { spanReference } from '@/reader/bible-nav';
+import { blockSegments } from '@/reader/chapter-blocks';
 import type { Rect } from '@/studyspace/camera';
 import { cardAccessibilityLabel, type CardKind } from '@/studyspace/cards';
-import { placeOrDiscard, type Remembered, rememberOutcome } from '@/studyspace/writes';
+import {
+  bibleRows,
+  documentRows,
+  type Position,
+  readerAt,
+  type ReaderScope,
+  type Row,
+} from '@/studyspace/reader-state';
+import { placeOrDiscard, quietWrite, type Remembered, rememberOutcome } from '@/studyspace/writes';
+
+/**
+ * A passage or publication card's live text source (§6.6): the card's own
+ * span or location, and where its reader was left, if it has been read.
+ */
+export type CardReader = {
+  card: { kind: 'passage'; span: LocationSpan } | { kind: 'publication'; location: Location };
+  /** The saved anchor's location (a verse, or a paragraph) and offset; none if never read. */
+  saved: { at: Location; charOffset: number } | undefined;
+  /** Names the text the card reads (its chapter or document), so it is read once per card. */
+  textKey: string;
+};
 
 export type CardView = {
   id: bigint;
@@ -31,6 +56,8 @@ export type CardView = {
   title: string;
   missing: boolean;
   accessibilityLabel: string;
+  /** A passage or publication card's reader; none for a note. */
+  reader: CardReader | undefined;
 };
 
 /**
@@ -91,6 +118,7 @@ export function readCards(id: bigint): CardView[] {
     let title: string;
     let missing: boolean;
     let noteId: string | undefined;
+    let cardReader: CardReader | undefined;
     if (CardRef.Note.instanceOf(card)) {
       noteId = card.inner.noteId;
       // A note that can't be read shows as missing, as a deleted one does.
@@ -103,10 +131,12 @@ export function readCards(id: bigint): CardView[] {
       kind = 'passage';
       title = spanReference(bibleBooks(card.inner.span.start.pubKey), card.inner.span) ?? 'Passage';
       missing = card.inner.missing;
+      cardReader = readerOf({ kind: 'passage', span: card.inner.span }, item);
     } else {
       kind = 'publication';
       title = reference(card.inner.location) ?? 'Publication';
       missing = card.inner.missing;
+      cardReader = readerOf({ kind: 'publication', location: card.inner.location }, item);
     }
     return {
       id: item.id,
@@ -116,8 +146,96 @@ export function readCards(id: bigint): CardView[] {
       title,
       missing,
       accessibilityLabel: cardAccessibilityLabel(kind, title, missing),
+      reader: cardReader,
     };
   });
+}
+
+/** The reader state's location: its verse span's start, or its location; none if never read. */
+function savedAt(item: CanvasItem): CardReader['saved'] {
+  const state = item.reader;
+  if (state === undefined) return undefined;
+  const at = state.at;
+  if (CardRef.Passage.instanceOf(at)) return { at: at.inner.span.start, charOffset: state.charOffset };
+  if (CardRef.Publication.instanceOf(at)) return { at: at.inner.location, charOffset: state.charOffset };
+  return undefined;
+}
+
+function readerOf(card: CardReader['card'], item: CanvasItem): CardReader {
+  const saved = savedAt(item);
+  // The text is the saved anchor's chapter or document when there is one,
+  // so a reader left in another one (by another device) still restores.
+  const textKey =
+    card.kind === 'passage'
+      ? `${card.span.start.pubKey}:${saved?.at.book ?? card.span.start.book}:${saved?.at.chapter ?? card.span.start.chapter}`
+      : `${card.location.pubKey}:${saved?.at.docId ?? card.location.docId ?? 'toc'}`;
+  return { card, saved, textKey };
+}
+
+/** A reader card's live text: its rows, what they are (for saving), and the anchor to start at. */
+export type ReaderTextRead = { rows: Row[]; scope: ReaderScope; wanted: Position | undefined };
+
+/**
+ * A reader card's text (§5 L3 and L4), read synchronously: a passage's
+ * chapter (the saved verse's, else its span start's), or a publication's
+ * document (the saved paragraph's, else its location's, else the first
+ * TOC entry with a document, in the core's order). Throws as the core
+ * does; wrap it in load().
+ */
+export function readReaderText({ card, saved }: CardReader): ReaderTextRead {
+  if (card.kind === 'passage') {
+    const start = card.span.start;
+    const book = saved?.at.book ?? start.book;
+    const chapter = saved?.at.chapter ?? start.chapter;
+    if (book === undefined || chapter === undefined) throw new Error('This passage has no chapter to read.');
+    const read = reader().bibleChapter(start.pubKey, book, chapter);
+    // No reader state: the span's first verse (none for a whole chapter: its first block).
+    const verse = saved?.at.verse ?? start.verse;
+    return {
+      rows: bibleRows(read.blocks, blockSegments),
+      scope: { kind: 'passage', verse: start, book, chapter },
+      wanted: verse === undefined ? undefined : { key: verse, charOffset: saved?.charOffset ?? 0 },
+    };
+  }
+  const { pubKey } = card.location;
+  // Core ask (Echo): a publication card's starting document (a location
+  // with no docId) is picked app-side, as the first TOC entry with one.
+  const docId =
+    saved?.at.docId ?? card.location.docId ?? reader().toc(pubKey).find((e) => e.docId !== undefined)?.docId;
+  if (docId === undefined) throw new Error('This publication has no text to read.');
+  const read = reader().document(pubKey, docId);
+  const paragraph = saved?.at.paragraph ?? (card.location.docId === docId ? card.location.paragraph : undefined);
+  return {
+    rows: documentRows(read.blocks),
+    scope: { kind: 'publication', pubKey, docId },
+    wanted: paragraph === undefined ? undefined : { key: paragraph, charOffset: saved?.charOffset ?? 0 },
+  };
+}
+
+function logWriteError(what: string) {
+  return (e: unknown) => console.warn(`Studyspace: couldn’t ${what}: ${coreErrorMessage(e)}`);
+}
+
+/**
+ * Save where card `id`'s reader is (§6.6), once its scroll settles. The
+ * core checks the anchor and bumps the card's last_used_at. A failure is
+ * logged, never thrown.
+ */
+export function saveReaderState(id: bigint, scope: ReaderScope, position: Position): boolean {
+  const at = readerAt(scope, position);
+  const ref =
+    at.kind === 'passage'
+      ? CardRef.Passage.new({ span: at.span, missing: false })
+      : CardRef.Publication.new({ location: at.location, missing: false });
+  return quietWrite(
+    () => userdata().setReaderState(id, ReaderState.new({ at: ref, charOffset: position.charOffset })),
+    logWriteError('save a reader card’s place'),
+  );
+}
+
+/** Mark card `id` as just used (§6.6): it became the card being read. Logged, never thrown. */
+export function touchCard(id: bigint): boolean {
+  return quietWrite(() => userdata().touchItem(id), logWriteError('mark a card as used'));
 }
 
 /**

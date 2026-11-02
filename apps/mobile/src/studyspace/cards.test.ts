@@ -16,8 +16,10 @@ import {
   LIGHT_CARD_SHADOW,
   isFront,
   pickWorkspace,
+  readerText,
   titleScale,
   toFront,
+  touchScrolls,
   workspaceAnnouncement,
 } from './cards.ts';
 
@@ -161,6 +163,103 @@ describe('cardText (§5): only whole title lines', () => {
     assert.deepEqual(cardText({ width: 300, height: 54 }, 1, 1, ios, true), { level: 3, titleLines: 1, caption: false });
     // 70 after padding: both title lines and the caption (44 + 4 + 18 = 66).
     assert.deepEqual(cardText({ width: 300, height: 94 }, 1, 1, ios, true), { level: 3, titleLines: 2, caption: true });
+  });
+});
+
+describe('readerText (§5, §6.3): body text at the reader size × zoom, never under 11 pt', () => {
+  // As cardText's, plus the reading serif: 17 pt on 25.5 pt lines.
+  const ios = { padding: 12, gap: 4, lineHeight: 22, captionLineHeight: 18, bodySize: 17, bodyLineHeight: 25.5 };
+  const reader = { width: 634, height: 568 };
+  const small = { width: 300, height: 200 };
+
+  test('a default reader card at 100% is live (L4), as many lines as fit under one title line', () => {
+    // 568 − 24 padding − 22 title − 4 gap = 518: 20 lines of 25.5.
+    assert.deepEqual(readerText(reader, 1, 1, ios, false), {
+      level: 4,
+      titleLines: 1,
+      caption: false,
+      bodyLines: 20,
+      bodyScale: 1,
+    });
+  });
+
+  test('L3 shows up to 3 lines', () => {
+    assert.deepEqual(readerText(small, 1, 1, ios, false), {
+      level: 3,
+      titleLines: 1,
+      caption: false,
+      bodyLines: 3,
+      bodyScale: 1,
+    });
+  });
+
+  test('below 100% the body scales with the zoom', () => {
+    // 210 pt wide: L3, body 11.9 pt on screen.
+    const t = readerText(small, 0.7, 1, ios, false);
+    assert.equal(t.level, 3);
+    assert.equal(t.bodyScale, 0.7);
+    assert.equal(t.bodyLines, 3);
+  });
+
+  test('under the floor, the card drops to title only (frame 01, panel 6: 60%)', () => {
+    // 380 pt wide is L4 by width, but 17 × 0.6 = 10.2 pt < 11.
+    assert.deepEqual(readerText(reader, 0.6, 1, ios, false), {
+      level: 2,
+      titleLines: 2,
+      caption: false,
+      bodyLines: 0,
+      bodyScale: 0.6,
+    });
+    assert.equal(readerText(reader, 0.65, 1, ios, false).level, 4);
+    assert.equal(readerText(reader, 0.64, 1, ios, false).level, 2);
+  });
+
+  test('the floor and breakpoints scale with the font scale', () => {
+    // At 2× text L4 starts at 640 pt, so 634 pt is L3; 11 × 2 floor against 17 × 2 body.
+    const big = { ...ios, lineHeight: 44, bodyLineHeight: 51 };
+    assert.equal(readerText(reader, 1, 2, big, false).level, 3);
+    assert.equal(readerText(reader, 0.64, 2, big, false).level, 2);
+  });
+
+  test('no room for one body line: title only', () => {
+    assert.deepEqual(readerText({ width: 300, height: 60 }, 1, 1, ios, false), {
+      level: 2,
+      titleLines: 1,
+      caption: false,
+      bodyLines: 0,
+      bodyScale: 1,
+    });
+  });
+
+  test('a missing card never draws text', () => {
+    const t = readerText(reader, 1, 1, ios, true);
+    assert.equal(t.level, 2);
+    assert.equal(t.caption, true);
+    assert.equal(t.bodyLines, 0);
+  });
+
+  test('L1 and L2 are cardText’s', () => {
+    assert.equal(readerText({ width: 40, height: 400 }, 1, 1, ios, false).level, 1);
+    assert.equal(readerText({ width: 100, height: 400 }, 1, 1, ios, false).level, 2);
+  });
+});
+
+describe('touchScrolls (§6.1): one finger scrolls a live reader card, else pans', () => {
+  test('only a passage or publication card at L4', () => {
+    assert.equal(touchScrolls('passage', 4), true);
+    assert.equal(touchScrolls('publication', 4), true);
+    assert.equal(touchScrolls('publication', 3), false);
+    assert.equal(touchScrolls('note', 4), false);
+  });
+
+  test('at least 320 pt × font scale on screen, with body over the floor', () => {
+    const ios = { padding: 12, gap: 4, lineHeight: 22, captionLineHeight: 18, bodySize: 17, bodyLineHeight: 25.5 };
+    const level = (width: number, zoom: number, fontScale: number) =>
+      readerText({ width, height: 568 }, zoom, fontScale, ios, false).level;
+    assert.equal(touchScrolls('passage', level(320, 1, 1)), true);
+    assert.equal(touchScrolls('passage', level(319, 1, 1)), false);
+    assert.equal(touchScrolls('passage', level(639, 1, 2)), false);
+    assert.equal(touchScrolls('passage', level(800, 0.6, 1)), false);
   });
 });
 

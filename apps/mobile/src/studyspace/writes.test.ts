@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { placeOrDiscard, rememberOutcome } from './writes.ts';
+import { placeOrDiscard, quietWrite, rememberOutcome } from './writes.ts';
 
 describe('placing a new note, or discarding it', () => {
   const failing = () => {
@@ -60,5 +60,32 @@ describe('remembering a workspace', () => {
       throw new Error('Io');
     };
     assert.equal(rememberOutcome(write, isGone), 'failed');
+  });
+});
+
+describe('background writes (a reader card’s place, touching it)', () => {
+  test('true when the write works, and nothing is reported', () => {
+    const reported: unknown[] = [];
+    assert.equal(
+      quietWrite(
+        () => {},
+        (e) => reported.push(e),
+      ),
+      true,
+    );
+    assert.deepEqual(reported, []);
+  });
+
+  test('a failure is reported, never thrown', () => {
+    const error = new Error('Invalid');
+    const reported: unknown[] = [];
+    const write = () => {
+      throw error;
+    };
+    assert.equal(
+      quietWrite(write, (e) => reported.push(e)),
+      false,
+    );
+    assert.deepEqual(reported, [error]);
   });
 });
