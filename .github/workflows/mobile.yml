@@ -7,19 +7,84 @@ on:
       - "apps/mobile/**"
       - "core/**"
       - ".github/workflows/mobile.yml"
+  # No paths filter on pull_request: `check` must report on every PR so a
+  # required check never sits pending. The job skips its own work instead.
   pull_request:
-    paths:
-      - "apps/mobile/**"
-      - "core/**"
-      - ".github/workflows/mobile.yml"
+
+# One run per PR (or ref). New pushes to a PR cancel its older run; pushes
+# to main always run to completion.
+concurrency:
+  group: mobile-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  # dorny/paths-filter lists PR files through the API.
+  pull-requests: read
 
 jobs:
   check:
+    # Always runs, and passes when work is skipped. The `changes` step sets
+    # two outputs that gate the steps below:
+    #   mobile: anything under apps/mobile, core or this workflow changed.
+    #     When false, every step after the report is skipped and the job
+    #     finishes green in seconds.
+    #   native: something that can break the Android build changed. Only
+    #     then do the Gradle steps at the end run (~22 min cold); the fast
+    #     checks (npm ci, ubrn, typecheck, lint, tests) run whenever mobile
+    #     is true.
+    # On push to main the filter compares against the previous commit.
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: apps/mobile
     steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            mobile:
+              - "apps/mobile/**"
+              - "core/**"
+              - ".github/workflows/mobile.yml"
+            native:
+              # Gitignored today (prebuild output), included in case it's committed.
+              - "apps/mobile/android/**"
+              # Expo native modules and berean-ffi-rn (incl. ubrn.config.yaml).
+              - "apps/mobile/modules/**"
+              # The FFI crate ubrn builds, and the crates and config it
+              # depends on. berean-core derives the uniffi types that cross
+              # into the generated bindings.
+              - "core/berean-ffi/**"
+              - "core/berean-core/**"
+              - "core/uniffi-bindgen/**"
+              - "core/Cargo.toml"
+              - "core/Cargo.lock"
+              - "core/rust-toolchain.toml"
+              # Native dependencies and prebuild config.
+              - "apps/mobile/package.json"
+              - "apps/mobile/package-lock.json"
+              - "apps/mobile/app.json"
+              - "apps/mobile/app.config.*"
+              - "apps/mobile/plugins/**"
+              - "apps/mobile/eas.json"
+              - ".github/workflows/mobile.yml"
+
+      - name: Report what runs
+        env:
+          MOBILE: ${{ steps.changes.outputs.mobile }}
+          NATIVE: ${{ steps.changes.outputs.native }}
+        run: |
+          if [ "$MOBILE" != "true" ]; then
+            echo "No changes under apps/mobile, core or this workflow: skipping all checks."
+          elif [ "$NATIVE" != "true" ]; then
+            echo "Mobile changes, but none to native code, Rust FFI, dependencies or prebuild config: running the fast checks, skipping the Android compile."
+          else
+            echo "Native-relevant changes: running the fast checks and the Android compile."
+          fi
+
       # The runner disk filled up during Gradle, on top of the Rust, NDK and
       # node builds. Drop preinstalled toolchains this job never uses. The
       # Android SDK (/usr/local/lib/android, ANDROID_HOME) is kept on purpose:
@@ -27,8 +92,7 @@ jobs:
       # installed there below. Only CodeQL goes from /opt/hostedtoolcache,
       # since setup-node and setup-java use the rest.
       - name: Free disk space
-        # apps/mobile doesn't exist before checkout.
-        working-directory: /
+        if: steps.changes.outputs.mobile == 'true'
         run: |
           df -h /
           sudo rm -rf \
@@ -49,21 +113,25 @@ jobs:
           docker image prune --all --force || true
           df -h /
 
-      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
+        if: steps.changes.outputs.mobile == 'true'
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
-      - run: npm ci
+      - name: npm ci
+        if: steps.changes.outputs.mobile == 'true'
+        run: npm ci
 
       # berean-ffi bindings (apps/mobile/modules/berean-ffi-rn). Typecheck
       # needs them, and none of the generated code is committed.
       - uses: dtolnay/rust-toolchain@stable
+        if: steps.changes.outputs.mobile == 'true'
         with:
           targets: aarch64-linux-android, x86_64-linux-android
 
       - uses: Swatinem/rust-cache@v2
+        if: steps.changes.outputs.mobile == 'true'
         with:
           # core/target, plus the ubrn CLI that npm builds on first use.
           workspaces: |
@@ -71,9 +139,11 @@ jobs:
             apps/mobile/node_modules/uniffi-bindgen-react-native
 
       - name: Install cargo-ndk
+        if: steps.changes.outputs.mobile == 'true'
         run: cargo install --locked cargo-ndk@4.1.2
 
       - name: Install the pinned NDK
+        if: steps.changes.outputs.mobile == 'true'
         env:
           # NDK r30, matching the box (/home/box/android/android-ndk-r30,
           # Pkg.Revision in its source.properties).
@@ -83,9 +153,11 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
 
       - name: Build berean-ffi for Android and generate bindings
+        if: steps.changes.outputs.mobile == 'true'
         run: npm run ubrn:android
 
       - name: Generated code is not tracked
+        if: steps.changes.outputs.mobile == 'true'
         # Everything ubrn writes must be gitignored, and must not touch
         # tracked files.
         run: |
@@ -96,17 +168,24 @@ jobs:
             exit 1
           fi
 
-      - run: npm run typecheck
-      - run: npm run lint
+      - name: Typecheck
+        if: steps.changes.outputs.mobile == 'true'
+        run: npm run typecheck
+      - name: Lint
+        if: steps.changes.outputs.mobile == 'true'
+        run: npm run lint
 
       - name: Unit tests
+        if: steps.changes.outputs.mobile == 'true'
         # node --test over src/**/*.test.ts (no Jest).
         run: npm test
 
       # Android compile: catches broken Kotlin in the Expo modules
       # (berean-shortcuts, berean-system-bars, berean-ffi-rn) and Gradle
-      # changes. Reuses the Rust build and bindings from ubrn above.
+      # changes. Reuses the Rust build and bindings from ubrn above. Only
+      # runs when `native` is true (see the comment on the job).
       - uses: actions/setup-java@v4
+        if: steps.changes.outputs.native == 'true'
         with:
           distribution: temurin
           java-version: 17
@@ -114,16 +193,20 @@ jobs:
       # Gradle caching. No wrapper is committed (android/ comes from
       # prebuild); setup-gradle only caches here, the generated wrapper runs.
       - uses: gradle/actions/setup-gradle@v4
+        if: steps.changes.outputs.native == 'true'
 
       - name: Prebuild Android
+        if: steps.changes.outputs.native == 'true'
         # After the untracked check: android/ is gitignored, but keep that
         # check looking at a tree only ubrn has touched.
         run: npx expo prebuild --platform android --no-install
 
       - name: Disk before Gradle
+        if: steps.changes.outputs.native == 'true'
         run: df -h /
 
       - name: Compile Android (debug, x86_64 only)
+        if: steps.changes.outputs.native == 'true'
         # One ABI for speed, and ubrn only builds the Rust core for
         # arm64-v8a and x86_64.
         working-directory: apps/mobile/android
