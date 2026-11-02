@@ -16,6 +16,7 @@ import {
   LIGHT_CARD_SHADOW,
   isFront,
   pickWorkspace,
+  readerMeasure,
   readerText,
   titleScale,
   toFront,
@@ -116,6 +117,18 @@ describe('levels (§5)', () => {
     assert.equal(titleScale(0.1) * 0.1, 1);
     assert.equal(titleScale(1), 1);
     assert.equal(titleScale(3), 1);
+  });
+});
+
+describe('readerMeasure: the reader card body never runs wider than the reader', () => {
+  test("the reader's measure at 100% text size and zoom", () => {
+    assert.equal(readerMeasure(571, 1, 1), 571);
+  });
+
+  test('scales linearly with the font scale and with the body scale', () => {
+    assert.equal(readerMeasure(571, 2, 1), 1142);
+    assert.equal(readerMeasure(571, 1, 0.5), 285.5);
+    assert.equal(readerMeasure(571, 2, 0.5), 571);
   });
 });
 

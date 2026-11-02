@@ -218,6 +218,15 @@ export function readerText(
 }
 
 /**
+ * The widest a reader card's body runs: the reader's measure (readingMeasure,
+ * passed in so this stays free of React Native) times the font scale and the
+ * body's `scale`, as its text is.
+ */
+export function readerMeasure(measure: number, fontScale: number, scale: number): number {
+  return measure * fontScale * scale;
+}
+
+/**
  * §6.1, touch: whether one finger on the card scrolls its text rather than
  * panning the canvas. Only a passage or publication card drawn at L4 by
  * readerText does: at least 320 pt × font scale wide on screen, with body

@@ -1,10 +1,11 @@
 import { useRef } from 'react';
-import { type ScrollViewInstance, StyleSheet, Text } from 'react-native';
+import { type ScrollViewInstance, StyleSheet, Text, useWindowDimensions } from 'react-native';
 import { type PanGesture, ScrollView } from 'react-native-gesture-handler';
 
 import { ScriptureText } from '@/components/text';
 import { useBerean } from '@/design/theme';
-import { spacing } from '@/design/tokens';
+import { readingMeasure, spacing } from '@/design/tokens';
+import { readerMeasure } from '@/studyspace/cards';
 import {
   type Part,
   type Row,
@@ -26,26 +27,27 @@ function useScaled(variant: 'scripture' | 'sectionHeading', scale: number) {
 }
 
 /** A row's parts: verse and paragraph numbers in the secondary ink, the text in the reading ink. */
-function PartsText({ parts, scale, heading, numberOfLines, onLayout }: {
+function PartsText({ parts, scale, heading, numberOfLines, maxWidth, onLayout }: {
   parts: readonly Part[];
   scale: number;
   heading?: boolean;
   numberOfLines?: number;
+  maxWidth?: number;
   onLayout?: (layout: RowLayout) => void;
 }) {
-  const { look, colors, m3 } = useBerean();
-  const secondary = look === 'material' ? m3.onSurfaceVariant : colors.textSecondary;
+  const { colors, type } = useBerean();
+  const number = { ...type.verseNumber, fontSize: (type.verseNumber.fontSize ?? 0) * scale, color: colors.textSecondary };
   const sized = useScaled(heading ? 'sectionHeading' : 'scripture', scale);
   return (
     <ScriptureText
       variant={heading ? 'sectionHeading' : 'scripture'}
       numberOfLines={numberOfLines}
       onLayout={onLayout && ((e) => onLayout({ y: e.nativeEvent.layout.y, height: e.nativeEvent.layout.height }))}
-      style={sized}
+      style={[sized, { maxWidth }]}
     >
       {parts.map((part, i) =>
         part.number ? (
-          <Text key={i} style={{ color: secondary }}>
+          <Text key={i} style={number}>
             {part.text}
           </Text>
         ) : (
@@ -63,7 +65,15 @@ export function ReaderSnippet({ rows, at, lines, scale }: {
   lines: number;
   scale: number;
 }) {
-  return <PartsText parts={snippetParts(rows, at, SNIPPET_CHARS)} scale={scale} numberOfLines={lines} />;
+  const { fontScale } = useWindowDimensions();
+  return (
+    <PartsText
+      parts={snippetParts(rows, at, SNIPPET_CHARS)}
+      scale={scale}
+      numberOfLines={lines}
+      maxWidth={readerMeasure(readingMeasure, fontScale, scale)}
+    />
+  );
 }
 
 type LiveReaderProps = {
@@ -92,6 +102,7 @@ type LiveReaderProps = {
  * lines (scrollYFor): approximate within a paragraph.
  */
 export function LiveReader({ rows, start, scale, canvasPan, onScrollStart, onMoving, onSettle }: LiveReaderProps) {
+  const { fontScale } = useWindowDimensions();
   const scroll = useRef<ScrollViewInstance>(null);
   const layouts = useRef<(RowLayout | undefined)[]>([]);
   const restored = useRef(false);
@@ -118,7 +129,7 @@ export function LiveReader({ rows, start, scale, canvasPan, onScrollStart, onMov
       disallowInterruption
       yieldsToContinuousGestures
       style={styles.live}
-      contentContainerStyle={styles.liveContent}
+      contentContainerStyle={[styles.liveContent, { maxWidth: readerMeasure(readingMeasure, fontScale, scale) }]}
       onContentSizeChange={restore}
       onScrollBeginDrag={onScrollStart}
       onScrollEndDrag={(e) => settled(e.nativeEvent.contentOffset.y)}
