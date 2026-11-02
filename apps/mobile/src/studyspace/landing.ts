@@ -85,3 +85,15 @@ export function panIntoView(camera: Camera, view: Size, rect: Rect, margin: numb
   // The view moves the other way to the card's shift.
   return dx === 0 && dy === 0 ? camera : { x: camera.x - dx, y: camera.y - dy, zoom: camera.zoom };
 }
+
+/**
+ * The camera a tap on a small reader card moves to (§6.1 focus zoom):
+ * below 100%, 100% centred on the card; at 100% or more, the zoom kept and
+ * the card panned into view. Either way a card bigger than the view shows
+ * its top-left, `margin` in from the edges.
+ */
+export function focusCamera(camera: Camera, view: Size, frame: Rect, margin: number): Camera {
+  const from =
+    camera.zoom < 1 ? { x: frame.x + frame.width / 2, y: frame.y + frame.height / 2, zoom: 1 } : camera;
+  return panIntoView(from, view, frame, margin);
+}

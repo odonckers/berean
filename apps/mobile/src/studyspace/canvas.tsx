@@ -58,6 +58,7 @@ import type { CardView } from '@/studyspace/data';
 import { dotGridBackground } from '@/studyspace/dot-grid';
 import { type CardAction, type Guide, guideOnScreen, resizeBy } from '@/studyspace/edit';
 import { resizeHaptic } from '@/studyspace/haptics';
+import { focusCamera, LANDING_MARGIN } from '@/studyspace/landing';
 
 /** An automatic camera move: zoom in log space, about `focal` if there is one. */
 type Flight = { from: Camera; to: Camera; focal?: Point };
@@ -110,6 +111,11 @@ type CanvasProps = {
   onSettle: (camera: Camera) => void;
   onLiftCard: (id: bigint) => void;
   onTapCard: (id: bigint) => void;
+  /**
+   * A reader card became the one being read (§6.6): `focused` when a tap
+   * zoomed the camera to it, else its text began to scroll.
+   */
+  onReadCard: (id: bigint, focused: boolean) => void;
   /** A card's move or resize ended at `frame`. */
   onCommitCard: (id: bigint, frame: Rect) => void;
   onCardAction: (card: CardView, action: CardAction) => void;
@@ -120,7 +126,9 @@ type CanvasProps = {
  * A workspace's canvas (findings §3): one finger pans, pinch zooms about
  * the fingers, rubber-banding past the zoom limits and springing back;
  * double tap on empty canvas toggles 100% at the tap and fit-all; a tap
- * there clears the selection. Cards lift on a long press and move
+ * there clears the selection. A live reader card's text scrolls under one
+ * finger instead of the pan (§6.1), and a tap on a smaller reader card
+ * zooms to it; pinch always moves the canvas. Cards lift on a long press and move
  * (StudyCard); the selected one resizes by the handle in the selection
  * overlay, drawn in screen points above the content layer. All of it runs
  * on the UI thread on one translated and scaled content layer (and the
@@ -130,7 +138,7 @@ type CanvasProps = {
  */
 export function Canvas(props: CanvasProps) {
   const { ref, cards, saved, limits, selected, highlighted, onSettle, onTapEmpty } = props;
-  const { onLiftCard, onTapCard, onCommitCard, onCardAction } = props;
+  const { onLiftCard, onTapCard, onReadCard, onCommitCard, onCardAction } = props;
   const { look, colors, m3 } = useBerean();
   const reducedMotion = useReducedMotion();
   const { fontScale } = useWindowDimensions();
@@ -476,27 +484,42 @@ export function Canvas(props: CanvasProps) {
     },
   });
 
+  /** Where the camera is now, or headed if it is moving on its own. */
+  const headed = (): Camera => {
+    const f = flight.get();
+    return f !== null ? f.to : { x: cx.get(), y: cy.get(), zoom: cz.get() };
+  };
+
+  const moveTo = (to: Camera) => {
+    scheduleOnUI(() => {
+      'worklet';
+      if (!reducedMotion) {
+        fly(to, undefined, 0);
+        return;
+      }
+      // §9: automatic camera moves jump with Reduce Motion.
+      halt();
+      moved.set(true);
+      setCamera(to);
+      settle();
+    });
+  };
+
+  // §6.1, touch: a tap on a reader card too small to scroll zooms to it
+  // (100% centred if below, else panned into view), and it is now read.
+  const tapCard = (id: bigint, zoomTo: boolean) => {
+    onTapCard(id);
+    const card = cards.find((c) => c.id === id);
+    if (!zoomTo || view === undefined || card === undefined) return;
+    const now = headed();
+    const to = focusCamera(now, view, card.frame, LANDING_MARGIN);
+    if (to !== now) moveTo(to);
+    onReadCard(id, true);
+  };
+
   useImperativeHandle(ref, () => ({
-    view: () => {
-      if (view === undefined) return undefined;
-      // Where the camera is headed if it is moving on its own.
-      const f = flight.get();
-      return { camera: f !== null ? f.to : { x: cx.get(), y: cy.get(), zoom: cz.get() }, size: view };
-    },
-    moveTo: (to: Camera) => {
-      scheduleOnUI(() => {
-        'worklet';
-        if (!reducedMotion) {
-          fly(to, undefined, 0);
-          return;
-        }
-        // §9: automatic camera moves jump with Reduce Motion.
-        halt();
-        moved.set(true);
-        setCamera(to);
-        settle();
-      });
-    },
+    view: () => (view === undefined ? undefined : { camera: headed(), size: view }),
+    moveTo,
     focusCard: (id: bigint) => {
       const node = cardViews.current.get(id);
       if (node === undefined) return false;
@@ -660,8 +683,10 @@ export function Canvas(props: CanvasProps) {
                 editing={editing}
                 selected={card.id === selected}
                 highlighted={card.id === highlighted}
+                canvasPan={pan}
                 onLift={onLiftCard}
-                onTap={onTapCard}
+                onTap={tapCard}
+                onRead={(id) => onReadCard(id, false)}
                 onCommit={onCommitCard}
                 onAction={onCardAction}
               />

@@ -28,6 +28,22 @@ export function placeOrDiscard<T>(
   }
 }
 
+/**
+ * Run a background write (a reader card's position, or touching it on
+ * focus): whether it worked. A failure goes to `report` and is never
+ * thrown, so a scroll or a tap never crashes on it; at worst the card
+ * reopens at its previous place or sorts as less recently used.
+ */
+export function quietWrite(write: () => void, report: (e: unknown) => void): boolean {
+  try {
+    write();
+    return true;
+  } catch (e) {
+    report(e);
+    return false;
+  }
+}
+
 /** Whether remembering a workspace worked, found it gone (NotFound), or failed otherwise. */
 export type Remembered = 'ok' | 'gone' | 'failed';
 

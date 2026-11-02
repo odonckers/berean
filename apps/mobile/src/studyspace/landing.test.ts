@@ -1,7 +1,16 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { freeSpot, LANDING_GAP, LANDING_GRID, LANDING_MARGIN, landingTarget, NOTE_CARD, panIntoView } from './landing.ts';
+import {
+  focusCamera,
+  freeSpot,
+  LANDING_GAP,
+  LANDING_GRID,
+  LANDING_MARGIN,
+  landingTarget,
+  NOTE_CARD,
+  panIntoView,
+} from './landing.ts';
 
 const camera = { x: 0, y: 0, zoom: 1 };
 const view = { width: 400, height: 800 };
@@ -86,5 +95,27 @@ describe('pan into view (§7.2)', () => {
   test('bigger than the view: shows its top-left', () => {
     const to = panIntoView(camera, view, { x: 0, y: 0, width: 1000, height: 100 }, LANDING_MARGIN);
     assert.equal(to.x, -24 + 200);
+  });
+});
+
+describe('focus zoom on a tapped reader card (§6.1)', () => {
+  test('below 100%: 100%, centred on the card', () => {
+    const to = focusCamera({ x: 0, y: 0, zoom: 0.5 }, view, { x: 1000, y: 1000, width: 300, height: 200 }, LANDING_MARGIN);
+    assert.deepEqual(to, { x: 1150, y: 1100, zoom: 1 });
+  });
+
+  test('at 100% or more: the zoom kept, the card only panned into view', () => {
+    assert.equal(focusCamera(camera, view, { x: -100, y: -100, width: 100, height: 100 }, LANDING_MARGIN), camera);
+    const zoomed = { x: 0, y: 0, zoom: 2 };
+    assert.deepEqual(focusCamera(zoomed, view, { x: 300, y: 0, width: 100, height: 100 }, LANDING_MARGIN), {
+      x: 312,
+      y: 0,
+      zoom: 2,
+    });
+  });
+
+  test('taller than the view: its top just inside the margin', () => {
+    const to = focusCamera({ x: 0, y: 0, zoom: 0.5 }, view, { x: 0, y: 0, width: 300, height: 2000 }, LANDING_MARGIN);
+    assert.deepEqual(to, { x: 150, y: 400 - 24, zoom: 1 });
   });
 });

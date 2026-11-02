@@ -52,6 +52,7 @@ import {
   readLastWorkspace,
   readWorkspaces,
   rememberWorkspace,
+  touchCard,
 } from '@/studyspace/data';
 import { debounce } from '@/studyspace/debounce';
 import { type CardAction, nudge, sameFrame } from '@/studyspace/edit';
@@ -223,6 +224,16 @@ export default function StudyspaceScreen() {
       return;
     }
     if (reorder && cards.ok) setFront({ from: cards.value, cards: toFront(shown, id) });
+  };
+
+  // §6.6: a reader card is touched (its last_used_at bumped) when a tap
+  // zooms to it, and the first time its text scrolls this session; its
+  // scrolls after that bump it by saving its place.
+  const read = useRef(new Set<bigint>());
+  const readCard = (id: bigint, focused: boolean) => {
+    if (!focused && read.current.has(id)) return;
+    read.current.add(id);
+    touchCard(id);
   };
 
   const liftCard = (id: bigint) => {
@@ -491,6 +502,7 @@ export default function StudyspaceScreen() {
         onSettle={(camera) => saver.call({ id: current.id, camera })}
         onLiftCard={liftCard}
         onTapCard={(id) => bringToFront(id, true)}
+        onReadCard={readCard}
         onCommitCard={commitFrame}
         onCardAction={cardAction}
         onTapEmpty={() => setSelectedId(undefined)}

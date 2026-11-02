@@ -160,3 +160,79 @@ export function cardText(
     ? { level: widthLevel, titleLines: withCaption, caption: true }
     : { level: widthLevel, titleLines, caption: false };
 }
+
+/** §5: body text never goes under 11 pt (Caption 2), times the font scale. */
+export const BODY_FLOOR = 11;
+/** §5 L3: a reader card shows about 3 lines from its anchor. */
+export const SNIPPET_LINES = 3;
+
+export type ReaderText = CardText & {
+  /** Whole body lines that fit under the title: up to SNIPPET_LINES at L3; 0 at L1 and L2. */
+  bodyLines: number;
+  /**
+   * The body's size in the title layer (laid out at frame / titleScale):
+   * min(zoom, 1), so on screen it is the reader's size times the zoom.
+   */
+  bodyScale: number;
+};
+
+/**
+ * What a passage or publication card draws (§5, §6.3): cardText's level,
+ * and at L3 and L4 a one-line title over body text in the reading serif.
+ * The body is the reader's size scaled by the zoom; where that would be
+ * under BODY_FLOOR, or not one whole body line fits under the title, or the
+ * card is missing, the card draws L2 (title only) instead. `bodySize` is the
+ * reader's text size in points before the font scale (17); the floor and
+ * the size both scale with it. `bodyLineHeight` is already multiplied by
+ * the font scale, as `lineHeight` is.
+ */
+export function readerText(
+  frame: { width: number; height: number },
+  zoom: number,
+  fontScale: number,
+  text: {
+    padding: number;
+    gap: number;
+    lineHeight: number;
+    captionLineHeight: number;
+    bodySize: number;
+    bodyLineHeight: number;
+  },
+  missing: boolean,
+): ReaderText {
+  const base = cardText(frame, zoom, fontScale, text, missing);
+  const bodyScale = Math.min(zoom, 1);
+  const titleOnly = { ...base, level: Math.min(base.level, 2) as CardLevel, bodyLines: 0, bodyScale };
+  if (base.level < 3 || missing) return titleOnly;
+  if (text.bodySize * fontScale * zoom < BODY_FLOOR * fontScale) return titleOnly;
+  const room = frame.height / titleScale(zoom) - 2 * text.padding - text.lineHeight - text.gap;
+  const lines = Math.floor(room / (text.bodyLineHeight * bodyScale) + 1e-6);
+  if (lines < 1) return titleOnly;
+  return {
+    level: base.level,
+    titleLines: 1,
+    caption: false,
+    bodyLines: base.level === 3 ? Math.min(SNIPPET_LINES, lines) : lines,
+    bodyScale,
+  };
+}
+
+/**
+ * The widest a reader card's body runs: the reader's measure (readingMeasure,
+ * passed in so this stays free of React Native) times the font scale and the
+ * body's `scale`, as its text is.
+ */
+export function readerMeasure(measure: number, fontScale: number, scale: number): number {
+  return measure * fontScale * scale;
+}
+
+/**
+ * §6.1, touch: whether one finger on the card scrolls its text rather than
+ * panning the canvas. Only a passage or publication card drawn at L4 by
+ * readerText does: at least 320 pt × font scale wide on screen, with body
+ * text over the floor. Every other card pans, and a tap on a smaller reader
+ * card zooms to it.
+ */
+export function touchScrolls(kind: CardKind, level: CardLevel): boolean {
+  return kind !== 'note' && level === 4;
+}
