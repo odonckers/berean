@@ -28,8 +28,8 @@ const highlight = (
 ): ChapterHighlight => ({ id, span: { start, end }, color });
 
 describe('highlight colors', () => {
-  test('the chips in the guide order', () => {
-    assert.deepEqual(HIGHLIGHT_ORDER, ['yellow', 'green', 'blue', 'purple', 'pink', 'orange']);
+  test('the chips in the themes spec order (rule 8)', () => {
+    assert.deepEqual(HIGHLIGHT_ORDER, ['yellow', 'green', 'blue', 'pink', 'purple', 'orange']);
   });
 
   test("each color round-trips through the core's name", () => {
@@ -43,8 +43,8 @@ describe('highlight colors', () => {
       'Yellow',
       'Green',
       'Blue',
-      'Purple',
       'Pink',
+      'Purple',
       'Orange',
     ]);
   });

@@ -13,6 +13,7 @@
     "lint": "expo lint",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "test": "node --test 'src/**/*.test.ts'",
+    "gen:theme-tokens": "node scripts/gen-theme-tokens.ts",
     "ubrn:android": "cd modules/berean-ffi-rn && npm run ubrn:android",
     "ubrn:generate": "cd modules/berean-ffi-rn && npm run ubrn:generate",
     "ubrn:ios": "cd modules/berean-ffi-rn && npm run ubrn:ios",

@@ -18,26 +18,29 @@ const CORE_NAMES: Record<HighlightName, CoreColorName> = {
   yellow: 'Yellow',
   green: 'Green',
   blue: 'Blue',
-  purple: 'Purple',
   pink: 'Pink',
+  purple: 'Purple',
   orange: 'Orange',
 };
 const READER_NAMES: Record<CoreColorName, HighlightName> = {
   Yellow: 'yellow',
   Green: 'green',
   Blue: 'blue',
-  Purple: 'purple',
   Pink: 'pink',
+  Purple: 'purple',
   Orange: 'orange',
 };
 
-/** The chips' order, per the guide: Yellow, Green, Blue, Purple, Pink, Orange. */
+/**
+ * The chips' order, the same in every theme (themes spec rule 8): Yellow,
+ * Green, Blue, Pink, Purple, Orange. Storage maps by name, never by position.
+ */
 export const HIGHLIGHT_ORDER: readonly HighlightName[] = [
   'yellow',
   'green',
   'blue',
-  'purple',
   'pink',
+  'purple',
   'orange',
 ];
 

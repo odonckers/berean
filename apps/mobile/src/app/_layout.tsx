@@ -26,6 +26,8 @@ function RootStack() {
           name="search-view"
           options={{ presentation: 'modal', title: 'Search', headerShown: true }}
         />
+        {/* Settings › Appearance (themes spec §4): a normal push with the native header. */}
+        <Stack.Screen name="appearance" options={{ title: 'Appearance', headerShown: true }} />
         <Stack.Screen
           name="note-editor"
           options={{ presentation: 'modal', title: '', headerShown: true }}

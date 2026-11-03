@@ -1,23 +1,26 @@
 import { Platform, StyleSheet, type TextStyle } from 'react-native';
 
-import { colorSets, type ColorSetName, m3Roles } from '@/design/colors';
+import type { HighlightKey } from '@/design/theme-tokens.generated';
 
 // Semantic design tokens (design guide v3, "Foundations"). Screens use these
-// names only, never raw hex. The colour roles live in colors.ts.
+// names only, never raw hex. The colour roles come from
+// docs/design/themes/tokens.json through appearance.ts; their shapes are in
+// colors.ts.
 
-export { colorSets, m3Roles, type ColorSet, type ColorSetName, type M3Roles } from '@/design/colors';
+export type { ColorSet, M3Roles, StudyPaneColors } from '@/design/colors';
 
-// Highlights are a fill only, named by color. Each has a spoken name and a
-// shape for Differentiate Without Color.
-export type HighlightName = 'yellow' | 'green' | 'blue' | 'purple' | 'pink' | 'orange';
+// Highlights are a fill only, named by color, in the display order yellow,
+// green, blue, pink, purple, orange (themes spec rule 8). Each has a spoken
+// name and a shape for Differentiate Without Color.
+export type HighlightName = HighlightKey;
 export type HighlightShape = 'circle' | 'square' | 'triangle' | 'diamond' | 'bar' | 'ring';
 
 export const highlightShapes: Record<HighlightName, HighlightShape> = {
   yellow: 'circle',
   green: 'square',
   blue: 'triangle',
-  purple: 'diamond',
   pink: 'bar',
+  purple: 'diamond',
   orange: 'ring',
 };
 
@@ -25,80 +28,9 @@ export const highlightSpokenNames: Record<HighlightName, string> = {
   yellow: 'yellow',
   green: 'green',
   blue: 'blue',
-  purple: 'purple',
   pink: 'pink',
+  purple: 'purple',
   orange: 'orange',
-};
-
-// Converted to sRGB hex from the OKLCH L/C/h values in the guide.
-export const highlightFills: Record<ColorSetName, Record<HighlightName, string>> = {
-  light: {
-    yellow: '#F0E2AD',
-    green: '#C1EFC9',
-    blue: '#BBE7FF',
-    purple: '#ECD6FF',
-    pink: '#FFCFE4',
-    orange: '#FFD6B5',
-  },
-  dark: {
-    yellow: '#3D3519',
-    green: '#243C29',
-    blue: '#21384B',
-    purple: '#3B2F48',
-    pink: '#482C36',
-    orange: '#472F1E',
-  },
-  sepia: {
-    yellow: '#DFD19D',
-    green: '#B1DFB9',
-    blue: '#ABD7FD',
-    purple: '#DBC6F7',
-    pink: '#F7BFD3',
-    orange: '#F6C6A6',
-  },
-  increaseContrast: {
-    yellow: '#EDDB96',
-    green: '#B0ECBC',
-    blue: '#A8E2FF',
-    purple: '#E8CCFF',
-    pink: '#FFC2DE',
-    orange: '#FFCCA2',
-  },
-};
-
-// Study pane colors that have no general role (Lumen review of the inline
-// study pane). Material: the 1dp ring and the My notes footer. iOS: the
-// segmented control and the My notes footer.
-export type StudyPaneColors = {
-  materialRing: string;
-  materialFooter: string;
-  iosFooter: string;
-  segmentTrack: string;
-  segmentThumb: string;
-  segmentText: string;
-};
-
-export const studyPaneColors: Record<'light' | 'dark', StudyPaneColors> = {
-  light: {
-    materialRing: '#E0D4BC',
-    materialFooter: m3Roles.light.surfaceContainerHigh,
-    iosFooter: '#F5EFE0',
-    segmentTrack: colorSets.light.separator,
-    // Light thumb is surfaceRaised with a small shadow.
-    segmentThumb: colorSets.light.surfaceRaised,
-    segmentText: colorSets.light.text,
-  },
-  dark: {
-    materialRing: m3Roles.dark.outlineVariant,
-    materialFooter: m3Roles.dark.surfaceContainerHigh,
-    // Derived: Lumen gave only the light value. The light footer is one step
-    // darker than the raised pane, so the dark one is one step lighter than
-    // the dark pane (#211D18), the same step as the segment track.
-    iosFooter: '#2A241F',
-    segmentTrack: '#2A241F',
-    segmentThumb: '#5C544A',
-    segmentText: colorSets.dark.text,
-  },
 };
 
 // Reading column horizontal padding, and the study pane's inset from the

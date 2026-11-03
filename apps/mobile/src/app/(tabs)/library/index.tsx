@@ -27,6 +27,10 @@ function openCatalog() {
   router.push('/library/catalog');
 }
 
+function openAppearance() {
+  router.push('/appearance');
+}
+
 // Publications read in the Read tab: navigate selects it, and its stack
 // either takes the new params in place (same screen on top) or pushes.
 function openReader(pub: PublicationSummary) {
@@ -76,8 +80,13 @@ export default function LibraryScreen() {
   const docked = material && windowClass === 'compact';
   const appBarSearch = material && windowClass !== 'compact';
 
-  const catalogButton = (
-    <TextButton title="Catalog" accessibilityLabel="Open catalog" onPress={openCatalog} />
+  // Settings › Appearance has no Settings screen to live in yet, so the
+  // Library header carries it beside Catalog.
+  const headerButtons = (
+    <>
+      <TextButton title="Appearance" accessibilityLabel="Appearance settings" onPress={openAppearance} />
+      <TextButton title="Catalog" accessibilityLabel="Open catalog" onPress={openCatalog} />
+    </>
   );
 
   return (
@@ -87,7 +96,7 @@ export default function LibraryScreen() {
           headerRight: () => (
             <View style={styles.headerRight}>
               {appBarSearch && <AppBarSearchBar />}
-              {catalogButton}
+              {headerButtons}
             </View>
           ),
         }}
@@ -115,7 +124,7 @@ export default function LibraryScreen() {
                     <UIText variant="largeTitle" style={styles.inlineTitle}>
                       Library
                     </UIText>
-                    {catalogButton}
+                    {headerButtons}
                   </View>
                 )}
                 {jobList.map((job) => (
@@ -182,14 +191,16 @@ export default function LibraryScreen() {
 const styles = StyleSheet.create({
   list: { flex: 1 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  // Wraps the buttons under the title when large text leaves no room.
   inlineHeader: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: spacing.md,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
   },
-  inlineTitle: { flex: 1 },
+  inlineTitle: { flexGrow: 1 },
   row: {
     minHeight: 44,
     paddingHorizontal: spacing.lg,

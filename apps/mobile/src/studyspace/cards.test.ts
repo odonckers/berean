@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { colorSets, type ColorSetName, m3Roles } from '../design/colors.ts';
+import { DEFAULT_CHOICE, resolvePalette } from '../design/appearance.ts';
+import { THEME_IDS, THEME_MODES } from '../design/theme-tokens.generated.ts';
 import { contrast } from '../design/contrast.ts';
 import {
   addedAnnouncement,
@@ -296,27 +297,31 @@ describe('readerBody (§6.1, §6.3): what a reader card\'s body draws', () => {
   });
 });
 
-// Every iOS-look colour set, and both Material modes on their scheme's canvas.
+// Every theme in every set, in both looks, on the set's canvas.
+const palettes = THEME_IDS.flatMap((theme) =>
+  THEME_MODES.map((mode) => ({ name: `${theme} ${mode}`, ...resolvePalette({ ...DEFAULT_CHOICE, theme }, mode) })),
+);
 const looks = [
-  ...(Object.keys(colorSets) as ColorSetName[]).map((name) => ({
-    name: `iOS ${name}`,
+  ...palettes.map((p) => ({
+    name: `iOS ${p.name}`,
     look: 'ios' as const,
-    dark: name === 'dark',
-    colors: colorSets[name],
-    m3: m3Roles[name === 'dark' ? 'dark' : 'light'],
-    outline: colorSets[name].outline,
-    surface: colorSets[name].surface,
+    dark: p.scheme === 'dark',
+    colors: p.colors,
+    m3: p.m3,
+    outline: p.colors.outline,
+    surface: p.colors.surface,
   })),
-  ...(['light', 'dark'] as const).map((mode) => ({
-    name: `Material ${mode}`,
+  ...palettes.map((p) => ({
+    name: `Material ${p.name}`,
     look: 'material' as const,
-    dark: mode === 'dark',
-    colors: colorSets[mode],
-    m3: m3Roles[mode],
-    outline: m3Roles[mode].outline,
-    surface: m3Roles[mode].surface,
+    dark: p.scheme === 'dark',
+    colors: p.colors,
+    m3: p.m3,
+    outline: p.m3.outline,
+    surface: p.m3.surface,
   })),
 ];
+const paper = { light: resolvePalette(DEFAULT_CHOICE, 'light'), dark: resolvePalette(DEFAULT_CHOICE, 'dark') };
 
 describe('card edges against the canvas (WCAG 1.4.11)', () => {
   for (const s of looks) {
@@ -330,8 +335,8 @@ describe('card edges against the canvas (WCAG 1.4.11)', () => {
   }
 
   test('the Material light card is the raised paper; dark keeps surfaceContainerLow', () => {
-    assert.equal(cardFill('material', false, colorSets.light, m3Roles.light), '#FFFCF5');
-    assert.equal(cardFill('material', true, colorSets.dark, m3Roles.dark), m3Roles.dark.surfaceContainerLow);
+    assert.equal(cardFill('material', false, paper.light.colors, paper.light.m3), '#FFFCF5');
+    assert.equal(cardFill('material', true, paper.dark.colors, paper.dark.m3), paper.dark.m3.surfaceContainerLow);
   });
 });
 

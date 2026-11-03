@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { UIText } from '@/components/text';
 import { useContentInsets } from '@/design/tab-chrome';
 import { useBerean } from '@/design/theme';
-import { colorSets, radii, spacing } from '@/design/tokens';
+import { radii, spacing } from '@/design/tokens';
 import { undoDuration, undoMessages } from '@/notes/undo';
 
 type Pending = { id: number; label: string; onUndo: () => void };
@@ -30,7 +30,7 @@ export function useUndo(): UndoContextValue {
  * the bar's accessibility action as well as its button.
  */
 export function UndoProvider({ children }: { children: ReactNode }) {
-  const { look, scheme, colors, m3 } = useBerean();
+  const { look, colors, m3 } = useBerean();
   const material = look === 'material';
   const safe = useSafeAreaInsets();
   const content = useContentInsets();
@@ -74,8 +74,9 @@ export function UndoProvider({ children }: { children: ReactNode }) {
   // On iOS the tab bar is in the safe area; Android's native tabs sit below
   // the content already.
   const bottom = (Platform.OS === 'ios' ? safe.bottom : content.bottom) + spacing.lg;
-  // M3 inverse roles, derived pending Lumen: the other scheme's ink and accent.
-  const inverseAccent = scheme === 'dark' ? colorSets.light.accent : colorSets.dark.accent;
+  // M3 inverse roles: the other scheme's ink, and the chosen accent in the
+  // theme's other scheme (inversePrimary).
+  const inverseAccent = m3.inversePrimary;
 
   return (
     <UndoContext.Provider value={value}>
