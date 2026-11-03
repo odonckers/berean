@@ -236,3 +236,13 @@ export function readerMeasure(measure: number, fontScale: number, scale: number)
 export function touchScrolls(kind: CardKind, level: CardLevel): boolean {
   return kind !== 'note' && level === 4;
 }
+
+/**
+ * §6.1, §6.3: a reader card's body. The live reader at L4, and on a focused
+ * card at any level; a snippet at L3; none without text, or at L1 and L2.
+ */
+export function readerBody(level: CardLevel, focused: boolean, hasText: boolean): 'live' | 'snippet' | 'none' {
+  if (!hasText) return 'none';
+  if (level === 4 || focused) return 'live';
+  return level === 3 ? 'snippet' : 'none';
+}

@@ -114,6 +114,28 @@ describe('focus zoom on a tapped reader card (§6.1)', () => {
     });
   });
 
+  test('fits the view across but not with the margin: the whole card and its 3 pt outline show', () => {
+    // 634 + 2 × 24 > 640: the margin across shrinks to the 3 pt either side.
+    const wide = { width: 640, height: 900 };
+    const frame = { x: 2000, y: 500, width: 634, height: 400 };
+    const across = (to: { x: number; zoom: number }) => {
+      const left = (frame.x - 3 - to.x) * to.zoom + wide.width / 2;
+      const right = (frame.x + frame.width + 3 - to.x) * to.zoom + wide.width / 2;
+      return { left, right };
+    };
+    for (const from of [
+      { x: 0, y: 700, zoom: 1 },
+      { x: 3000, y: 700, zoom: 1 },
+      { x: 0, y: 0, zoom: 0.4 },
+    ]) {
+      const to = focusCamera(from, wide, frame, LANDING_MARGIN);
+      assert.equal(to.zoom, 1);
+      const { left, right } = across(to);
+      assert.ok(left >= 0, `left ${left} from ${JSON.stringify(from)}`);
+      assert.ok(right <= wide.width, `right ${right} from ${JSON.stringify(from)}`);
+    }
+  });
+
   test('taller than the view: its top just inside the margin', () => {
     const to = focusCamera({ x: 0, y: 0, zoom: 0.5 }, view, { x: 0, y: 0, width: 300, height: 2000 }, LANDING_MARGIN);
     assert.deepEqual(to, { x: 150, y: 400 - 24, zoom: 1 });

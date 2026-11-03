@@ -32,6 +32,7 @@ import {
   cardFill,
   cardText,
   kindFill,
+  readerBody,
   readerText,
   type ReaderText,
   titleScale,
@@ -195,13 +196,16 @@ export function StudyCard(props: StudyCardProps) {
           card.missing,
         );
 
-  // A reader card's text, read once it first draws at L3 or L4 and kept
-  // for this card's text, so pans and zooms never read it again; and where
-  // its reader is (useReaderPlace).
-  const { key: textKey, read, shown: text, place, at, saver, settled } = useReaderPlace(card.id, reader, bodyLines > 0);
-  const shown = bodyLines > 0 ? text : undefined;
-  // A focused card scrolls at any level with live text; that is L4 only, as for touch.
-  const scrolls = shown !== undefined && touchScrolls(card.kind, level);
+  // A reader card's text, read once it first draws at L3 or L4 or is
+  // focused, and kept for this card's text, so pans and zooms never read it
+  // again; and where its reader is (useReaderPlace).
+  const wantsText = bodyLines > 0 || focused;
+  const { key: textKey, read, shown: text, place, at, saver, settled } = useReaderPlace(card.id, reader, wantsText);
+  const shown = wantsText ? text : undefined;
+  // A focused card shows the live reader at reader size and scrolls at any
+  // level (readerBody); unfocused, only at L4, as for touch.
+  const scrolls = shown !== undefined && (focused || touchScrolls(card.kind, level));
+  const body = readerBody(level, focused, shown !== undefined && at !== undefined);
 
   // §6.6: saved once a scroll settles, debounced; flushed when the card
   // stops scrolling (it left L4), leaves focus, or unmounts.
@@ -465,10 +469,10 @@ export function StudyCard(props: StudyCardProps) {
               {read.message}
             </Text>
           )}
-          {shown !== undefined && at !== undefined && level === 3 && (
+          {shown !== undefined && at !== undefined && body === 'snippet' && (
             <ReaderSnippet rows={shown.rows} at={at} lines={bodyLines} scale={bodyScale} />
           )}
-          {shown !== undefined && at !== undefined && level === 4 && (
+          {shown !== undefined && at !== undefined && body === 'live' && (
             <LiveReader
               // Reflowed text (a new size or width) opens again at the anchor (§6.3); so
               // does a place saved elsewhere (the full-screen reader).
