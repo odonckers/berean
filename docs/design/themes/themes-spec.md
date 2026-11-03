@@ -216,6 +216,7 @@ The highlights in `apps/mobile/src/design/tokens.ts` (`highlightFills`) were run
 
 - **Paper uses the shipped M3 roles** wherever they pass (§2.1), including its container ladder. The exception is M3 `outline`, an accessibility fix: the shipped value is the separator, which is under 3:1 on every container.
 - **`primaryContainer` and `onPrimaryContainer` are ours.** `tokens.ts` doesn't define them. They're kept because standard M3 components (the FAB and the navigation indicator) read them. Otter to confirm whether the Expo build reads them; if it doesn't, they can be dropped (§14, follow-ups).
+- **The Expo build drops `primaryContainer` and `onPrimaryContainer`.** It reads neither, so its generated tokens leave them out; `tokens.json` keeps them (Lumen ruling 4, PR #77 review).
 - **`outlineVariant`** is decorative. Paper uses the shipped value, and the other themes use their separator.
 - **Scrims:** `scrim` is `rgba(0,0,0,0.32)` in every set. `scrimWarm` is `textPrimary` at 0.45 in light sets and equals `scrim` in dark sets, as shipped.
 - **Light ladder** (the other themes): Lowest = surfaceRaised, Low = surface, Container = background, High = the midpoint of background and sunken, Highest = surfaceSunken.
@@ -365,7 +366,7 @@ The sample scripture in every frame is Psalm 23 from the American Standard Versi
 **Follow-ups** (from the studio):
 
 - **Chip order (Otter):** Expo lists purple before pink. Reorder it to yellow, green, blue, pink, purple, orange, and update the test (§12.5). Storage maps by color name, never by the core's index. The `HIGHLIGHT_ORDER` fix (pink before purple) is tracked on Otter's theme-switcher row.
-- **M3 containers (Otter):** confirm whether the Expo Material build reads `primaryContainer` and `onPrimaryContainer` (§9). Ours are kept until then.
+- **M3 containers (Otter):** confirm whether the Expo Material build reads `primaryContainer` and `onPrimaryContainer` (§9). Ours are kept until then. Resolved: the Expo build reads neither and drops them (Lumen ruling 4, PR #77 review).
 
 **Resolved since the first draft:** Paper now matches the shipped values (decision 18), the highlight word is Purple, as in core and Expo (decision 8), and open item 4 is resolved: Paper lightIC `linkUnderline` keeps shipped `#7A2E1C` (decision 21).
 

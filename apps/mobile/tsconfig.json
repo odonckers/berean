@@ -2,6 +2,9 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
+    // Lets the pure modules the Node tests load (appearance.ts) import each
+    // other by their .ts path, as node --test needs; Metro resolves it too.
+    "allowImportingTsExtensions": true,
     "paths": {
       "@/*": [
         "./src/*"
@@ -15,6 +18,7 @@
     "jest.config.js",
     "android",
     "ios",
-    "**/*.test.ts"
+    "**/*.test.ts",
+    "scripts"
   ]
 }

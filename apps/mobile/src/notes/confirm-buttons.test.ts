@@ -1,15 +1,21 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { colorSets, type ColorSetName, m3Roles } from '../design/colors.ts';
+import { DEFAULT_CHOICE, resolvePalette } from '../design/appearance.ts';
 import { contrast } from '../design/contrast.ts';
 import { confirmButtons, dialogSurface, nameDialogInk } from './confirm-buttons.ts';
 import { sheetItemInk, sheetSurface } from './sheet-colors.ts';
+import { THEME_IDS, THEME_MODES } from '../design/theme-tokens.generated.ts';
+
+// Paper, the default, in light and dark.
+const paper = {
+  light: resolvePalette(DEFAULT_CHOICE, 'light'),
+  dark: resolvePalette(DEFAULT_CHOICE, 'dark'),
+};
 
 describe('confirmButtons', () => {
   for (const mode of ['light', 'dark'] as const) {
-    const colors = colorSets[mode];
-    const m3 = m3Roles[mode];
+    const { colors, m3 } = paper[mode];
 
     test(`Material ${mode}: Cancel in primary, then Delete in error`, () => {
       assert.deepEqual(confirmButtons('material', 'Delete', colors, m3), [
@@ -28,35 +34,31 @@ describe('confirmButtons', () => {
 
   test('labels are sentence case and the action is last in both looks', () => {
     for (const look of ['ios', 'material'] as const) {
-      const buttons = confirmButtons(look, 'Delete', colorSets.light, m3Roles.light);
+      const buttons = confirmButtons(look, 'Delete', paper.light.colors, paper.light.m3);
       assert.equal(buttons.at(-1)?.role, 'confirm');
       for (const { label } of buttons) assert.match(label, /^[A-Z][^A-Z]*$/);
     }
   });
 
   test('error is the theme’s red, not the M3 baseline', () => {
-    assert.equal(m3Roles.light.error, '#D70015');
-    assert.equal(m3Roles.dark.error, '#FF453A');
+    assert.equal(paper.light.m3.error, '#D70015');
+    assert.equal(paper.dark.m3.error, '#FF453A');
   });
 });
 
-// Every iOS-look colour set, and both Material modes.
-const themes = [
-  ...(Object.keys(colorSets) as ColorSetName[]).map((name) => ({
-    name: `iOS ${name}`,
-    look: 'ios' as const,
-    dark: name === 'dark',
-    colors: colorSets[name],
-    m3: m3Roles[name === 'dark' ? 'dark' : 'light'],
+// Every theme in every set (light, dark and Increase Contrast), in both looks.
+const palettes = THEME_IDS.flatMap((theme) =>
+  THEME_MODES.map((mode) => ({ name: `${theme} ${mode}`, ...resolvePalette({ ...DEFAULT_CHOICE, theme }, mode) })),
+);
+const themes = (['ios', 'material'] as const).flatMap((look) =>
+  palettes.map((p) => ({
+    name: `${look === 'ios' ? 'iOS' : 'Material'} ${p.name}`,
+    look,
+    dark: p.scheme === 'dark',
+    colors: p.colors,
+    m3: p.m3,
   })),
-  ...(['light', 'dark'] as const).map((mode) => ({
-    name: `Material ${mode}`,
-    look: 'material' as const,
-    dark: mode === 'dark',
-    colors: colorSets[mode],
-    m3: m3Roles[mode],
-  })),
-];
+);
 
 describe('destructive labels read at 4.5:1 on their own surface', () => {
   for (const t of themes) {
@@ -85,11 +87,9 @@ describe('destructive labels read at 4.5:1 on their own surface', () => {
 
   // The iOS-look field is the paper on the raised paper (about 1:1); its
   // border is what shows where it is.
-  for (const name of Object.keys(colorSets) as ColorSetName[]) {
+  for (const { name, scheme, colors, m3 } of palettes) {
     test(`iOS ${name}: the name dialog's field border reads at 3:1`, () => {
-      const colors = colorSets[name];
-      const m3 = m3Roles[name === 'dark' ? 'dark' : 'light'];
-      const surface = dialogSurface('ios', name === 'dark', colors, m3);
+      const surface = dialogSurface('ios', scheme === 'dark', colors, m3);
       const { fieldBorder } = nameDialogInk('ios', false, colors, m3);
       assert.ok(
         contrast(fieldBorder, surface) >= 3,
@@ -99,17 +99,17 @@ describe('destructive labels read at 4.5:1 on their own surface', () => {
   }
 
   test('nameDialogInk: iOS look bolds the confirm action; Material bolds neither', () => {
-    assert.equal(nameDialogInk('ios', false, colorSets.light, m3Roles.light).confirmBold, true);
-    assert.equal(nameDialogInk('material', false, colorSets.light, m3Roles.light).confirmBold, false);
+    assert.equal(nameDialogInk('ios', false, paper.light.colors, paper.light.m3).confirmBold, true);
+    assert.equal(nameDialogInk('material', false, paper.light.colors, paper.light.m3).confirmBold, false);
   });
 
   test('nameDialogInk: Material field border is primary, error while refused', () => {
-    assert.equal(nameDialogInk('material', false, colorSets.light, m3Roles.light).fieldBorder, m3Roles.light.primary);
-    assert.equal(nameDialogInk('material', true, colorSets.light, m3Roles.light).fieldBorder, colorSets.light.destructive);
+    assert.equal(nameDialogInk('material', false, paper.light.colors, paper.light.m3).fieldBorder, paper.light.m3.primary);
+    assert.equal(nameDialogInk('material', true, paper.light.colors, paper.light.m3).fieldBorder, paper.light.colors.destructive);
   });
 
   test('the Material light dialog is the raised paper', () => {
-    assert.equal(dialogSurface('material', false, colorSets.light, m3Roles.light), '#FFFCF5');
-    assert.equal(dialogSurface('material', true, colorSets.dark, m3Roles.dark), m3Roles.dark.surfaceContainerHigh);
+    assert.equal(dialogSurface('material', false, paper.light.colors, paper.light.m3), '#FFFCF5');
+    assert.equal(dialogSurface('material', true, paper.dark.colors, paper.dark.m3), paper.dark.m3.surfaceContainerHigh);
   });
 });
