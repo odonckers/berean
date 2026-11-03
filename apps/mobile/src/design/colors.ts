@@ -34,8 +34,6 @@ export type M3Roles = {
   onPrimary: string;
   /** The chosen accent in the opposite light or dark set: snackbar actions. */
   inversePrimary: string;
-  primaryContainer: string;
-  onPrimaryContainer: string;
   secondaryContainer: string;
   onSecondaryContainer: string;
   surface: string;
@@ -67,5 +65,7 @@ export type StudyPaneColors = {
   iosFooter: string;
   segmentTrack: string;
   segmentThumb: string;
+  /** The selected thumb's 1px edge: `outline` under Increase Contrast (rule 5); none otherwise. */
+  segmentThumbEdge: string | undefined;
   segmentText: string;
 };

@@ -42,12 +42,11 @@ function pick(source: unknown, keys: readonly string[], at: string): Record<stri
   return Object.fromEntries(keys.map((key) => [key, string(o[key], `${at}.${key}`)]));
 }
 
-// The Material 3 roles, in tokens.json's order.
+// The Material 3 roles, in tokens.json's order. The Expo build reads no
+// primaryContainer or onPrimaryContainer, so they're left out (themes spec §9).
 const M3_ROLES = [
   'primary',
   'onPrimary',
-  'primaryContainer',
-  'onPrimaryContainer',
   'secondaryContainer',
   'onSecondaryContainer',
   'surface',

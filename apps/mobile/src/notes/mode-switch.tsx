@@ -80,6 +80,11 @@ export function ModeSwitch({ mode, onChange }: ModeSwitchProps) {
                   selected && { backgroundColor: studyPane.segmentThumb },
                   // Only the light thumb lifts off the track.
                   selected && scheme === 'light' && styles.iosThumbShadow,
+                  // Increase Contrast edges the thumb in outline (rule 5); both segments keep the 1pt so nothing shifts.
+                  studyPane.segmentThumbEdge && {
+                    borderWidth: 1,
+                    borderColor: selected ? studyPane.segmentThumbEdge : 'transparent',
+                  },
                 ]}
               >
                 <UIText

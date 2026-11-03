@@ -143,14 +143,27 @@ const PAPER_SHIPPED: Partial<Record<ThemeMode, Partial<Derived>>> = {
  * - segmentTrack: light, separator; dark, the midpoint of surfaceRaised and separator.
  * - segmentThumb: light, surfaceRaised (with a shadow); dark, surfaceRaised 60% of the way to outline.
  * - iosFooter: light, the canvas; dark, the segment track. segmentText: textPrimary.
+ * - Increase Contrast: the track is surfaceSunken and the thumb surfaceRaised,
+ *   edged 1px in outline (rule 5), so the label reaches 7:1 on both.
+ *   segmentThumbEdge is undefined in the standard sets.
  * Paper light and dark then take their shipped values (PAPER_SHIPPED).
  */
 function derivedRoles(theme: ThemeId, mode: ThemeMode): Derived {
   const roles = themeTokens[theme].modes[mode].roles;
   const m3 = themeTokens[theme].material3[mode];
   const dark = schemeOf(mode) === 'dark';
+  const ic = mode === 'lightIC' || mode === 'darkIC';
   const canvas = dark ? roles.surfaceSunken : mix(roles.background, roles.surfaceSunken, 0.5);
-  const segmentTrack = dark ? mix(roles.surfaceRaised, roles.separator, 0.5) : roles.separator;
+  const segmentTrack = ic
+    ? roles.surfaceSunken
+    : dark
+      ? mix(roles.surfaceRaised, roles.separator, 0.5)
+      : roles.separator;
+  const segmentThumb = ic
+    ? roles.surfaceRaised
+    : dark
+      ? mix(roles.surfaceRaised, roles.outline, 0.6)
+      : roles.surfaceRaised;
   const ruled: Derived = {
     canvas,
     canvasDot: mix(canvas, roles.outline, 0.3),
@@ -158,7 +171,8 @@ function derivedRoles(theme: ThemeId, mode: ThemeMode): Derived {
     materialFooter: m3.surfaceContainerHigh,
     iosFooter: dark ? segmentTrack : canvas,
     segmentTrack,
-    segmentThumb: dark ? mix(roles.surfaceRaised, roles.outline, 0.6) : roles.surfaceRaised,
+    segmentThumb,
+    segmentThumbEdge: ic ? roles.outline : undefined,
     segmentText: roles.textPrimary,
   };
   return theme === 'paper' ? { ...ruled, ...PAPER_SHIPPED[mode] } : ruled;

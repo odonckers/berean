@@ -139,10 +139,23 @@ export default function AppearanceScreen() {
                   bordered
                   style={[layout === 'row' ? styles.appearanceTile : styles.listRow, { minHeight: target }]}
                 >
-                  <Name selected={selected} list={layout === 'list'}>
+                  <Name selected={selected} list={layout === 'list'} oneLine={layout === 'row'}>
                     {APPEARANCE_NAMES[appearance]}
                   </Name>
-                  {selected && <Check />}
+                  {selected &&
+                    (layout === 'list' ? (
+                      <Check />
+                    ) : (
+                      // In a row the check is the theme tiles' corner badge, so the label keeps the tile's width.
+                      <View style={[styles.badge, styles.appearanceBadge, { backgroundColor: colors.accent }]}>
+                        <ScaledSymbol
+                          name={{ ios: 'checkmark', android: 'check' }}
+                          size={14}
+                          tintColor={colors.onAccent}
+                          accessible={false}
+                        />
+                      </View>
+                    ))}
                 </Option>
               );
             })}
@@ -248,9 +261,25 @@ function Option({ label, hint, selected, onPress, ring = false, bordered = false
   );
 }
 
-function Name({ selected, list, children }: { selected: boolean; list: boolean; children: string }) {
+function Name({
+  selected,
+  list,
+  oneLine = false,
+  children,
+}: {
+  selected: boolean;
+  list: boolean;
+  /** Truncate rather than wrap (the Appearance row); lists always wrap. */
+  oneLine?: boolean;
+  children: string;
+}) {
   return (
-    <UIText style={[list ? styles.listName : styles.tileName, selected && styles.bold]}>{children}</UIText>
+    <UIText
+      numberOfLines={oneLine ? 1 : undefined}
+      style={[list ? styles.listName : styles.tileName, oneLine && styles.oneLine, selected && styles.bold]}
+    >
+      {children}
+    </UIText>
   );
 }
 
@@ -328,15 +357,20 @@ const styles = StyleSheet.create({
   option: { borderWidth: RING, borderRadius: radii.card },
   tileRow: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.md },
   tile: { flex: 1, alignItems: 'center', gap: spacing.xs, paddingVertical: spacing.xs },
+  // Padding sits inside the border, and Option keeps the border box RING
+  // wide selected or not, so the label stays spacing.sm clear of the ring's
+  // inner edge in every state.
   appearanceTile: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xs,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
   },
+  // The badge is placed from the padding box: pushed out by the ring and
+  // spacing.sm, it perches on the tile's corner instead of over the label.
+  appearanceBadge: { top: -(RING + spacing.sm), right: -(RING + spacing.sm) },
   list: { gap: spacing.xs },
   listRow: {
     flexDirection: 'row',
@@ -358,6 +392,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   tileName: { textAlign: 'center' },
+  oneLine: { flexShrink: 1 },
   listName: { flex: 1 },
   bold: { fontWeight: '700' },
   swatchRing: { borderWidth: RING, borderRadius: radii.card + RING, padding: 2 },

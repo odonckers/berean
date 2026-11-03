@@ -136,6 +136,7 @@ describe('resolvePalette', () => {
       iosFooter: '#F5EFE0',
       segmentTrack: '#E6DCC2',
       segmentThumb: '#FFFCF5',
+      segmentThumbEdge: undefined,
       segmentText: '#1F1A14',
     });
   });
@@ -166,6 +167,7 @@ describe('resolvePalette', () => {
       iosFooter: '#2A241F',
       segmentTrack: '#2A241F',
       segmentThumb: '#5C544A',
+      segmentThumbEdge: undefined,
       segmentText: '#EDE6D8',
     });
   });
@@ -231,11 +233,27 @@ describe('derived canvas and study pane colors stay visible', () => {
         );
       });
 
-      test(`${theme} ${mode}: the segment thumb at 1.3:1 on its track (Paper ships 1.33), its text at 4.5:1`, () => {
-        const { segmentThumb, segmentTrack, segmentText } = studyPane;
-        assert.ok(contrast(segmentThumb, segmentTrack) >= 1.3, at(segmentThumb, segmentTrack));
+      test(`${theme} ${mode}: the segment thumb at 1.3:1 on its track (Paper ships 1.33), or edged at 4.5:1 in IC; its text at 4.5:1`, () => {
+        const { segmentThumb, segmentTrack, segmentText, segmentThumbEdge } = studyPane;
+        if (segmentThumbEdge) {
+          // Increase Contrast: the 1px outline edge, not the fill, marks the thumb (rule 5, rule 12's IC border floor).
+          assert.ok(contrast(segmentThumbEdge, segmentTrack) >= 4.5, at(segmentThumbEdge, segmentTrack));
+          assert.ok(contrast(segmentThumbEdge, segmentThumb) >= 4.5, at(segmentThumbEdge, segmentThumb));
+        } else {
+          assert.ok(contrast(segmentThumb, segmentTrack) >= 1.3, at(segmentThumb, segmentTrack));
+        }
         assert.ok(contrast(segmentText, segmentTrack) >= 4.5, at(segmentText, segmentTrack));
         assert.ok(contrast(segmentText, segmentThumb) >= 4.5, at(segmentText, segmentThumb));
+      });
+
+      test(`${theme} ${mode}: the segment label at 4.5:1 on thumb and track, 7:1 under Increase Contrast`, () => {
+        const ic = mode === 'lightIC' || mode === 'darkIC';
+        const floor = ic ? 7 : 4.5;
+        const { segmentThumb, segmentTrack, segmentText, segmentThumbEdge } = studyPane;
+        assert.ok(contrast(segmentText, segmentThumb) >= floor, at(segmentText, segmentThumb));
+        assert.ok(contrast(segmentText, segmentTrack) >= floor, at(segmentText, segmentTrack));
+        // Rule 5: the IC thumb is edged 1px in outline; the standard thumb has no edge.
+        assert.equal(segmentThumbEdge, ic ? colors.outline : undefined);
       });
 
       test(`${theme} ${mode}: the iOS footer a 1.05:1 step off the raised pane (Paper ships 1.09)`, () => {

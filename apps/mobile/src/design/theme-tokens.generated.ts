@@ -52,8 +52,6 @@ export type HighlightKey = (typeof HIGHLIGHT_KEYS)[number];
 export const MATERIAL3_ROLES = [
   "primary",
   "onPrimary",
-  "primaryContainer",
-  "onPrimaryContainer",
   "secondaryContainer",
   "onSecondaryContainer",
   "surface",
@@ -418,8 +416,6 @@ export const themeTokens = {
       "light": {
         "primary": "#9B3F2A",
         "onPrimary": "#FFFFFF",
-        "primaryContainer": "#FFD7CD",
-        "onPrimaryContainer": "#542115",
         "secondaryContainer": "#F1DCD1",
         "onSecondaryContainer": "#3A1A10",
         "surface": "#FBF7EC",
@@ -440,8 +436,6 @@ export const themeTokens = {
       "dark": {
         "primary": "#E59A7C",
         "onPrimary": "#3A140A",
-        "primaryContainer": "#512919",
-        "onPrimaryContainer": "#F5CEBE",
         "secondaryContainer": "#4A2C22",
         "onSecondaryContainer": "#F6DDD2",
         "surface": "#15120E",
@@ -462,8 +456,6 @@ export const themeTokens = {
       "lightIC": {
         "primary": "#7B2815",
         "onPrimary": "#FFFFFF",
-        "primaryContainer": "#FFD7CD",
-        "onPrimaryContainer": "#542115",
         "secondaryContainer": "#F5DFDA",
         "onSecondaryContainer": "#43241D",
         "surface": "#F8F4ED",
@@ -484,8 +476,6 @@ export const themeTokens = {
       "darkIC": {
         "primary": "#F9B093",
         "onPrimary": "#080503",
-        "primaryContainer": "#512919",
-        "onPrimaryContainer": "#F5CEBE",
         "secondaryContainer": "#422D25",
         "onSecondaryContainer": "#F0D8CF",
         "surface": "#0B0906",
@@ -849,8 +839,6 @@ export const themeTokens = {
       "light": {
         "primary": "#914F2F",
         "onPrimary": "#FFFFFF",
-        "primaryContainer": "#FFD8C6",
-        "onPrimaryContainer": "#53230A",
         "secondaryContainer": "#F4E0D7",
         "onSecondaryContainer": "#422518",
         "surface": "#F2E4D1",
@@ -871,8 +859,6 @@ export const themeTokens = {
       "dark": {
         "primary": "#CB8E72",
         "onPrimary": "#110C08",
-        "primaryContainer": "#502917",
-        "onPrimaryContainer": "#F5CEBD",
         "secondaryContainer": "#422D24",
         "onSecondaryContainer": "#F0D8CE",
         "surface": "#1C160F",
@@ -893,8 +879,6 @@ export const themeTokens = {
       "lightIC": {
         "primary": "#733718",
         "onPrimary": "#FFFFFF",
-        "primaryContainer": "#FFD8C6",
-        "onPrimaryContainer": "#53230A",
         "secondaryContainer": "#F4E0D7",
         "onSecondaryContainer": "#422518",
         "surface": "#F4E8D5",
@@ -915,8 +899,6 @@ export const themeTokens = {
       "darkIC": {
         "primary": "#EBAE93",
         "onPrimary": "#080503",
-        "primaryContainer": "#502917",
-        "onPrimaryContainer": "#F5CEBD",
         "secondaryContainer": "#422D24",
         "onSecondaryContainer": "#F0D8CE",
         "surface": "#110C07",
@@ -1280,8 +1262,6 @@ export const themeTokens = {
       "light": {
         "primary": "#3464A0",
         "onPrimary": "#FFFFFF",
-        "primaryContainer": "#CEE3FF",
-        "onPrimaryContainer": "#13335A",
         "secondaryContainer": "#DAE6F5",
         "onSecondaryContainer": "#1C2F46",
         "surface": "#EFF1F4",
@@ -1302,8 +1282,6 @@ export const themeTokens = {
       "dark": {
         "primary": "#7CA7DF",
         "onPrimary": "#0A0D12",
-        "primaryContainer": "#1D3656",
-        "onPrimaryContainer": "#C2DAF9",
         "secondaryContainer": "#273445",
         "onSecondaryContainer": "#D1DFF2",
         "surface": "#0E1114",
@@ -1324,8 +1302,6 @@ export const themeTokens = {
       "lightIC": {
         "primary": "#1D4B81",
         "onPrimary": "#FFFFFF",
-        "primaryContainer": "#CEE3FF",
-        "onPrimaryContainer": "#13335A",
         "secondaryContainer": "#DAE6F5",
         "onSecondaryContainer": "#1C2F46",
         "surface": "#F2F4F6",
@@ -1346,8 +1322,6 @@ export const themeTokens = {
       "darkIC": {
         "primary": "#9AC4FB",
         "onPrimary": "#04060A",
-        "primaryContainer": "#1D3656",
-        "onPrimaryContainer": "#C2DAF9",
         "secondaryContainer": "#273445",
         "onSecondaryContainer": "#D1DFF2",
         "surface": "#07080B",
@@ -1711,8 +1685,6 @@ export const themeTokens = {
       "light": {
         "primary": "#4E6E3B",
         "onPrimary": "#FFFFFF",
-        "primaryContainer": "#D3E9C8",
-        "onPrimaryContainer": "#203B0C",
         "secondaryContainer": "#DEE9D8",
         "onSecondaryContainer": "#233319",
         "surface": "#EAF0E8",
@@ -1733,8 +1705,6 @@ export const themeTokens = {
       "dark": {
         "primary": "#8AA97A",
         "onPrimary": "#0A0F0A",
-        "primaryContainer": "#263D19",
-        "onPrimaryContainer": "#CADFBF",
         "secondaryContainer": "#2B3725",
         "onSecondaryContainer": "#D6E3CF",
         "surface": "#111511",
@@ -1755,8 +1725,6 @@ export const themeTokens = {
       "lightIC": {
         "primary": "#365425",
         "onPrimary": "#FFFFFF",
-        "primaryContainer": "#D3E9C8",
-        "onPrimaryContainer": "#203B0C",
         "secondaryContainer": "#DEE9D8",
         "onSecondaryContainer": "#233319",
         "surface": "#EEF3EC",
@@ -1777,8 +1745,6 @@ export const themeTokens = {
       "darkIC": {
         "primary": "#AAC99A",
         "onPrimary": "#040704",
-        "primaryContainer": "#263D19",
-        "onPrimaryContainer": "#CCE1C1",
         "secondaryContainer": "#2B3725",
         "onSecondaryContainer": "#D6E3CF",
         "surface": "#080B08",
