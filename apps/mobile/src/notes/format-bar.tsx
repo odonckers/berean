@@ -1,7 +1,8 @@
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ScaledSymbol } from '@/components/scaled-symbol';
-import { useBerean } from '@/design/theme';
+import { glassFace } from '@/design/chrome';
+import { useBerean, useSolidChrome } from '@/design/theme';
 import { hairline, radii, spacing } from '@/design/tokens';
 import { FORMAT_ACTIONS, FORMAT_BUTTONS } from '@/notes/format-bar-config';
 import type { FormatAction } from '@/notes/format-edits';
@@ -13,13 +14,15 @@ type FormatBarProps = {
 /**
  * The Write view's formatting bar above the keyboard (guide §7.1), its
  * buttons in FORMAT_ACTIONS order. iOS look: a floating capsule, Liquid
- * Glass approximated as a raised surface with a hairline edge, 44pt
+ * Glass approximated as a raised surface with a hairline edge (solid with
+ * an outline under Reduce Transparency or Increase Contrast), 44pt
  * buttons. Material look: a solid surface-container toolbar across the
  * width, 48dp buttons. It scrolls sideways when the window is too narrow;
  * taps keep the keyboard up.
  */
 export function FormatBar({ onAction }: FormatBarProps) {
   const { look, colors, m3 } = useBerean();
+  const solid = useSolidChrome();
   const material = look === 'material';
   const size = material ? 48 : 44;
 
@@ -29,7 +32,7 @@ export function FormatBar({ onAction }: FormatBarProps) {
       style={
         material
           ? [styles.materialBar, { backgroundColor: m3.surfaceContainer }]
-          : [styles.iosBar, { backgroundColor: colors.surfaceRaised, borderColor: colors.separator, shadowColor: colors.text }]
+          : [styles.iosBar, glassFace(solid, colors, hairline), { shadowColor: colors.text }]
       }
     >
       <ScrollView
@@ -73,7 +76,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     paddingHorizontal: spacing.xs,
     borderRadius: radii.capsule,
-    borderWidth: hairline,
     shadowOpacity: 0.12,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 2 },

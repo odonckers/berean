@@ -9,27 +9,34 @@ import { File, Paths } from 'expo-file-system';
 import { APPEARANCE_KEY, type AppearanceChoice, parseChoice, serializeChoice } from '@/design/appearance';
 
 // The value as last read or written, so a stored "system" accent survives
-// (serializeChoice).
+// where System colors isn't offered (serializeChoice).
 let stored: unknown;
+// Whether System colors is offered, as loadChoice was told.
+let systemColors = false;
 
 function file(): File {
   return new File(Paths.document, `${APPEARANCE_KEY}.json`);
 }
 
-/** The stored choice; the defaults when there is none or it can't be read. */
-export function loadChoice(): AppearanceChoice {
+/**
+ * The stored choice; the defaults when there is none or it can't be read.
+ * A stored System colors accent is the choice only where it is offered
+ * (parseChoice).
+ */
+export function loadChoice(systemColorsOffered: boolean): AppearanceChoice {
+  systemColors = systemColorsOffered;
   try {
     const f = file();
     stored = f.exists ? JSON.parse(f.textSync()) : undefined;
   } catch {
     stored = undefined;
   }
-  return parseChoice(stored);
+  return parseChoice(stored, systemColorsOffered);
 }
 
 /** Stores the choice. If that fails the app carries on with it in memory. */
 export function saveChoice(choice: AppearanceChoice): void {
-  const json = serializeChoice(choice, stored);
+  const json = serializeChoice(choice, stored, systemColors);
   try {
     const f = file();
     if (!f.exists) f.create();

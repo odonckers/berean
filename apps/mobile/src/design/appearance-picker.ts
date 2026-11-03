@@ -29,6 +29,17 @@ export function accentOptionLabel(name: string): string {
   return `${name}, accent`;
 }
 
+/** Android's Material You accent (§11), listed first where it is offered. */
+export const SYSTEM_COLORS_NAME = 'System colors';
+export const SYSTEM_COLORS_HINT = 'From your wallpaper';
+/** Shown under System colors, and spoken in its hint, when the guard fails and slot 1 is used. */
+export const LOW_CONTRAST_NOTE = 'Not enough contrast with this theme';
+
+/** "From your wallpaper", plus the low contrast note when the guard fails. */
+export function systemColorsHint(contrastOk: boolean): string {
+  return contrastOk ? SYSTEM_COLORS_HINT : `${SYSTEM_COLORS_HINT}. ${LOW_CONTRAST_NOTE}`;
+}
+
 /** "Automatic, appearance". */
 export function appearanceOptionLabel(appearance: AppearanceSetting): string {
   return `${APPEARANCE_NAMES[appearance]}, appearance`;

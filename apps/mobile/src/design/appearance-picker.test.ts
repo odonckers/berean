@@ -5,7 +5,10 @@ import {
   accentOptionLabel,
   appearanceOptionHint,
   appearanceOptionLabel,
+  LOW_CONTRAST_NOTE,
   pickerLayout,
+  SYSTEM_COLORS_NAME,
+  systemColorsHint,
   THEME_HINT,
   themeOptionLabel,
   themeSwatch,
@@ -21,6 +24,13 @@ describe('spoken labels (themes spec §5)', () => {
 
   test('an accent: its tokens.json name, then role', () => {
     assert.equal(accentOptionLabel(accentOptions('paper', 'light')[0].name), 'Terracotta, accent');
+  });
+
+  test('System colors: "System colors, accent", "From your wallpaper", plus the low contrast note', () => {
+    assert.equal(accentOptionLabel(SYSTEM_COLORS_NAME), 'System colors, accent');
+    assert.equal(systemColorsHint(true), 'From your wallpaper');
+    assert.equal(LOW_CONTRAST_NOTE, 'Not enough contrast with this theme');
+    assert.equal(systemColorsHint(false), 'From your wallpaper. Not enough contrast with this theme');
   });
 
   test('an appearance; only Automatic has a hint', () => {

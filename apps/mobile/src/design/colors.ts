@@ -28,7 +28,7 @@ export type ColorSet = {
 };
 
 // Material 3 roles (themes spec §9), with primary and onPrimary swapped for
-// the chosen accent slot.
+// the chosen accent slot; System colors also swaps secondaryContainer (§11).
 export type M3Roles = {
   primary: string;
   onPrimary: string;

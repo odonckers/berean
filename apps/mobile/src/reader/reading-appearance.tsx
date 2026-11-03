@@ -17,7 +17,7 @@ import {
   sheetHeight,
 } from '@/design/quick-picker';
 import { useContentInsets } from '@/design/tab-chrome';
-import { useBerean } from '@/design/theme';
+import { useBerean, useSolidChrome } from '@/design/theme';
 import { hairline, radii, spacing } from '@/design/tokens';
 import { useWindowClass } from '@/design/use-window-class';
 import { moveAccessibilityFocus } from '@/reader/study-pane';
@@ -196,15 +196,18 @@ function CloseButton({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** The sheet's and popover's chrome: solid, never accent-tinted, edged in IC (rule 5). */
+/**
+ * The sheet's and popover's chrome: never accent-tinted, and solid with a
+ * 1px outline under Reduce Transparency or Increase Contrast (rule 5,
+ * solidChrome). Its surface is already opaque.
+ */
 function useChrome() {
   const { look, colors, m3, mode } = useBerean();
-  const material = look === 'material';
-  const increaseContrast = mode === 'lightIC' || mode === 'darkIC';
+  const solid = useSolidChrome();
   return {
-    material,
+    material: look === 'material',
     background: quickPickerSheetSurface(look, schemeOf(mode), m3, colors),
-    edge: increaseContrast ? { borderWidth: 1, borderColor: colors.outline } : undefined,
+    edge: solid ? { borderWidth: 1, borderColor: colors.outline } : undefined,
   };
 }
 

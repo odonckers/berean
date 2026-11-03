@@ -6,7 +6,8 @@ import {
   type TextInputProps,
 } from 'react-native';
 
-import { useBerean } from '@/design/theme';
+import { glassFace } from '@/design/chrome';
+import { useBerean, useSolidChrome } from '@/design/theme';
 import { hairline } from '@/design/tokens';
 import { useSearch } from '@/search/search-context';
 
@@ -16,15 +17,15 @@ import { useSearch } from '@/search/search-context';
 // grows the field instead of clipping.
 export function SearchField({ ref, ...props }: TextInputProps & { ref?: Ref<TextInputInstance> }) {
   const { look, m3, colors, type, radii, spacing } = useBerean();
+  const solid = useSolidChrome();
   const { text, setText } = useSearch();
   const lookStyle =
     look === 'material'
       ? { backgroundColor: m3.surfaceContainerHighest, minHeight: 56, paddingHorizontal: spacing.xl }
       : {
-          // Liquid Glass approximated: a raised capsule with a hairline edge.
-          backgroundColor: colors.surfaceRaised,
-          borderColor: colors.separator,
-          borderWidth: hairline,
+          // Liquid Glass approximated: a raised capsule with a hairline
+          // edge; solid with an outline under RT or IC (rule 5).
+          ...glassFace(solid, colors, hairline),
           minHeight: 44,
           paddingHorizontal: spacing.lg,
         };
