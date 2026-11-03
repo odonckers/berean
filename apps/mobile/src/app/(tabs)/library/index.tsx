@@ -1,11 +1,12 @@
 import { PubKind, type PublicationSummary } from 'berean-ffi-rn';
 import { router, Stack, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, FlatList, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { AppBarSearchBar, DockedSearchBar } from '@/components/search-bar';
 import { UIText } from '@/components/text';
-import { TextButton } from '@/components/text-button';
+import { MATERIAL_TARGET, TEXT_BUTTON_LABEL_INSET, TextButton } from '@/components/text-button';
+import { headerFitsActions } from '@/design/header-fit';
 import { useContentInsets, useHeaderHidden } from '@/design/tab-chrome';
 import { useBerean } from '@/design/theme';
 import { hairline, spacing } from '@/design/tokens';
@@ -62,7 +63,8 @@ function confirmRemove(pub: PublicationSummary) {
 }
 
 export default function LibraryScreen() {
-  const { look, colors } = useBerean();
+  const { look, colors, type } = useBerean();
+  const { width, fontScale } = useWindowDimensions();
   const windowClass = useWindowClass();
   const headerHidden = useHeaderHidden();
   const insets = useContentInsets();
@@ -89,16 +91,35 @@ export default function LibraryScreen() {
     </>
   );
 
+  // On a Material phone, large text can leave the native header's title no
+  // room beside the buttons; then they move to a row at the top of the list.
+  const buttonsBelowHeader =
+    docked &&
+    !headerFitsActions({
+      windowWidth: width,
+      fontScale,
+      title: 'Library',
+      titleFontSize: type.ui.title.fontSize ?? 0,
+      actions: ['Appearance', 'Catalog'],
+      labelFontSize: type.ui.body.fontSize ?? 0,
+      labelInset: TEXT_BUTTON_LABEL_INSET,
+      minTarget: MATERIAL_TARGET,
+      actionGap: spacing.sm,
+      edgeInset: spacing.lg,
+    });
+
   return (
     <>
       <Stack.Screen
         options={{
-          headerRight: () => (
-            <View style={styles.headerRight}>
-              {appBarSearch && <AppBarSearchBar />}
-              {headerButtons}
-            </View>
-          ),
+          headerRight: buttonsBelowHeader
+            ? undefined
+            : () => (
+                <View style={styles.headerRight}>
+                  {appBarSearch && <AppBarSearchBar />}
+                  {headerButtons}
+                </View>
+              ),
         }}
       />
       {data.ok ? (
@@ -116,7 +137,7 @@ export default function LibraryScreen() {
           data={data.value.installed}
           keyExtractor={(pub) => pub.pubKey}
           ListHeaderComponent={
-            headerHidden || jobList.length > 0 ? (
+            headerHidden || buttonsBelowHeader || jobList.length > 0 ? (
               <View>
                 {/* With the native header hidden, its title and button are drawn here. */}
                 {headerHidden && (
@@ -127,6 +148,7 @@ export default function LibraryScreen() {
                     {headerButtons}
                   </View>
                 )}
+                {buttonsBelowHeader && <View style={styles.buttonsRow}>{headerButtons}</View>}
                 {jobList.map((job) => (
                   <View
                     key={job.pub.pubKey}
@@ -201,6 +223,16 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
   },
   inlineTitle: { flexGrow: 1 },
+  // Wraps when one row can't hold both; the labels, not the hit areas, line
+  // up with the rows' text.
+  buttonsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg - TEXT_BUTTON_LABEL_INSET,
+    paddingTop: spacing.sm,
+  },
   row: {
     minHeight: 44,
     paddingHorizontal: spacing.lg,
