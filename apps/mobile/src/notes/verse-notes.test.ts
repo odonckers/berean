@@ -84,7 +84,7 @@ describe('verse labels', () => {
     assert.equal(verseNotesSubject(4, 2, undefined), 'Verse 4, 2 notes');
     assert.equal(verseNotesSubject(1, 1, undefined), 'Verse 1, 1 note');
     assert.equal(verseNotesSubject(3, 0, undefined), 'Verse 3');
-    assert.equal(verseNotesSubject(4, 2, 'yellow'), 'Verse 4, 2 notes, highlighted, yellow');
+    assert.equal(verseNotesSubject(4, 2, 'Yellow highlight'), 'Verse 4, 2 notes, Yellow highlight');
     assert.equal(showNotesLabel(4), 'Verse 4, show notes');
     assert.equal(addNoteLabel(4), 'Verse 4, add note');
     assert.equal(myNotesHeader(2), 'My notes · 2');

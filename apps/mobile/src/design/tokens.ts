@@ -10,8 +10,8 @@ import type { HighlightKey } from '@/design/theme-tokens.generated';
 export type { ColorSet, M3Roles, StudyPaneColors } from '@/design/colors';
 
 // Highlights are a fill only, named by color, in the display order yellow,
-// green, blue, pink, purple, orange (themes spec rule 8). Each has a spoken
-// name and a shape for Differentiate Without Color.
+// green, blue, pink, purple, orange (themes spec rule 8). Each has a shape
+// for Differentiate Without Color; the spoken names are in highlights.ts.
 export type HighlightName = HighlightKey;
 export type HighlightShape = 'circle' | 'square' | 'triangle' | 'diamond' | 'bar' | 'ring';
 
@@ -22,15 +22,6 @@ export const highlightShapes: Record<HighlightName, HighlightShape> = {
   pink: 'bar',
   purple: 'diamond',
   orange: 'ring',
-};
-
-export const highlightSpokenNames: Record<HighlightName, string> = {
-  yellow: 'yellow',
-  green: 'green',
-  blue: 'blue',
-  pink: 'pink',
-  purple: 'purple',
-  orange: 'orange',
 };
 
 // Reading column horizontal padding, and the study pane's inset from the

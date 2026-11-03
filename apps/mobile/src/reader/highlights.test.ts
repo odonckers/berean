@@ -7,6 +7,7 @@ import {
   HIGHLIGHT_ORDER,
   highlightActionLabel,
   highlightLabel,
+  highlightSpokenName,
   highlightsByVerse,
   segmentHighlight,
   toCoreColorName,
@@ -46,6 +47,17 @@ describe('highlight colors', () => {
       'Pink',
       'Purple',
       'Orange',
+    ]);
+  });
+
+  test("screen readers say the token's spoken name (themes spec §5)", () => {
+    assert.deepEqual(HIGHLIGHT_ORDER.map(highlightSpokenName), [
+      'Yellow highlight',
+      'Green highlight',
+      'Blue highlight',
+      'Pink highlight',
+      'Purple highlight',
+      'Orange highlight',
     ]);
   });
 });
@@ -146,18 +158,21 @@ describe('segment highlight', () => {
 describe('labels', () => {
   test('a highlighted verse is named with its color', () => {
     assert.equal(verseSubject(1, undefined), 'Verse 1');
-    assert.equal(verseSubject(1, 'yellow'), 'Verse 1, highlighted, yellow');
+    assert.equal(verseSubject(1, highlightSpokenName('yellow')), 'Verse 1, Yellow highlight');
   });
 
   test('the Highlight action', () => {
     assert.equal(highlightActionLabel(4, undefined), 'Verse 4, highlight');
-    assert.equal(highlightActionLabel(4, 'green'), 'Verse 4, highlighted, green, change highlight');
+    assert.equal(
+      highlightActionLabel(4, highlightSpokenName('green')),
+      'Verse 4, Green highlight, change highlight',
+    );
   });
 
   test('the study action carries the highlight', () => {
-    const subject = verseSubject(3, 'blue');
-    assert.equal(studyActionLabel(3, undefined, false, subject), 'Verse 3, highlighted, blue, opens study');
-    assert.equal(studyActionLabel(3, undefined, true, subject), 'Verse 3, highlighted, blue, closes study');
+    const subject = verseSubject(3, highlightSpokenName('blue'));
+    assert.equal(studyActionLabel(3, undefined, false, subject), 'Verse 3, Blue highlight, opens study');
+    assert.equal(studyActionLabel(3, undefined, true, subject), 'Verse 3, Blue highlight, closes study');
     assert.equal(studyActionLabel(3, undefined, false), 'Verse 3, opens study');
   });
 });
