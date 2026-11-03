@@ -31,9 +31,9 @@ import { useReducedMotion, useSharedValue } from 'react-native-reanimated';
 
 import { ScriptureText, UIText } from '@/components/text';
 import { TextButton } from '@/components/text-button';
-import { useContentInsets } from '@/design/tab-chrome';
+import { useContentInsets, useHeaderHidden } from '@/design/tab-chrome';
 import { useBerean } from '@/design/theme';
-import { highlightSpokenNames } from '@/design/tokens';
+import { spacing } from '@/design/tokens';
 import { useTopAppBarFill } from '@/design/use-top-app-bar-fill';
 import { reader } from '@/ffi/core';
 import { load } from '@/library/load';
@@ -60,7 +60,7 @@ import {
 import { BiblePicker } from '@/reader/bible-picker';
 import { copiedVerse, copyConfirmation, verseText } from '@/reader/copy-verse';
 import { HighlightSheet } from '@/reader/highlight-sheet';
-import { highlightActionLabel, segmentHighlight } from '@/reader/highlights';
+import { highlightActionLabel, highlightSpokenName, segmentHighlight } from '@/reader/highlights';
 import { type LandedVerse, landedLabel, landedVerse } from '@/reader/landed-verse';
 import {
   type Run,
@@ -83,6 +83,7 @@ import {
   paneMaxFraction,
   verseScrollOffset,
 } from '@/reader/pane-snap';
+import { AaButton, ReadingAppearanceHost, useReadingAppearance } from '@/reader/reading-appearance';
 import { ReadingColumn, useColumnPaddingTop } from '@/reader/reading-column';
 import {
   forgetVerse,
@@ -162,6 +163,11 @@ export function BibleChapterView({
   const bookInfo = bookList?.find((b) => b.book === book);
   const heading = chapterHeading(bookInfo, chapter);
   const [picking, setPicking] = useState(false);
+  // The Aa quick picker: in the header, or beside the in-content heading
+  // where the look hides the native header.
+  const appearance = useReadingAppearance();
+  const headerHidden = useHeaderHidden();
+  const aa = <AaButton buttonRef={appearance.buttonRef} onPress={appearance.toggle} />;
   const pickLabel = `${heading}, choose book and chapter`;
 
   // The selection belongs to one chapter, so changing publication, book or
@@ -230,7 +236,7 @@ export function BibleChapterView({
   const addNote = (verse: number) => addNoteAt({ pubKey, book, chapter, verse });
   const spokenHighlight = (verse: number) => {
     const color = highlights.byVerse.get(verse)?.color;
-    return color === undefined ? undefined : highlightSpokenNames[color];
+    return color === undefined ? undefined : highlightSpokenName(color);
   };
   // The verse whose actions are open (a long press on its text, or its
   // Highlight action), with the last change's error. It belongs to one
@@ -558,12 +564,14 @@ export function BibleChapterView({
   // chapter heading; the iOS look has no navigation title, the chapter
   // heading in the content is the title. The title (material) and the
   // in-content heading (iOS) open the book and chapter picker.
-  // Pending, as their features don't exist yet: Aa, bookmark, menu, overflow.
+  // Aa opens the reading appearance picker. Pending, as their features
+  // don't exist yet: bookmark, menu, overflow.
   const screenOptions = (
     <Stack.Screen
       options={{
         title: material ? heading : '',
         headerLargeTitleEnabled: false,
+        headerRight: headerHidden ? undefined : () => aa,
         headerTitle:
           material && bookList !== undefined
             ? () => (
@@ -597,14 +605,15 @@ export function BibleChapterView({
 
   if (!loaded.ok) {
     return (
-      <>
+      <ReadingAppearanceHost open={appearance.open} onClose={appearance.close} buttonRef={appearance.buttonRef}>
         {screenOptions}
         <ReadingColumn tabRoot>
+          {headerHidden && <View style={styles.aaRow}>{aa}</View>}
           <UIText secondary>{loaded.message}</UIText>
           <View style={styles.navRow}>{previous}</View>
         </ReadingColumn>
         {picker}
-      </>
+      </ReadingAppearanceHost>
     );
   }
 
@@ -868,7 +877,7 @@ export function BibleChapterView({
   });
 
   return (
-    <>
+    <ReadingAppearanceHost open={appearance.open} onClose={appearance.close} buttonRef={appearance.buttonRef}>
       {screenOptions}
       <ReadingColumn
         tabRoot
@@ -893,6 +902,8 @@ export function BibleChapterView({
           scrollToPending();
         }}
       >
+        {/* With no native header, Aa sits at the column's trailing edge, above the heading. */}
+        {headerHidden && <View style={styles.aaRow}>{aa}</View>}
         {/* Per the reader frames: the iOS look titles the chapter in the
             content; the material look's title is the top app bar's only. */}
         {material ? null : bookList !== undefined ? (
@@ -954,7 +965,7 @@ export function BibleChapterView({
           onClose={closeActions}
         />
       )}
-    </>
+    </ReadingAppearanceHost>
   );
 }
 
@@ -966,5 +977,7 @@ const styles = StyleSheet.create({
   titleButton: { minHeight: 48, justifyContent: 'center' },
   appBarTitle: { letterSpacing: 0 },
   navRow: { flexDirection: 'row', alignItems: 'center' },
+  // The column's gap would push the heading down; the button's own height is enough.
+  aaRow: { alignItems: 'flex-end', marginBottom: -spacing.md },
   navSpacer: { flex: 1 },
 });

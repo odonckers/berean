@@ -7,6 +7,7 @@
 import type { HighlightColor, TextRange } from 'berean-ffi-rn';
 
 import type { HighlightName } from '@/design/tokens';
+import { themeTokens } from '../design/theme-tokens.generated.ts';
 import type { Segment } from './chapter-blocks.ts';
 
 /** The core's color names, as the generated HighlightColor enum's keys. */
@@ -55,6 +56,15 @@ export function toHighlightName(core: CoreColorName): HighlightName {
 /** A color's name as a chip shows it: "Yellow". Highlights have no other name. */
 export function highlightLabel(name: HighlightName): string {
   return CORE_NAMES[name];
+}
+
+/**
+ * A color's name as screen readers say it: the token's spokenName, "Yellow
+ * highlight" (themes spec §5). Every theme and set names a hue the same, so
+ * Paper light's is read.
+ */
+export function highlightSpokenName(name: HighlightName): string {
+  return themeTokens.paper.modes.light.highlights[name].spokenName;
 }
 
 type CoreLocation = { book?: number; chapter?: number; verse?: number };
@@ -139,16 +149,16 @@ export function segmentHighlight(
 }
 
 /**
- * How screen readers name a verse: "Verse 3", or "Verse 3, highlighted,
- * yellow" with the color's spoken name.
+ * How screen readers name a verse: "Verse 3", or "Verse 3, Yellow
+ * highlight" with the color's spoken name.
  */
 export function verseSubject(verse: number, spokenColor: string | undefined): string {
-  return spokenColor === undefined ? `Verse ${verse}` : `Verse ${verse}, highlighted, ${spokenColor}`;
+  return spokenColor === undefined ? `Verse ${verse}` : `Verse ${verse}, ${spokenColor}`;
 }
 
 /**
  * A verse's Highlight action, which opens the highlight chips: "Verse 3,
- * highlight", or "Verse 3, highlighted, yellow, change highlight".
+ * highlight", or "Verse 3, Yellow highlight, change highlight".
  */
 export function highlightActionLabel(verse: number, spokenColor: string | undefined): string {
   const action = spokenColor === undefined ? 'highlight' : 'change highlight';

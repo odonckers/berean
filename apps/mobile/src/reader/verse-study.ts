@@ -118,7 +118,7 @@ const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : 
  * what the core's markers count for it ("Verse 3, opens study, 2 cross
  * references, 1 footnote"); "Verse 3, closes study" while its study is open.
  * `subject` names the verse where it says more than its number: "Verse 3,
- * highlighted, yellow, opens study".
+ * Yellow highlight, opens study".
  */
 export function studyActionLabel(
   verse: number,

@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { UIText } from '@/components/text';
 import { TabChromeContext, destinations } from '@/design/tab-chrome';
+import { TAB_LABEL_MAX_SCALE } from '@/design/tab-label';
 import { useBerean } from '@/design/theme';
 
 // The rail covers neither system bar inset for the content beside it, but
@@ -81,9 +82,14 @@ function RailItem({ label, icon, isFocused = false, onPress, onLongPress }: Rail
           importantForAccessibility="no-hide-descendants"
         />
       </View>
+      {/* Capped like the bar's labels (tab-label.ts); where 1.3× still
+          overflows the 80dp rail, the label shrinks to fit rather than truncate. */}
       <UIText
         variant="label"
         numberOfLines={1}
+        maxFontSizeMultiplier={TAB_LABEL_MAX_SCALE}
+        adjustsFontSizeToFit
+        minimumFontScale={0.7}
         style={
           isFocused ? { color: m3.onSurface, fontWeight: '700' } : { color: m3.onSurfaceVariant }
         }

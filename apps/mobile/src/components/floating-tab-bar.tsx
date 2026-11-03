@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SearchIcon } from '@/components/search-icon';
 import { UIText } from '@/components/text';
 import { TabChromeContext, destinations } from '@/design/tab-chrome';
+import { TAB_LABEL_MAX_SCALE } from '@/design/tab-label';
 import { useBerean } from '@/design/theme';
 import { hairline } from '@/design/tokens';
 
@@ -81,8 +82,13 @@ function FloatingTab({ name, label }: { name: string; label: string }) {
       onLongPress={onLongPress}
       style={[styles.tab, { paddingHorizontal: spacing.lg }]}
     >
+      {/* Capped like the bar's labels (tab-label.ts), so four tabs and the
+          search field share a 600dp window at font 2.0. */}
       <UIText
         numberOfLines={1}
+        maxFontSizeMultiplier={TAB_LABEL_MAX_SCALE}
+        adjustsFontSizeToFit
+        minimumFontScale={0.7}
         style={isFocused ? { color: colors.accent, fontWeight: '600' } : undefined}
       >
         {label}

@@ -1,15 +1,23 @@
 import { NativeTabs } from 'expo-router/native-tabs';
-import { Platform } from 'react-native';
+import { Platform, useWindowDimensions } from 'react-native';
 
 import { FloatingTabBarLayout } from '@/components/floating-tab-bar';
 import { NavigationRailLayout } from '@/components/navigation-rail';
+import { tabLabelFontSize } from '@/design/tab-label';
 import { useBerean, type Berean } from '@/design/theme';
 import { useWindowClass } from '@/design/use-window-class';
 
 // Every color is explicit: NativeTabs otherwise falls back to Material You
 // dynamic colors on Android, and nothing may recolor Berean.
-function tabColors({ look, colors, m3, type }: Berean) {
-  const labelSize = { fontSize: type.ui.label.fontSize, fontWeight: type.ui.label.fontWeight };
+function tabColors({ look, colors, m3, type }: Berean, fontScale: number) {
+  // Android draws the label's fontSize as sp, scaled by the system font
+  // scale, in a fixed-width M3 bar item: at font 2.0 "Studyspace" became
+  // "Studys…". The label grows with the font scale only up to 1.3× (see
+  // tab-label.ts), as M3 bar labels do. iOS tab bars don't grow their
+  // labels with Dynamic Type, so they keep the base size.
+  const base = type.ui.label.fontSize ?? 12;
+  const fontSize = Platform.OS === 'android' ? tabLabelFontSize(base, fontScale) : base;
+  const labelSize = { fontSize, fontWeight: type.ui.label.fontWeight };
   if (look === 'material') {
     return {
       backgroundColor: m3.surfaceContainer,
@@ -39,6 +47,7 @@ function tabColors({ look, colors, m3, type }: Berean) {
 
 export default function TabsLayout() {
   const berean = useBerean();
+  const { fontScale } = useWindowDimensions();
   const windowClass = useWindowClass();
   // NativeTabs has no rail on Android, so wide Android windows use headless
   // tabs. iOS keeps NativeTabs everywhere: iPadOS draws its own floating tab
@@ -47,7 +56,7 @@ export default function TabsLayout() {
     return berean.look === 'material' ? <NavigationRailLayout /> : <FloatingTabBarLayout />;
   }
   return (
-    <NativeTabs labelVisibilityMode="labeled" {...tabColors(berean)}>
+    <NativeTabs labelVisibilityMode="labeled" {...tabColors(berean, fontScale)}>
       <NativeTabs.Trigger name="(read)">
         <NativeTabs.Trigger.Label>Read</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={{ default: 'book', selected: 'book.fill' }} md="menu_book" />

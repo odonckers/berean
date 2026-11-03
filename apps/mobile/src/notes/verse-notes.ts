@@ -73,12 +73,12 @@ export function markerCount(count: number): string | undefined {
 
 /**
  * A verse as screen readers name it in its actions: "Verse 4, 2 notes",
- * with its highlight after: "Verse 4, 2 notes, highlighted, yellow".
+ * with its highlight's spoken name after: "Verse 4, 2 notes, Yellow highlight".
  */
 export function verseNotesSubject(verse: number, notes: number, spokenColor: string | undefined): string {
   const parts = [`Verse ${verse}`];
   if (notes > 0) parts.push(noteCount(notes));
-  if (spokenColor !== undefined) parts.push('highlighted', spokenColor);
+  if (spokenColor !== undefined) parts.push(spokenColor);
   return parts.join(', ');
 }
 

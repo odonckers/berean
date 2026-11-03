@@ -70,7 +70,8 @@ export function TextButton({
   );
 }
 
-const MATERIAL_TARGET = 48;
+/** The Material look's least hit area, in dp. */
+export const MATERIAL_TARGET = 48;
 const IOS_TARGET = 44;
 
 const styles = StyleSheet.create({

@@ -4,6 +4,7 @@ import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { SearchShortcut } from '@/components/search-shortcut';
+import { ThemeFade } from '@/components/theme-fade';
 import { LookProvider } from '@/design/look';
 import { focusRing } from '@/design/focus-ring';
 import { BereanThemeProvider, systemBarStyle, useBerean } from '@/design/theme';
@@ -34,6 +35,7 @@ function RootStack() {
         />
       </Stack>
       <SearchShortcut />
+      <ThemeFade />
       <StatusBar style={barStyle} />
     </SearchProvider>
   );

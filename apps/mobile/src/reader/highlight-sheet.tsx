@@ -15,7 +15,7 @@ import { UIText } from '@/components/text';
 import { TextButton } from '@/components/text-button';
 import { systemBarStyle, useBerean } from '@/design/theme';
 import { type HighlightName, hairline, radii, spacing } from '@/design/tokens';
-import { HIGHLIGHT_ORDER, highlightLabel } from '@/reader/highlights';
+import { HIGHLIGHT_ORDER, highlightLabel, highlightSpokenName } from '@/reader/highlights';
 import { moveAccessibilityFocus } from '@/reader/study-pane';
 import { followFocusRingIn } from '../../modules/berean-shortcuts';
 import { ModalNavigationBarStyle } from '../../modules/berean-system-bars';
@@ -80,7 +80,8 @@ export function HighlightSheet({
       <Pressable
         key={name}
         accessibilityRole="button"
-        accessibilityLabel={label}
+        // Visible "Yellow", spoken "Yellow highlight" (themes spec §5).
+        accessibilityLabel={highlightSpokenName(name)}
         accessibilityState={{ selected }}
         onPress={() => onChoose(name)}
         onFocus={followRing}

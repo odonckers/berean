@@ -1,5 +1,5 @@
 import type { TocEntry } from 'berean-ffi-rn';
-import { router } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import { useMemo } from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 
@@ -9,6 +9,7 @@ import { useBerean } from '@/design/theme';
 import { hairline, spacing } from '@/design/tokens';
 import { reader } from '@/ffi/core';
 import { load } from '@/library/load';
+import { AaButton, ReadingAppearanceHost, useReadingAppearance } from '@/reader/reading-appearance';
 import { ReadingColumn } from '@/reader/reading-column';
 
 export function TocView({ pubKey, title }: { pubKey: string; title: string }) {
@@ -78,19 +79,28 @@ export function DocumentView({ pubKey, docId }: { pubKey: string; docId: string 
     () => load(() => reader().document(pubKey, BigInt(docId))),
     [pubKey, docId],
   );
+  // Pushed documents keep the native header in both looks, so Aa is its action.
+  const appearance = useReadingAppearance();
   return (
-    <ReadingColumn>
-      {loaded.ok ? (
-        <>
-          <ScriptureText variant="chapterHeading">{loaded.value.title}</ScriptureText>
-          <UIText secondary>
-            Document text rendering needs structured blocks from the core (pending).
-          </UIText>
-        </>
-      ) : (
-        <UIText secondary>{loaded.message}</UIText>
-      )}
-    </ReadingColumn>
+    <ReadingAppearanceHost open={appearance.open} onClose={appearance.close} buttonRef={appearance.buttonRef}>
+      <Stack.Screen
+        options={{
+          headerRight: () => <AaButton buttonRef={appearance.buttonRef} onPress={appearance.toggle} />,
+        }}
+      />
+      <ReadingColumn>
+        {loaded.ok ? (
+          <>
+            <ScriptureText variant="chapterHeading">{loaded.value.title}</ScriptureText>
+            <UIText secondary>
+              Document text rendering needs structured blocks from the core (pending).
+            </UIText>
+          </>
+        ) : (
+          <UIText secondary>{loaded.message}</UIText>
+        )}
+      </ReadingColumn>
+    </ReadingAppearanceHost>
   );
 }
 
