@@ -16,6 +16,7 @@ import {
   LIGHT_CARD_SHADOW,
   isFront,
   pickWorkspace,
+  readerBody,
   readerMeasure,
   readerText,
   titleScale,
@@ -273,6 +274,25 @@ describe('touchScrolls (§6.1): one finger scrolls a live reader card, else pans
     assert.equal(touchScrolls('passage', level(319, 1, 1)), false);
     assert.equal(touchScrolls('passage', level(639, 1, 2)), false);
     assert.equal(touchScrolls('passage', level(800, 0.6, 1)), false);
+  });
+});
+
+describe('readerBody (§6.1, §6.3): what a reader card\'s body draws', () => {
+  test('focused: the live reader at any level', () => {
+    assert.equal(readerBody(3, true, true), 'live');
+    assert.equal(readerBody(2, true, true), 'live');
+    assert.equal(readerBody(4, true, true), 'live');
+  });
+
+  test('unfocused: a snippet at L3, the live reader at L4, none below', () => {
+    assert.equal(readerBody(3, false, true), 'snippet');
+    assert.equal(readerBody(4, false, true), 'live');
+    assert.equal(readerBody(2, false, true), 'none');
+  });
+
+  test('no text: none, focused or not', () => {
+    assert.equal(readerBody(4, false, false), 'none');
+    assert.equal(readerBody(3, true, false), 'none');
   });
 });
 

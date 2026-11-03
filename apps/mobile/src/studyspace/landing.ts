@@ -71,17 +71,29 @@ function shiftInto(low: number, high: number, from: number, to: number): number 
 }
 
 /**
+ * The margin across, in screen points: `margin`, or for a card that fits
+ * the view across but not with `margin` both sides, half the room left, so
+ * the whole card shows. A card wider than the view keeps `margin`.
+ */
+function marginAcross(view: Size, rect: Rect, zoom: number, margin: number): number {
+  const width = rect.width * zoom;
+  return width > view.width ? margin : Math.min(margin, Math.max(0, (view.width - width) / 2));
+}
+
+/**
  * The camera after the shortest pan that brings `rect`, plus `margin`
  * screen points around it, into a view of `view`; the same camera when it
- * is already in view. The zoom never changes. A card bigger than the view
- * shows its top-left.
+ * is already in view. The zoom never changes. Across, the margin shrinks
+ * to whatever room a card that fits the view leaves (marginAcross); down,
+ * it is always `margin`. A card bigger than the view shows its top-left.
  */
 export function panIntoView(camera: Camera, view: Size, rect: Rect, margin: number): Camera {
-  const m = margin / camera.zoom;
+  const mx = marginAcross(view, rect, camera.zoom, margin) / camera.zoom;
+  const my = margin / camera.zoom;
   const halfW = view.width / 2 / camera.zoom;
   const halfH = view.height / 2 / camera.zoom;
-  const dx = shiftInto(rect.x - m, rect.x + rect.width + m, camera.x - halfW, camera.x + halfW);
-  const dy = shiftInto(rect.y - m, rect.y + rect.height + m, camera.y - halfH, camera.y + halfH);
+  const dx = shiftInto(rect.x - mx, rect.x + rect.width + mx, camera.x - halfW, camera.x + halfW);
+  const dy = shiftInto(rect.y - my, rect.y + rect.height + my, camera.y - halfH, camera.y + halfH);
   // The view moves the other way to the card's shift.
   return dx === 0 && dy === 0 ? camera : { x: camera.x - dx, y: camera.y - dy, zoom: camera.zoom };
 }
@@ -89,8 +101,10 @@ export function panIntoView(camera: Camera, view: Size, rect: Rect, margin: numb
 /**
  * The camera a tap on a small reader card moves to (§6.1 focus zoom):
  * below 100%, 100% centred on the card; at 100% or more, the zoom kept and
- * the card panned into view. Either way a card bigger than the view shows
- * its top-left, `margin` in from the edges.
+ * the card panned into view. Either way a card that fits the view across
+ * shows whole, with `margin` either side or as much as there is room for
+ * (panIntoView); a card bigger than the view shows its top-left, `margin`
+ * in from the edges.
  */
 export function focusCamera(camera: Camera, view: Size, frame: Rect, margin: number): Camera {
   const from =

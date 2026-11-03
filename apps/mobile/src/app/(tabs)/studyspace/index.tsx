@@ -1,5 +1,5 @@
 import type { CanvasItem, Workspace } from 'berean-ffi-rn';
-import { Stack, useFocusEffect } from 'expo-router';
+import { router, Stack, useFocusEffect } from 'expo-router';
 import { type ComponentRef, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
@@ -56,6 +56,7 @@ import {
 } from '@/studyspace/data';
 import { debounce } from '@/studyspace/debounce';
 import { type CardAction, nudge, sameFrame } from '@/studyspace/edit';
+import { leftAnnouncement, readingAnnouncement } from '@/studyspace/focus';
 import {
   freeSpot,
   LANDING_GAP,
@@ -66,6 +67,7 @@ import {
   panIntoView,
   PUBLICATION_CARD,
 } from '@/studyspace/landing';
+import { readerParams } from '@/studyspace/open';
 import { WorkspaceTitle } from '@/studyspace/workspace-title';
 
 // The camera is saved this long after a gesture settles (§7.3), and at
@@ -107,7 +109,8 @@ export default function StudyspaceScreen() {
   const { look, colors } = useBerean();
   const material = look === 'material';
   const window = useWindowDimensions();
-  const limits = useMemo(() => zoomLimits(deviceClass(window)), [window]);
+  const device = deviceClass(window);
+  const limits = useMemo(() => zoomLimits(device), [device]);
   const headerHidden = useHeaderHidden();
   const insets = useSafeAreaInsets();
 
@@ -226,14 +229,30 @@ export default function StudyspaceScreen() {
     if (reorder && cards.ok) setFront({ from: cards.value, cards: toFront(shown, id) });
   };
 
-  // §6.6: a reader card is touched (its last_used_at bumped) when a tap
-  // zooms to it, and the first time its text scrolls this session; its
+  // §6.6: a reader card is touched (its last_used_at bumped) when it is
+  // focused, and the first time its text scrolls this session (the
+  // full-screen reader touches it on opening); its
   // scrolls after that bump it by saving its place.
   const read = useRef(new Set<bigint>());
   const readCard = (id: bigint, focused: boolean) => {
     if (!focused && read.current.has(id)) return;
     read.current.add(id);
     touchCard(id);
+  };
+
+  // §8: on a phone a tap opens a reader card in the full-screen reader and
+  // a note in the note editor. The camera is saved first; Back returns to
+  // it as it was: the canvas stays mounted and reads the saved camera only
+  // at its first layout. The cards are read again on coming back
+  // (useNotesRead), so a reader card shows the place it was left at.
+  const openCard = (card: CardView) => {
+    if (current === undefined) return;
+    saver.flush();
+    if (card.kind === 'note') {
+      if (card.noteId !== undefined) router.push({ pathname: '/note-editor', params: { id: card.noteId, stay: '1' } });
+      return;
+    }
+    router.push({ pathname: '/studyspace/read', params: readerParams(current.id, card.id) });
   };
 
   const liftCard = (id: bigint) => {
@@ -497,11 +516,15 @@ export default function StudyspaceScreen() {
         cards={shown}
         saved={current.viewport}
         limits={limits}
+        device={device}
         selected={selectedId}
         highlighted={highlighted}
         onSettle={(camera) => saver.call({ id: current.id, camera })}
         onLiftCard={liftCard}
         onTapCard={(id) => bringToFront(id, true)}
+        onOpenCard={openCard}
+        onFocusCard={(card, verse) => announce(readingAnnouncement(card.title, verse))}
+        onLeaveCard={(card) => announce(leftAnnouncement(card.title))}
         onReadCard={readCard}
         onCommitCard={commitFrame}
         onCardAction={cardAction}
