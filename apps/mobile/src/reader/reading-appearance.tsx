@@ -6,12 +6,14 @@ import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withTimin
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { ScaledSymbol } from '@/components/scaled-symbol';
+import { schemeOf } from '@/design/appearance';
 import { AppearanceGroups } from '@/design/appearance-groups';
 import {
   dragCloses,
   QUICK_PICKER_WIDTH,
   quickPickerLayout,
   quickPickerPlacement,
+  quickPickerSheetSurface,
   sheetHeight,
 } from '@/design/quick-picker';
 import { useContentInsets } from '@/design/tab-chrome';
@@ -142,7 +144,11 @@ export function ReadingAppearanceHost({ open, onClose, buttonRef, children }: Ho
         <BottomSheet open={open} onClose={onClose} area={area} />
       )}
       {area !== undefined && placement === 'popover' && open && (
-        <Popover onClose={onClose} area={area} anchor={anchor} />
+        <>
+          {/* A tap outside the popover, on the reader, closes it. */}
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessible={false} />
+          <Popover onClose={onClose} area={area} anchor={anchor} />
+        </>
       )}
     </View>
   );
@@ -197,7 +203,7 @@ function useChrome() {
   const increaseContrast = mode === 'lightIC' || mode === 'darkIC';
   return {
     material,
-    background: material ? m3.surfaceContainerLow : colors.surfaceRaised,
+    background: quickPickerSheetSurface(look, schemeOf(mode), m3, colors),
     edge: increaseContrast ? { borderWidth: 1, borderColor: colors.outline } : undefined,
   };
 }
@@ -261,6 +267,7 @@ function BottomSheet({
 
   return (
     <Animated.View
+      onAccessibilityEscape={onClose}
       style={[
         styles.sheet,
         { height, backgroundColor: background, borderTopLeftRadius: radii.sheet, borderTopRightRadius: radii.sheet },
@@ -308,6 +315,7 @@ function SideSheet({ onClose }: { onClose: () => void }) {
   const { layout, accentGrid } = quickPickerLayout(QUICK_PICKER_WIDTH - 2 * spacing.lg, fontScale);
   return (
     <View
+      onAccessibilityEscape={onClose}
       style={[
         styles.sideSheet,
         { width: QUICK_PICKER_WIDTH + insets.right, paddingRight: insets.right, backgroundColor: background, borderColor: m3.outlineVariant },
@@ -343,6 +351,7 @@ function Popover({
   const right = Math.min(anchor?.right ?? spacing.lg, area.width - width - spacing.sm);
   return (
     <View
+      onAccessibilityEscape={onClose}
       style={[
         styles.popover,
         { top, right, width, maxHeight: area.height - top - spacing.lg, backgroundColor: background },

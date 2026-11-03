@@ -1,7 +1,9 @@
 // The reader's Aa quick picker (themes spec §4, rule 12): where it opens,
 // how tall, and how its groups lay out. Pure, for the Node tests.
 
+import type { Scheme } from './appearance.ts';
 import { pickerLayout } from './appearance-picker.ts';
+import type { ColorSet, M3Roles } from './colors.ts';
 
 type Look = 'ios' | 'material';
 type WindowClass = 'compact' | 'medium' | 'expanded';
@@ -69,4 +71,19 @@ export const DISMISS_VELOCITY = 800;
 export function dragCloses(translationY: number, velocityY: number): boolean {
   'worklet';
   return translationY > DISMISS_DISTANCE || velocityY > DISMISS_VELOCITY;
+}
+
+/**
+ * The bottom sheet's, side sheet's and popover's surface. The material look
+ * sits on M3 surfaceContainerLow in light; in dark that sinks into the page,
+ * so it steps up to surfaceContainerHigh. The iOS look is surfaceRaised.
+ */
+export function quickPickerSheetSurface(
+  look: Look,
+  scheme: Scheme,
+  m3: Pick<M3Roles, 'surfaceContainerLow' | 'surfaceContainerHigh'>,
+  colors: Pick<ColorSet, 'surfaceRaised'>,
+): string {
+  if (look !== 'material') return colors.surfaceRaised;
+  return scheme === 'dark' ? m3.surfaceContainerHigh : m3.surfaceContainerLow;
 }

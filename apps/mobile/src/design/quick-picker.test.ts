@@ -1,13 +1,45 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
+import { DEFAULT_CHOICE, resolvePalette, schemeOf } from './appearance.ts';
+import { contrast } from './contrast.ts';
 import {
   dragCloses,
   MEDIUM_DETENT,
   quickPickerLayout,
   quickPickerPlacement,
+  quickPickerSheetSurface,
   sheetHeight,
 } from './quick-picker.ts';
+import { THEME_IDS, THEME_MODES } from './theme-tokens.generated.ts';
+
+describe('the Aa picker surface stands off the page (themes spec §4, rule 5)', () => {
+  for (const theme of THEME_IDS) {
+    for (const mode of THEME_MODES) {
+      const { colors, m3 } = resolvePalette({ ...DEFAULT_CHOICE, theme }, mode);
+      const scheme = schemeOf(mode);
+      const material = quickPickerSheetSurface('material', scheme, m3, colors);
+
+      if (scheme === 'dark') {
+        test(`${theme} ${mode}: the Material sheet is on surfaceContainerHigh, above 1:1 on the page`, () => {
+          assert.equal(material, m3.surfaceContainerHigh);
+          for (const page of [colors.surface, m3.surface]) {
+            assert.notEqual(material.toUpperCase(), page.toUpperCase());
+            assert.ok(contrast(material, page) > 1, `${material} on ${page}: ${contrast(material, page).toFixed(3)}`);
+          }
+        });
+      } else {
+        test(`${theme} ${mode}: the Material sheet is on surfaceContainerLow`, () => {
+          assert.equal(material, m3.surfaceContainerLow);
+        });
+      }
+
+      test(`${theme} ${mode}: the iOS sheet and popover are on surfaceRaised`, () => {
+        assert.equal(quickPickerSheetSurface('ios', scheme, m3, colors), colors.surfaceRaised);
+      });
+    }
+  }
+});
 
 describe('where the Aa picker opens (themes spec §4)', () => {
   test('phones: an M3 bottom sheet, or the iPhone sheet', () => {
