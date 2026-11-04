@@ -137,15 +137,25 @@ export function segmentHighlight(
   index: number,
   byVerse: ReadonlyMap<number, VerseHighlight>,
 ): HighlightName | undefined {
+  const verse = segmentVerse(segments, index);
+  return verse === undefined ? undefined : byVerse.get(verse)?.color;
+}
+
+/**
+ * The verse a segment's text belongs to: a text segment's own, or, for the
+ * space between two parts of one verse, that verse's. Numbers, notes and
+ * spaces between verses belong to none.
+ */
+export function segmentVerse(segments: readonly Segment[], index: number): number | undefined {
   const segment = segments[index];
-  if (segment?.kind === 'text') return byVerse.get(segment.verse)?.color;
+  if (segment?.kind === 'text') return segment.verse;
   if (segment?.kind !== 'space') return undefined;
   const before = segments[index - 1];
   const after = segments[index + 1];
   if (before?.kind !== 'text' || after?.kind !== 'text' || before.verse !== after.verse) {
     return undefined;
   }
-  return byVerse.get(before.verse)?.color;
+  return before.verse;
 }
 
 /**

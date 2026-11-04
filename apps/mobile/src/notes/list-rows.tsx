@@ -192,7 +192,16 @@ export type SwipeAction = { key: string; label: string; icon: SymbolName; destru
  * the row's menu and its accessibility actions (WCAG 2.5.7), so the panel
  * itself is hidden from assistive tech.
  */
-export function SwipeRow({ actions, children }: { actions: readonly SwipeAction[]; children: ReactNode }) {
+export function SwipeRow({
+  actions,
+  enabled = true,
+  children,
+}: {
+  actions: readonly SwipeAction[];
+  /** Off, the row doesn't swipe; it keeps its element, so its focus too. */
+  enabled?: boolean;
+  children: ReactNode;
+}) {
   const { look, colors, m3 } = useBerean();
   const material = look === 'material';
   const renderRightActions = (_p: unknown, _t: unknown, swipe: SwipeableMethods) => (
@@ -226,7 +235,7 @@ export function SwipeRow({ actions, children }: { actions: readonly SwipeAction[
     </View>
   );
   return (
-    <ReanimatedSwipeable friction={2} rightThreshold={40} overshootRight={false} renderRightActions={renderRightActions}>
+    <ReanimatedSwipeable enabled={enabled} friction={2} rightThreshold={40} overshootRight={false} renderRightActions={renderRightActions}>
       {children}
     </ReanimatedSwipeable>
   );

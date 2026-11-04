@@ -36,7 +36,14 @@ export function ReadingColumn({
   leadingGutter?: number;
 } & Pick<
   ComponentProps<typeof ScrollView>,
-  'ref' | 'onScroll' | 'onScrollEndDrag' | 'onMomentumScrollEnd' | 'onLayout' | 'scrollEventThrottle'
+  | 'ref'
+  | 'onScroll'
+  | 'onScrollBeginDrag'
+  | 'onScrollEndDrag'
+  | 'onMomentumScrollEnd'
+  | 'onLayout'
+  | 'onTouchStart'
+  | 'scrollEventThrottle'
 >) {
   const { look, colors } = useBerean();
   const { fontScale } = useWindowDimensions();

@@ -30,10 +30,7 @@ export function useUndo(): UndoContextValue {
  * the bar's accessibility action as well as its button.
  */
 export function UndoProvider({ children }: { children: ReactNode }) {
-  const { look, colors, m3 } = useBerean();
-  const material = look === 'material';
-  const safe = useSafeAreaInsets();
-  const content = useContentInsets();
+  const { look } = useBerean();
   const [pending, setPending] = useState<Pending | undefined>();
   const [height, setHeight] = useState(0);
   const nextId = useRef(0);
@@ -70,55 +67,98 @@ export function UndoProvider({ children }: { children: ReactNode }) {
   };
 
   const value = useMemo(() => ({ show, height: pending ? height : 0 }), [show, pending, height]);
-
-  // On iOS the tab bar is in the safe area; Android's native tabs sit below
-  // the content already.
-  const bottom = (Platform.OS === 'ios' ? safe.bottom : content.bottom) + spacing.lg;
-  // M3 inverse roles: the other scheme's ink, and the chosen accent in the
-  // theme's other scheme (inversePrimary).
-  const inverseAccent = m3.inversePrimary;
+  const bottom = useUndoBarBottom();
 
   return (
     <UndoContext.Provider value={value}>
       <View style={styles.root}>
         {children}
         {pending !== undefined && (
-          // The iOS toast sits in a row inset 16pt from each edge that
-          // centers it, so the capsule is as wide as its content and wraps
-          // its label before it reaches the insets.
-          <View key={pending.id} pointerEvents="box-none" style={[material ? styles.snackbarRow : styles.toastRow, { bottom }]}>
-            <View
-              onLayout={(e) => setHeight(e.nativeEvent.layout.height + spacing.lg)}
-              accessible
-              accessibilityLabel={pending.label}
-              accessibilityActions={[
-                { name: 'activate', label: 'Undo' },
-                { name: 'undo', label: 'Undo' },
-              ]}
-              onAccessibilityAction={undo}
-              style={[
-                material ? styles.snackbar : styles.toast,
-                material
-                  ? { backgroundColor: m3.onSurface }
-                  : { backgroundColor: colors.surfaceRaised, shadowColor: colors.text },
-              ]}
-            >
-              <UIText style={[material ? styles.snackbarLabel : styles.toastLabel, { color: material ? m3.surface : colors.text }]}>
-                {pending.label}
-              </UIText>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Undo"
-                onPress={undo}
-                style={({ pressed }) => [styles.action, { minHeight: material ? 48 : 44, opacity: pressed ? 0.6 : 1 }]}
-              >
-                <UIText style={[styles.actionLabel, { color: material ? inverseAccent : colors.accent }]}>Undo</UIText>
-              </Pressable>
-            </View>
-          </View>
+          <UndoBar
+            key={pending.id}
+            label={pending.label}
+            onUndo={undo}
+            bottom={bottom}
+            onHeight={(h) => setHeight(h + spacing.lg)}
+          />
         )}
       </View>
     </UndoContext.Provider>
+  );
+}
+
+/**
+ * Where the bar sits: above the tab bar. On iOS the tab bar is in the safe
+ * area; Android's native tabs sit below the content already.
+ */
+export function useUndoBarBottom(): number {
+  const safe = useSafeAreaInsets();
+  const content = useContentInsets();
+  return (Platform.OS === 'ios' ? safe.bottom : content.bottom) + spacing.lg;
+}
+
+/**
+ * The bar itself, `bottom` above its container's bottom edge. Material: an
+ * M3 snackbar; iOS look: a toast capsule. With `onUndo`, Undo is its button
+ * and its accessibility action; without, it is a message alone.
+ */
+export function UndoBar({
+  label,
+  onUndo,
+  bottom,
+  onHeight,
+}: {
+  label: string;
+  onUndo?: () => void;
+  bottom: number;
+  onHeight?: (height: number) => void;
+}) {
+  const { look, colors, m3 } = useBerean();
+  const material = look === 'material';
+  // M3 inverse roles: the other scheme's ink, and the chosen accent in the
+  // theme's other scheme (inversePrimary).
+  const inverseAccent = m3.inversePrimary;
+  return (
+    // The iOS toast sits in a row inset 16pt from each edge that
+    // centers it, so the capsule is as wide as its content and wraps
+    // its label before it reaches the insets.
+    <View pointerEvents="box-none" style={[material ? styles.snackbarRow : styles.toastRow, { bottom }]}>
+      <View
+        onLayout={(e) => onHeight?.(e.nativeEvent.layout.height)}
+        accessible
+        accessibilityLabel={label}
+        accessibilityActions={
+          onUndo === undefined
+            ? undefined
+            : [
+                { name: 'activate', label: 'Undo' },
+                { name: 'undo', label: 'Undo' },
+              ]
+        }
+        onAccessibilityAction={onUndo}
+        style={[
+          material ? styles.snackbar : styles.toast,
+          onUndo === undefined && (material ? styles.snackbarMessage : styles.toastMessage),
+          material
+            ? { backgroundColor: m3.onSurface }
+            : { backgroundColor: colors.surfaceRaised, shadowColor: colors.text },
+        ]}
+      >
+        <UIText style={[material ? styles.snackbarLabel : styles.toastLabel, { color: material ? m3.surface : colors.text }]}>
+          {label}
+        </UIText>
+        {onUndo !== undefined && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Undo"
+            onPress={onUndo}
+            style={({ pressed }) => [styles.action, { minHeight: material ? 48 : 44, opacity: pressed ? 0.6 : 1 }]}
+          >
+            <UIText style={[styles.actionLabel, { color: material ? inverseAccent : colors.accent }]}>Undo</UIText>
+          </Pressable>
+        )}
+      </View>
+    </View>
   );
 }
 
@@ -152,6 +192,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 4,
   },
+  // A message alone keeps the label's padding at both ends, and its lines.
+  snackbarMessage: { paddingEnd: spacing.lg, paddingVertical: spacing.sm },
+  toastMessage: { paddingEnd: spacing.xl, paddingVertical: spacing.sm },
   snackbarLabel: { flexShrink: 1, flexGrow: 1 },
   // Shrinks (wraps) but never grows the capsule.
   toastLabel: { flexShrink: 1 },
