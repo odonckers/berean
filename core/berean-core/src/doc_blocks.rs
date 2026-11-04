@@ -25,7 +25,7 @@ use std::ops::Range;
 use std::path::Path;
 
 use crate::jwpub::check_file_name;
-use crate::notes::Inline;
+use crate::notes::{plain, Inline};
 use crate::reader::{
     attribute, bible_link, decode_references, document_link, element_end, is_external, number,
     plain_text, ParagraphAnchor,
@@ -322,10 +322,11 @@ const DROPPED: [&str; 4] = ["label", "textarea", "script", "style"];
 /// The blocks of a document's `html`, given its paragraph anchors (from
 /// [`paragraph_anchor`](crate::reader::paragraph_anchor), so each positioned
 /// one covers its whole element). `dir` is the directory the publication is
-/// installed in, holding its images. See the module docs.
+/// installed in, holding its images. Fills in each anchor's
+/// [`text`](ParagraphAnchor::text) from its block. See the module docs.
 pub(crate) fn document_blocks(
     html: &str,
-    paragraphs: &[ParagraphAnchor],
+    paragraphs: &mut [ParagraphAnchor],
     dir: &Path,
 ) -> Result<Vec<DocBlock>, CoreError> {
     let mut anchors: Vec<(usize, u32)> = paragraphs
@@ -357,7 +358,57 @@ pub(crate) fn document_blocks(
             *for_paragraphs = covers.remove(paragraph).unwrap_or_default();
         }
     });
+
+    let mut texts: HashMap<u32, String> = HashMap::new();
+    for_each_block(&mut blocks, &mut |block| {
+        let runs: Vec<(u32, &[DocInline])> = match &*block {
+            DocBlock::Heading {
+                paragraph: Some(paragraph),
+                inlines,
+                ..
+            }
+            | DocBlock::Paragraph {
+                paragraph, inlines, ..
+            }
+            | DocBlock::Question {
+                paragraph, inlines, ..
+            } => vec![(*paragraph, inlines)],
+            DocBlock::Aside {
+                title: Some(title), ..
+            } => vec![(title.paragraph, &title.inlines)],
+            DocBlock::Footnotes { items } => items
+                .iter()
+                .filter_map(|f| Some((f.paragraph?, &f.inlines[..])))
+                .collect(),
+            _ => Vec::new(),
+        };
+        for (paragraph, inlines) in runs {
+            texts
+                .entry(paragraph)
+                .or_insert_with(|| inlines_text(inlines));
+        }
+    });
+    for anchor in paragraphs.iter_mut() {
+        anchor.text = texts.remove(&anchor.paragraph).unwrap_or_default();
+    }
     Ok(blocks)
+}
+
+/// The plain text of `inlines` as the reader draws them: their text, with
+/// footnote refs and page markers left out.
+fn inlines_text(inlines: &[DocInline]) -> String {
+    let mut out = String::new();
+    for inline in inlines {
+        match inline {
+            DocInline::Common { inline } => out.push_str(&plain(std::slice::from_ref(inline))),
+            DocInline::Superscript { children }
+            | DocInline::Subscript { children }
+            | DocInline::SmallCaps { children }
+            | DocInline::Link { children, .. } => out.push_str(&inlines_text(children)),
+            DocInline::FootnoteRef { .. } | DocInline::PageMarker { .. } => {}
+        }
+    }
+    out
 }
 
 /// Call `f` on every block in `blocks`, nested ones included.
@@ -1238,13 +1289,14 @@ mod tests {
                 label: None,
                 begin: Some(begin as u32),
                 end: Some(element_end(html, begin, &name).unwrap() as u32),
+                text: String::new(),
             });
         }
         anchors
     }
 
     fn blocks(html: &str) -> Vec<DocBlock> {
-        document_blocks(html, &anchors(html), Path::new("/pub")).unwrap()
+        document_blocks(html, &mut anchors(html), Path::new("/pub")).unwrap()
     }
 
     fn text(text: &str) -> DocInline {
@@ -1308,21 +1360,22 @@ mod tests {
         let html = r#"<p data-pid="1">a</p><div><p data-pid="2">b</p></div>"#;
         let mut anchors = anchors(html);
         anchors.pop();
-        let corrupt = |anchors: &[_]| {
+        let corrupt = |anchors: &mut [_]| {
             matches!(
                 document_blocks(html, anchors, Path::new("/pub")),
                 Err(CoreError::Corrupt)
             )
         };
-        assert!(corrupt(&anchors));
+        assert!(corrupt(&mut anchors));
         // An unpositioned row is not in the HTML either.
         anchors.push(ParagraphAnchor {
             paragraph: 2,
             label: None,
             begin: None,
             end: None,
+            text: String::new(),
         });
-        assert!(corrupt(&anchors));
+        assert!(corrupt(&mut anchors));
     }
 
     #[test]
@@ -1386,6 +1439,24 @@ mod tests {
                 body(8, vec![text("Drop cap")]),
             ]
         );
+    }
+
+    #[test]
+    fn paragraph_text_is_what_the_reader_draws() {
+        let html = r#"<p data-pid="1"><span class="parNum" data-pnum="2"><strong><sup>2</sup></strong></span> In <em>the</em> <span class="pageNum" data-no="4"></span>end.<span data-fnid="4" class="fn">a</span></p>
+<p data-pid="2" class="qu"><strong>3.</strong> Why <sup>x</sup>?</p>
+<div data-pid="3" class="gen-field"><label>Answer</label><textarea name="t-3"></textarea></div>"#;
+        let mut anchors = anchors(html);
+        anchors.push(ParagraphAnchor {
+            paragraph: 4,
+            label: None,
+            begin: None,
+            end: None,
+            text: String::new(),
+        });
+        document_blocks(html, &mut anchors, Path::new("/pub")).unwrap();
+        let texts: Vec<&str> = anchors.iter().map(|a| a.text.as_str()).collect();
+        assert_eq!(texts, ["In the end.", "Why x?", "", ""]);
     }
 
     #[test]

@@ -915,7 +915,7 @@ fn paragraph(inlines: Vec<Inline>) -> Option<Block> {
 }
 
 /// The plain text of `inlines`: their text, code and tags, without styling.
-fn plain(inlines: &[Inline]) -> String {
+pub(crate) fn plain(inlines: &[Inline]) -> String {
     let mut out = String::new();
     for inline in inlines {
         match inline {
