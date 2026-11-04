@@ -42,8 +42,8 @@ export type QuickPickerLayout = {
  * detent: Theme and Appearance are lists and the accents wrap to two rows
  * of three with names. Otherwise the medium detent with Settings' rows.
  */
-export function quickPickerLayout(contentWidth: number, fontScale: number): QuickPickerLayout {
-  const layout = pickerLayout(contentWidth, fontScale);
+export function quickPickerLayout(contentWidth: number, fontScale: number, look: Look): QuickPickerLayout {
+  const layout = pickerLayout(contentWidth, fontScale, look);
   return { layout, detent: layout === 'list' ? 'large' : 'medium', accentGrid: layout === 'list' };
 }
 

@@ -7,7 +7,8 @@ import { SearchIcon } from '@/components/search-icon';
 import { UIText } from '@/components/text';
 import { TabChromeContext, destinations } from '@/design/tab-chrome';
 import { TAB_LABEL_MAX_SCALE } from '@/design/tab-label';
-import { useBerean } from '@/design/theme';
+import { glassFace } from '@/design/chrome';
+import { useBerean, useSolidChrome } from '@/design/theme';
 import { hairline } from '@/design/tokens';
 
 // The top bar pads for the status bar itself; nothing covers the bottom or
@@ -17,9 +18,11 @@ const topBarChrome = { coversTop: true, coversBottom: false, coversLeft: false }
 // Preview approximation of the iPad tab bar for the iOS look on Android
 // windows >= 600dp: a floating capsule at the top with a toolbar search field
 // at the trailing end (so the search route has no trigger). It does not
-// expand into the sidebar.
+// expand into the sidebar. The capsule and the field are glass
+// approximations, solid with an outline under RT or IC (rule 5).
 export function FloatingTabBarLayout() {
   const { colors, radii, spacing } = useBerean();
+  const solid = useSolidChrome();
   const insets = useSafeAreaInsets();
   return (
     <TabChromeContext.Provider value={topBarChrome}>
@@ -47,9 +50,8 @@ export function FloatingTabBarLayout() {
           <View
             style={[
               styles.capsule,
+              glassFace(solid, colors, hairline),
               {
-                backgroundColor: colors.surfaceRaised,
-                borderColor: colors.separator,
                 borderRadius: radii.capsule,
                 padding: spacing.xs,
               },
@@ -99,6 +101,7 @@ function FloatingTab({ name, label }: { name: string; label: string }) {
 
 function ToolbarSearchField() {
   const { colors, radii, spacing } = useBerean();
+  const solid = useSolidChrome();
   return (
     <Pressable
       accessibilityRole="search"
@@ -106,9 +109,8 @@ function ToolbarSearchField() {
       onPress={() => router.push('/search-view')}
       style={[
         styles.search,
+        glassFace(solid, colors, hairline),
         {
-          backgroundColor: colors.surfaceRaised,
-          borderColor: colors.separator,
           borderRadius: radii.capsule,
           paddingHorizontal: spacing.md,
           gap: spacing.sm,
@@ -129,7 +131,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center' },
   side: { flex: 1, minWidth: 0 },
   trailing: { alignItems: 'flex-end' },
-  capsule: { flexDirection: 'row', borderWidth: hairline },
+  capsule: { flexDirection: 'row' },
   tab: { minHeight: 44, justifyContent: 'center' },
   search: {
     minHeight: 44,
@@ -137,7 +139,6 @@ const styles = StyleSheet.create({
     maxWidth: 240,
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: hairline,
   },
   searchLabel: { flexShrink: 1 },
 });

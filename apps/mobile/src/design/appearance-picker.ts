@@ -10,6 +10,8 @@ import {
 } from './appearance.ts';
 import { themeTokens } from './theme-tokens.generated.ts';
 
+type Look = 'ios' | 'material';
+
 export const THEME_HINT = 'Changes the reading colors';
 export const AUTOMATIC_HINT = 'Follows the system light or dark setting';
 
@@ -27,6 +29,17 @@ export function themeOptionLabel(theme: ThemeId): string {
 /** "Terracotta, accent". */
 export function accentOptionLabel(name: string): string {
   return `${name}, accent`;
+}
+
+/** Android's Material You accent (§11), listed first where it is offered. */
+export const SYSTEM_COLORS_NAME = 'System colors';
+export const SYSTEM_COLORS_HINT = 'From your wallpaper';
+/** Shown under System colors, and spoken in its hint, when the guard fails and slot 1 is used. */
+export const LOW_CONTRAST_NOTE = 'Not enough contrast with this theme';
+
+/** "From your wallpaper", plus the low contrast note when the guard fails. */
+export function systemColorsHint(contrastOk: boolean): string {
+  return contrastOk ? SYSTEM_COLORS_HINT : `${SYSTEM_COLORS_HINT}. ${LOW_CONTRAST_NOTE}`;
 }
 
 /** "Automatic, appearance". */
@@ -64,12 +77,32 @@ export function themeSwatch(
 export const TILE_MIN_WIDTH = 72;
 export const TILE_GAP = 12;
 
+/** The selection ring's width; unselected options keep the same box (appearance-groups.tsx). */
+export const RING = 3;
+/** An Appearance tile's padding inside the ring on each side (spacing.sm). */
+export const APPEARANCE_TILE_PADDING = 8;
+
 /**
- * Theme tiles sit in one row while four fit at the font scale; otherwise
- * they become a vertical list (swatch, name, checkmark), so no name is
- * truncated. Appearance follows the same choice.
+ * Bold "Automatic" (the selected Appearance label, UI body) at font scale 1,
+ * in dp, rounded up. From the system fonts' bold advance widths summed over
+ * A-u-t-o-m-a-t-i-c:
+ * - ios: SF Pro Text Bold, about 4.91em; at the 17pt body, 83.5. SF's
+ *   tracking at 17pt (-0.43pt a letter) would bring it to about 80; it is
+ *   left out to err wide, so 84. (The iPad popover's 79dp label truncated.)
+ * - material: Roboto Bold, about 4.63em; at the 16sp body, 74.1, so 76.
  */
-export function pickerLayout(width: number, fontScale: number): 'row' | 'list' {
-  const needed = 4 * TILE_MIN_WIDTH * Math.max(1, fontScale) + 3 * TILE_GAP;
-  return width >= needed ? 'row' : 'list';
+export const AUTOMATIC_BOLD_WIDTH: Record<Look, number> = { ios: 84, material: 76 };
+
+/**
+ * Theme tiles sit in one row while four fit at the font scale and each of
+ * the three Appearance tiles, less its ring and padding, still holds bold
+ * "Automatic"; otherwise both become vertical lists (swatch, name,
+ * checkmark), so no name is truncated.
+ */
+export function pickerLayout(width: number, fontScale: number, look: Look): 'row' | 'list' {
+  const scale = Math.max(1, fontScale);
+  const themesFit = width >= 4 * TILE_MIN_WIDTH * scale + 3 * TILE_GAP;
+  const appearanceText = (width - 2 * TILE_GAP) / 3 - 2 * (RING + APPEARANCE_TILE_PADDING);
+  const appearanceFits = appearanceText >= AUTOMATIC_BOLD_WIDTH[look] * scale;
+  return themesFit && appearanceFits ? 'row' : 'list';
 }

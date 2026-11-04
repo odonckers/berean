@@ -23,7 +23,8 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import { ScaledSymbol } from '@/components/scaled-symbol';
 import { UIText } from '@/components/text';
-import { useBerean } from '@/design/theme';
+import { glassFace } from '@/design/chrome';
+import { useBerean, useSolidChrome } from '@/design/theme';
 import { hairline, radii, spacing } from '@/design/tokens';
 import type { SymbolName } from '@/notes/list-rows';
 import type { LiveFrame, Rect } from '@/studyspace/camera';
@@ -543,7 +544,8 @@ export function StudyCard(props: StudyCardProps) {
  * The focused card's Done (§6.1), at the trailing end of its header, the
  * same size on screen at any zoom (`scale` is 1 / zoom). The iOS look: a
  * glass capsule, approximated as the search field's (a raised translucent
- * capsule with a hairline edge), 44 pt hit. Material: a tonal text button,
+ * capsule with a hairline edge; solid with an outline under Reduce
+ * Transparency or Increase Contrast), 44 pt hit. Material: a tonal text button,
  * 48 dp hit. A real button, so Switch Control finds it (§9).
  */
 function DoneButton({ title, scale, onPress, block }: {
@@ -553,6 +555,7 @@ function DoneButton({ title, scale, onPress, block }: {
   block: Parameters<typeof Pressable>[0]['block'];
 }) {
   const { look, colors, m3 } = useBerean();
+  const solid = useSolidChrome();
   const material = look === 'material';
   const hit = material ? 48 : 44;
   return (
@@ -573,7 +576,7 @@ function DoneButton({ title, scale, onPress, block }: {
             styles.doneFace,
             material
               ? { backgroundColor: m3.secondaryContainer }
-              : { backgroundColor: colors.surfaceRaised, borderColor: colors.separator, borderWidth: hairline },
+              : glassFace(solid, colors, hairline),
             { opacity: pressed ? 0.6 : 1 },
           ]}
         >

@@ -44,9 +44,15 @@ export function DockedSearchBar() {
   );
 }
 
-// In the top app bar on windows >= 600dp.
-export function AppBarSearchBar() {
-  return <SearchBar style={styles.appBar} />;
+// The app-bar field's full width, and the least it shrinks to where a
+// header needs the room for its title: the icon and its padding.
+export const APP_BAR_SEARCH_WIDTH = 360;
+export const APP_BAR_SEARCH_MIN_WIDTH = 72;
+
+// In the top app bar on windows >= 600dp. `width` narrows it below its full
+// width (header-fit.ts headerSearchWidth); the label ellipsizes.
+export function AppBarSearchBar({ width }: { width?: number } = {}) {
+  return <SearchBar style={[styles.appBar, width !== undefined && { width }]} />;
 }
 
 const styles = StyleSheet.create({
@@ -56,5 +62,5 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   label: { flexShrink: 1 },
-  appBar: { minHeight: 48, width: 360, maxWidth: '100%' },
+  appBar: { minHeight: 48, width: APP_BAR_SEARCH_WIDTH, maxWidth: '100%' },
 });

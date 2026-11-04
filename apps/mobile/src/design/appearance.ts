@@ -4,6 +4,7 @@
 // theme.tsx the React side.
 
 import type { ColorSet, M3Roles, StudyPaneColors } from './colors.ts';
+import { type SystemColors, systemColorsPass } from './system-colors.ts';
 import {
   HIGHLIGHT_KEYS,
   THEME_IDS,
@@ -24,7 +25,13 @@ export const ACCENT_SLOTS: readonly AccentSlot[] = [1, 2, 3, 4, 5, 6];
 export type AppearanceSetting = 'automatic' | 'light' | 'dark';
 export const APPEARANCES: readonly AppearanceSetting[] = ['automatic', 'light', 'dark'];
 
-export type AppearanceChoice = { theme: ThemeId; accent: AccentSlot; appearance: AppearanceSetting };
+/**
+ * A slot, or `'system'`: Android's Material You "System colors" (§11),
+ * offered on Android 12 and later only.
+ */
+export type AccentChoice = AccentSlot | 'system';
+
+export type AppearanceChoice = { theme: ThemeId; accent: AccentChoice; appearance: AppearanceSetting };
 
 /** Every device starts here (rule 3). */
 export const DEFAULT_CHOICE: AppearanceChoice = Object.freeze({
@@ -41,26 +48,32 @@ const isObject = (raw: unknown): raw is Record<string, unknown> =>
 /**
  * The choice in a stored `berean.appearance` value (the decoded JSON). Each
  * field that is missing, unknown or out of range falls back to its default
- * on its own. `"system"` accent isn't offered on this build, so it shows as
- * slot 1 (§12.2); serializeChoice keeps it.
+ * on its own. A `"system"` accent is the choice where System colors is
+ * offered (`systemColorsOffered`: Android 12 and later). Elsewhere (iOS,
+ * Android 11 and earlier, no native module) it shows as slot 1 (§12.2) and
+ * serializeChoice keeps it.
  */
-export function parseChoice(raw: unknown): AppearanceChoice {
+export function parseChoice(raw: unknown, systemColorsOffered = false): AppearanceChoice {
   if (!isObject(raw)) return DEFAULT_CHOICE;
   const { theme, accent, appearance } = raw;
+  const system = systemColorsOffered && accent === 'system' ? 'system' : undefined;
   return {
     theme: THEME_IDS.find((id) => id === theme) ?? DEFAULT_CHOICE.theme,
-    accent: ACCENT_SLOTS.find((slot) => slot === accent) ?? DEFAULT_CHOICE.accent,
+    accent: system ?? ACCENT_SLOTS.find((slot) => slot === accent) ?? DEFAULT_CHOICE.accent,
     appearance: APPEARANCES.find((a) => a === appearance) ?? DEFAULT_CHOICE.appearance,
   };
 }
 
 /**
- * The value to store for a choice, as JSON text. A stored `"system"` accent
- * shows as slot 1, so while the choice is still slot 1 the user hasn't
- * picked another accent and `"system"` is kept (§12.2).
+ * The value to store for a choice, as JSON text. Where System colors isn't
+ * offered a stored `"system"` accent shows as slot 1, so while the choice
+ * is still slot 1 the user hasn't picked another accent and `"system"` is
+ * kept (§12.2). Where it is offered (`systemColorsOffered`, as for
+ * parseChoice) the choice says so itself, and slot 1 is slot 1.
  */
-export function serializeChoice(choice: AppearanceChoice, stored?: unknown): string {
-  const keepSystem = choice.accent === 1 && isObject(stored) && stored.accent === 'system';
+export function serializeChoice(choice: AppearanceChoice, stored?: unknown, systemColorsOffered = false): string {
+  const keepSystem =
+    !systemColorsOffered && choice.accent === 1 && isObject(stored) && stored.accent === 'system';
   return JSON.stringify({
     version: 1,
     theme: choice.theme,
@@ -183,13 +196,28 @@ function derivedRoles(theme: ThemeId, mode: ThemeMode): Derived {
  * replaces accent and onAccent; any slot but 1 (which the tokens' M3 roles
  * are built on) also replaces M3 primary and onPrimary (§9). The focus ring
  * is drawn in `colors.accent` (rule 9).
+ *
+ * System colors (`system`: the palette for the set's scheme, null where it
+ * isn't offered) is chrome only (§11). When it passes the contrast guard
+ * it replaces accent and onAccent, and M3 primary, onPrimary and
+ * secondaryContainer. The page, surfaces, text, highlights, links and the
+ * note marker stay the theme's. With no palette, or failing the guard, it
+ * is slot 1. (The Expo build draws no primaryContainer; the guard still
+ * checks that pair.)
  */
-export function resolvePalette(choice: AppearanceChoice, mode: ThemeMode): Palette {
+export function resolvePalette(
+  choice: AppearanceChoice,
+  mode: ThemeMode,
+  system: SystemColors | null = null,
+): Palette {
   const tokens = themeTokens[choice.theme];
   const set = tokens.modes[mode];
   const roles = set.roles;
-  const slot = tokens.accents[choice.accent - 1];
-  const accent = slot.modes[mode];
+  const wallpaper = choice.accent === 'system' && system && systemColorsPass(choice.theme, mode, system) ? system : null;
+  const slotNumber = choice.accent === 'system' ? 1 : choice.accent;
+  const slot = tokens.accents[slotNumber - 1];
+  const accent = wallpaper ? { hex: wallpaper.primary, onAccent: wallpaper.onPrimary } : slot.modes[mode];
+  const themePrimary = slotNumber === 1 && !wallpaper;
   const material3 = tokens.material3[mode];
   const { canvas, canvasDot, ...studyPane } = derivedRoles(choice.theme, mode);
   return {
@@ -211,8 +239,11 @@ export function resolvePalette(choice: AppearanceChoice, mode: ThemeMode): Palet
     },
     m3: {
       ...material3,
-      primary: choice.accent === 1 ? material3.primary : accent.hex,
-      onPrimary: choice.accent === 1 ? material3.onPrimary : accent.onAccent,
+      primary: themePrimary ? material3.primary : accent.hex,
+      onPrimary: themePrimary ? material3.onPrimary : accent.onAccent,
+      secondaryContainer: wallpaper ? wallpaper.secondaryContainer : material3.secondaryContainer,
+      // The slot's, under System colors too: snackbar actions sit on the
+      // theme's inverse surface.
       inversePrimary: slot.modes[oppositeMode(mode)].hex,
     },
     highlights: Object.fromEntries(HIGHLIGHT_KEYS.map((key) => [key, set.highlights[key].hex])) as Record<

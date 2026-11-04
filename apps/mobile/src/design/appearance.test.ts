@@ -56,6 +56,15 @@ describe('parseChoice', () => {
   test('a "system" accent shows as slot 1', () => {
     assert.equal(parseChoice({ theme: 'paper', accent: 'system', appearance: 'automatic' }).accent, 1);
   });
+
+  test('a "system" accent is the choice where System colors is offered (Android 12+)', () => {
+    const stored = { version: 1, theme: 'sage', accent: 'system', appearance: 'dark' };
+    assert.deepEqual(parseChoice(stored, true), { theme: 'sage', accent: 'system', appearance: 'dark' });
+    assert.equal(parseChoice(stored, false).accent, 1);
+    // Offered or not, slots and junk read as before.
+    assert.equal(parseChoice({ accent: 4 }, true).accent, 4);
+    assert.equal(parseChoice({ accent: 'System' }, true).accent, 1);
+  });
 });
 
 describe('serializeChoice', () => {
@@ -79,6 +88,16 @@ describe('serializeChoice', () => {
     assert.equal(themeChanged.accent, 'system');
     assert.equal(themeChanged.theme, 'sepia');
     assert.equal(JSON.parse(serializeChoice({ ...DEFAULT_CHOICE, accent: 2 }, stored)).accent, 2);
+  });
+
+  test('System colors round-trips where it is offered', () => {
+    const choice = { theme: 'stone', accent: 'system', appearance: 'light' } as const;
+    const json = serializeChoice(choice, undefined, true);
+    assert.equal(JSON.parse(json).accent, 'system');
+    assert.deepEqual(parseChoice(JSON.parse(json), true), choice);
+    // There, picking slot 1 afterwards is a real choice and replaces it.
+    assert.equal(JSON.parse(serializeChoice({ ...choice, accent: 1 }, JSON.parse(json), true)).accent, 1);
+    assert.equal(JSON.parse(serializeChoice({ ...choice, accent: 5 }, JSON.parse(json), true)).accent, 5);
   });
 });
 
@@ -196,6 +215,53 @@ describe('resolvePalette', () => {
   test('slot 1 keeps the theme M3 primary pair', () => {
     const { m3 } = resolvePalette({ ...DEFAULT_CHOICE, theme: 'sepia' }, 'dark');
     assert.equal(m3.primary, accentOptions('sepia', 'dark')[0].hex);
+  });
+
+  describe('System colors (§11, §12.2)', () => {
+    const LIGHT = {
+      primary: '#3E6375',
+      onPrimary: '#FFFFFF',
+      primaryContainer: '#C2E8FF',
+      onPrimaryContainer: '#001E2C',
+      secondaryContainer: '#CFE6F1',
+    };
+    const system = { theme: 'sepia', accent: 'system', appearance: 'light' } as const;
+    const slot1 = { ...system, accent: 1 } as const;
+
+    test('replaces only the chrome roles: accent, onAccent, M3 primary, onPrimary, secondaryContainer', () => {
+      const withSystem = resolvePalette(system, 'light', LIGHT);
+      const theme = resolvePalette(slot1, 'light');
+      assert.equal(withSystem.colors.accent, LIGHT.primary);
+      assert.equal(withSystem.colors.onAccent, LIGHT.onPrimary);
+      assert.equal(withSystem.m3.primary, LIGHT.primary);
+      assert.equal(withSystem.m3.onPrimary, LIGHT.onPrimary);
+      assert.equal(withSystem.m3.secondaryContainer, LIGHT.secondaryContainer);
+      // Everything else is the theme's: the page, surfaces, text, links, highlights.
+      const { accent, onAccent } = theme.colors;
+      assert.deepEqual({ ...withSystem.colors, accent, onAccent }, theme.colors);
+      const { primary, onPrimary, secondaryContainer } = theme.m3;
+      assert.deepEqual({ ...withSystem.m3, primary, onPrimary, secondaryContainer }, theme.m3);
+      assert.deepEqual(withSystem.highlights, theme.highlights);
+      assert.deepEqual(withSystem.studyPane, theme.studyPane);
+      assert.equal(withSystem.mode, theme.mode);
+    });
+
+    test('failing the guard uses slot 1', () => {
+      // White on #3E6375 is 6.4:1: under the 7:1 IC floor.
+      assert.deepEqual(resolvePalette(system, 'lightIC', LIGHT), resolvePalette(slot1, 'lightIC'));
+      const pale = { ...LIGHT, primary: '#E8D8C8', onPrimary: '#000000' };
+      assert.deepEqual(resolvePalette(system, 'light', pale), resolvePalette(slot1, 'light'));
+    });
+
+    test('with no palette (not offered, or none read) it is slot 1', () => {
+      assert.deepEqual(resolvePalette(system, 'light', null), resolvePalette(slot1, 'light'));
+      assert.deepEqual(resolvePalette(system, 'dark'), resolvePalette(slot1, 'dark'));
+    });
+
+    test('a slot ignores the palette', () => {
+      const choice = { ...system, accent: 3 } as const;
+      assert.deepEqual(resolvePalette(choice, 'light', LIGHT), resolvePalette(choice, 'light'));
+    });
   });
 
   test('highlights come from the theme, in the display order', () => {

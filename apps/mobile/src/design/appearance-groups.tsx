@@ -7,24 +7,30 @@ import { accentOptions, APPEARANCES, type AppearanceChoice, themeName } from '@/
 import {
   accentOptionLabel,
   APPEARANCE_NAMES,
+  APPEARANCE_TILE_PADDING,
   appearanceOptionHint,
   appearanceOptionLabel,
+  LOW_CONTRAST_NOTE,
+  RING,
+  SYSTEM_COLORS_NAME,
+  systemColorsHint,
   type SwatchHalf,
   THEME_HINT,
   themeOptionLabel,
   themeSwatch,
+  TILE_GAP,
 } from '@/design/appearance-picker';
 import { useAppearance, useBerean } from '@/design/theme';
 import { THEME_IDS } from '@/design/theme-tokens.generated';
 import { radii, spacing } from '@/design/tokens';
 
 // The three radio groups of the Appearance picker (themes spec §3 rule 12,
-// §5): Theme, Accent and Appearance. Every tap applies at once. Settings ›
+// §5): Theme, Accent (System colors first on Android 12+, §11) and
+// Appearance. Every tap applies at once. Settings ›
 // Appearance and the reader's Aa picker both draw them.
 
 const SWATCH = 56;
 const DOT = 32;
-const RING = 3;
 // Accent names in the grid of three stop growing here (F01: 18pt), so a
 // row of three fits a phone; they wrap rather than truncate.
 const GRID_NAME_SIZE = 18;
@@ -42,7 +48,7 @@ type AppearanceGroupsProps = {
 };
 
 export function AppearanceGroups({ layout, accentGrid = false, sections = 'inset' }: AppearanceGroupsProps) {
-  const { look, colors, mode, type } = useBerean();
+  const { look, colors, mode, type, systemAccent } = useBerean();
   const { choice, setChoice } = useAppearance();
   const material = look === 'material';
   const target = material ? 48 : 44;
@@ -82,6 +88,34 @@ export function AppearanceGroups({ layout, accentGrid = false, sections = 'inset
       </Group>
 
       <Group title="Accent" sections={sections}>
+        {/* System colors, where offered, comes first as a full-width row in
+            every layout, so the six slots keep their rows of three or six
+            (and the grid its two rows of three). */}
+        {systemAccent && (
+          <Option
+            label={accentOptionLabel(SYSTEM_COLORS_NAME)}
+            hint={systemColorsHint(systemAccent.contrastOk)}
+            selected={choice.accent === 'system'}
+            onPress={() => choose({ accent: 'system' })}
+            style={[styles.listRow, styles.systemRow, { minHeight: target }]}
+            ring
+          >
+            <AccentDot
+              hex={systemAccent.swatch}
+              checkColor={systemAccent.onSwatch}
+              selected={choice.accent === 'system'}
+              ringed={false}
+            />
+            <View style={styles.systemText}>
+              <UIText style={choice.accent === 'system' && styles.bold}>{SYSTEM_COLORS_NAME}</UIText>
+              {!systemAccent.contrastOk && (
+                <UIText variant="caption" secondary>
+                  {LOW_CONTRAST_NOTE}
+                </UIText>
+              )}
+            </View>
+          </Option>
+        )}
         <View style={accentList ? styles.list : styles.dotRow}>
           {accentOptions(choice.theme, mode).map((accent) => {
             const selected = accent.slot === choice.accent;
@@ -98,18 +132,7 @@ export function AppearanceGroups({ layout, accentGrid = false, sections = 'inset
                 }
                 ring={accentList}
               >
-                <View style={[styles.dotRing, { borderColor: selected && !accentList ? colors.accent : 'transparent' }]}>
-                  <View style={[styles.dot, { backgroundColor: accent.hex, borderColor: colors.outline }]}>
-                    {selected && (
-                      <ScaledSymbol
-                        name={{ ios: 'checkmark', android: 'check' }}
-                        size={18}
-                        tintColor={accent.onAccent}
-                        accessible={false}
-                      />
-                    )}
-                  </View>
-                </View>
+                <AccentDot hex={accent.hex} checkColor={accent.onAccent} selected={selected} ringed={!accentList} />
                 <Name
                   selected={selected}
                   list={accentList}
@@ -256,6 +279,35 @@ function Name({
   );
 }
 
+/** An accent's dot, checked when selected; `ringed`, the selected dot carries the accent ring itself. */
+function AccentDot({
+  hex,
+  checkColor,
+  selected,
+  ringed,
+}: {
+  hex: string;
+  checkColor: string;
+  selected: boolean;
+  ringed: boolean;
+}) {
+  const { colors } = useBerean();
+  return (
+    <View style={[styles.dotRing, { borderColor: selected && ringed ? colors.accent : 'transparent' }]}>
+      <View style={[styles.dot, { backgroundColor: hex, borderColor: colors.outline }]}>
+        {selected && (
+          <ScaledSymbol
+            name={{ ios: 'checkmark', android: 'check' }}
+            size={18}
+            tintColor={checkColor}
+            accessible={false}
+          />
+        )}
+      </View>
+    </View>
+  );
+}
+
 function Check() {
   const { colors } = useBerean();
   return (
@@ -320,22 +372,22 @@ const styles = StyleSheet.create({
   materialHeading: { fontWeight: '500' },
   iosSection: { borderRadius: radii.card, padding: spacing.md },
   option: { borderWidth: RING, borderRadius: radii.card },
-  tileRow: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.md },
+  tileRow: { flexDirection: 'row', justifyContent: 'space-between', gap: TILE_GAP },
   tile: { flex: 1, alignItems: 'center', gap: spacing.xs, paddingVertical: spacing.xs },
   // Padding sits inside the border, and Option keeps the border box RING
   // wide selected or not, so the label stays spacing.sm clear of the ring's
-  // inner edge in every state.
+  // inner edge in every state. pickerLayout counts this chrome.
   appearanceTile: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: APPEARANCE_TILE_PADDING,
     paddingVertical: spacing.sm,
   },
   // The badge is placed from the padding box: pushed out by the ring and
   // spacing.sm, it perches on the tile's corner instead of over the label.
-  appearanceBadge: { top: -(RING + spacing.sm), right: -(RING + spacing.sm) },
+  appearanceBadge: { top: -(RING + spacing.sm), right: -(RING + APPEARANCE_TILE_PADDING) },
   list: { gap: spacing.xs },
   listRow: {
     flexDirection: 'row',
@@ -345,6 +397,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   dotRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: spacing.sm },
+  systemRow: { marginBottom: spacing.xs },
+  systemText: { flex: 1, gap: 2 },
   // Three to a row on a phone, six on wider windows; names wrap.
   dotItem: { width: 96, alignItems: 'center', gap: spacing.xs, paddingVertical: spacing.xs },
   // Always three to a row: two rows of three.

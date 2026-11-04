@@ -1,12 +1,19 @@
 import { PubKind, type PublicationSummary } from 'berean-ffi-rn';
 import { router, Stack, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Alert, FlatList, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AppBarSearchBar, DockedSearchBar } from '@/components/search-bar';
+import { RAIL_WIDTH } from '@/components/navigation-rail';
+import {
+  APP_BAR_SEARCH_MIN_WIDTH,
+  APP_BAR_SEARCH_WIDTH,
+  AppBarSearchBar,
+  DockedSearchBar,
+} from '@/components/search-bar';
 import { UIText } from '@/components/text';
 import { MATERIAL_TARGET, TEXT_BUTTON_LABEL_INSET, TextButton } from '@/components/text-button';
-import { headerFitsActions } from '@/design/header-fit';
+import { headerFitsActions, headerSearchWidth } from '@/design/header-fit';
 import { useContentInsets, useHeaderHidden } from '@/design/tab-chrome';
 import { useBerean } from '@/design/theme';
 import { hairline, spacing } from '@/design/tokens';
@@ -68,6 +75,7 @@ export default function LibraryScreen() {
   const windowClass = useWindowClass();
   const headerHidden = useHeaderHidden();
   const insets = useContentInsets();
+  const safeArea = useSafeAreaInsets();
   const { jobs } = useInstalls();
   const [data, setData] = useState<Loaded<LibraryData>>(loadLibrary);
 
@@ -91,35 +99,45 @@ export default function LibraryScreen() {
     </>
   );
 
-  // On a Material phone, large text can leave the native header's title no
-  // room beside the buttons; then they move to a row at the top of the list.
-  const buttonsBelowHeader =
-    docked &&
-    !headerFitsActions({
-      windowWidth: width,
-      fontScale,
-      title: 'Library',
-      titleFontSize: type.ui.title.fontSize ?? 0,
-      actions: ['Appearance', 'Catalog'],
-      labelFontSize: type.ui.body.fontSize ?? 0,
-      labelInset: TEXT_BUTTON_LABEL_INSET,
-      minTarget: MATERIAL_TARGET,
-      actionGap: spacing.sm,
-      edgeInset: spacing.lg,
-    });
+  // The native header's title can be left no room beside the buttons: on a
+  // phone with large text, or on a tablet where the header (the window less
+  // the rail, as the tabs layout shows it) also holds the app-bar search.
+  // Then the buttons move to a row at the top of the list; the search stays
+  // and, if the title still lacks room beside it, shrinks.
+  const rail = material && Platform.OS === 'android' && windowClass !== 'compact';
+  const headerFit = {
+    windowWidth: width,
+    fontScale,
+    railWidth: rail ? RAIL_WIDTH + safeArea.left : 0,
+    search: appBarSearch ? { width: APP_BAR_SEARCH_WIDTH, minWidth: APP_BAR_SEARCH_MIN_WIDTH } : undefined,
+    title: 'Library',
+    titleFontSize: type.ui.title.fontSize ?? 0,
+    actions: ['Appearance', 'Catalog'],
+    labelFontSize: type.ui.body.fontSize ?? 0,
+    labelInset: TEXT_BUTTON_LABEL_INSET,
+    minTarget: MATERIAL_TARGET,
+    actionGap: spacing.sm,
+    edgeInset: spacing.lg,
+  };
+  const buttonsBelowHeader = material && !headerFitsActions(headerFit);
+  const searchWidth =
+    buttonsBelowHeader && headerFit.search
+      ? headerSearchWidth({ ...headerFit, search: headerFit.search, actions: [] })
+      : undefined;
 
   return (
     <>
       <Stack.Screen
         options={{
-          headerRight: buttonsBelowHeader
-            ? undefined
-            : () => (
-                <View style={styles.headerRight}>
-                  {appBarSearch && <AppBarSearchBar />}
-                  {headerButtons}
-                </View>
-              ),
+          headerRight:
+            buttonsBelowHeader && !appBarSearch
+              ? undefined
+              : () => (
+                  <View style={styles.headerRight}>
+                    {appBarSearch && <AppBarSearchBar width={searchWidth} />}
+                    {!buttonsBelowHeader && headerButtons}
+                  </View>
+                ),
         }}
       />
       {data.ok ? (
