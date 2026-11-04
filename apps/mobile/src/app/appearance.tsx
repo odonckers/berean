@@ -25,7 +25,7 @@ export default function AppearanceScreen() {
 
   // The iOS look's options sit in an inset grouped card, padded inside.
   const content = Math.min(width - 2 * spacing.lg, MAX_WIDTH) - (material ? 0 : 2 * spacing.md);
-  const layout = pickerLayout(content, fontScale);
+  const layout = pickerLayout(content, fontScale, look);
 
   return (
     <ScrollView

@@ -16,6 +16,7 @@ import {
   quickPickerSheetSurface,
   sheetHeight,
 } from '@/design/quick-picker';
+import { sideSheetEdge } from '@/design/chrome';
 import { useContentInsets } from '@/design/tab-chrome';
 import { useBerean, useSolidChrome } from '@/design/theme';
 import { hairline, radii, spacing } from '@/design/tokens';
@@ -220,12 +221,12 @@ function BottomSheet({
   onClose: () => void;
   area: { width: number; height: number };
 }) {
-  const { colors, m3, type } = useBerean();
+  const { look, colors, m3, type } = useBerean();
   const { material, background, edge } = useChrome();
   const { fontScale } = useWindowDimensions();
   const insets = useContentInsets();
   const reducedMotion = useReducedMotion();
-  const { layout, detent, accentGrid } = quickPickerLayout(area.width - 2 * spacing.lg, fontScale);
+  const { layout, detent, accentGrid } = quickPickerLayout(area.width - 2 * spacing.lg, fontScale, look);
   const height = sheetHeight(detent, {
     areaHeight: area.height,
     topInset: insets.top,
@@ -311,17 +312,18 @@ function BottomSheet({
 }
 
 function SideSheet({ onClose }: { onClose: () => void }) {
-  const { m3 } = useBerean();
+  const { look, colors, m3 } = useBerean();
   const { fontScale } = useWindowDimensions();
   const insets = useContentInsets();
   const { background } = useChrome();
-  const { layout, accentGrid } = quickPickerLayout(QUICK_PICKER_WIDTH - 2 * spacing.lg, fontScale);
+  const solid = useSolidChrome();
+  const { layout, accentGrid } = quickPickerLayout(QUICK_PICKER_WIDTH - 2 * spacing.lg, fontScale, look);
   return (
     <View
       onAccessibilityEscape={onClose}
       style={[
-        styles.sideSheet,
-        { width: QUICK_PICKER_WIDTH + insets.right, paddingRight: insets.right, backgroundColor: background, borderColor: m3.outlineVariant },
+        { width: QUICK_PICKER_WIDTH + insets.right, paddingRight: insets.right, backgroundColor: background },
+        sideSheetEdge(solid, colors, m3, hairline),
       ]}
     >
       <View style={[styles.header, styles.sideHeader]}>
@@ -344,10 +346,11 @@ function Popover({
   area: { width: number; height: number };
   anchor?: { top: number; right: number };
 }) {
+  const { look } = useBerean();
   const { fontScale } = useWindowDimensions();
   const { background, edge } = useChrome();
   const width = Math.min(QUICK_PICKER_WIDTH, area.width - 2 * spacing.lg);
-  const { layout, accentGrid } = quickPickerLayout(width - 2 * spacing.lg, fontScale);
+  const { layout, accentGrid } = quickPickerLayout(width - 2 * spacing.lg, fontScale, look);
   // Until the button is measured it hangs from the top trailing corner,
   // where the Aa button is.
   const top = anchor?.top ?? spacing.sm;
@@ -401,6 +404,5 @@ const styles = StyleSheet.create({
   title: { flex: 1 },
   close: { alignItems: 'center', justifyContent: 'center', borderRadius: radii.capsule },
   body: { paddingHorizontal: spacing.lg, gap: spacing.xl },
-  sideSheet: { borderLeftWidth: hairline },
   popover: { position: 'absolute', borderRadius: radii.studyPane, ...shadow },
 });

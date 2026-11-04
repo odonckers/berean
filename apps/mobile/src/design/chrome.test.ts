@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import { DEFAULT_CHOICE, resolvePalette } from './appearance.ts';
-import { glassFace, solidChrome } from './chrome.ts';
+import { glassFace, sideSheetEdge, solidChrome } from './chrome.ts';
 import { contrast } from './contrast.ts';
 import { THEME_IDS, THEME_MODES } from './theme-tokens.generated.ts';
 
@@ -28,6 +28,13 @@ describe('glass vs solid chrome (themes spec rules 4 and 5)', () => {
     const colors = { surfaceRaised: '#FFFCF5', separator: '#E6DCC2', outline: '#8B8275' };
     assert.deepEqual(glassFace(false, colors, 0.5), { backgroundColor: '#FFFCF5', borderColor: '#E6DCC2', borderWidth: 0.5 });
     assert.deepEqual(glassFace(true, colors, 0.5), { backgroundColor: '#FFFCF5', borderColor: '#8B8275', borderWidth: 1 });
+  });
+
+  test('the M3 side sheet edge: an outlineVariant hairline; solid, a 1px outline', () => {
+    const colors = { outline: '#8B8275' };
+    const m3 = { outlineVariant: '#D3C4B4' };
+    assert.deepEqual(sideSheetEdge(false, colors, m3, 0.5), { borderLeftWidth: 0.5, borderColor: '#D3C4B4' });
+    assert.deepEqual(sideSheetEdge(true, colors, m3, 0.5), { borderLeftWidth: 1, borderColor: '#8B8275' });
   });
 
   for (const theme of THEME_IDS) {

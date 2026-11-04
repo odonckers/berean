@@ -1,6 +1,6 @@
 // Glass vs solid chrome (themes spec rules 4 and 5). Pure, for the Node tests.
 
-import type { ColorSet } from './colors.ts';
+import type { ColorSet, M3Roles } from './colors.ts';
 
 type Look = 'ios' | 'material';
 
@@ -36,4 +36,19 @@ export function glassFace(
   return solid
     ? { backgroundColor: colors.surfaceRaised, borderColor: colors.outline, borderWidth: 1 }
     : { backgroundColor: colors.surfaceRaised, borderColor: colors.separator, borderWidth: hairline };
+}
+
+/**
+ * The material look's side sheet edge against the reading column: an M3
+ * outlineVariant hairline, or, when solid (Increase Contrast), a 1 px outline.
+ */
+export function sideSheetEdge(
+  solid: boolean,
+  colors: Pick<ColorSet, 'outline'>,
+  m3: Pick<M3Roles, 'outlineVariant'>,
+  hairline: number,
+): { borderLeftWidth: number; borderColor: string } {
+  return solid
+    ? { borderLeftWidth: 1, borderColor: colors.outline }
+    : { borderLeftWidth: hairline, borderColor: m3.outlineVariant };
 }

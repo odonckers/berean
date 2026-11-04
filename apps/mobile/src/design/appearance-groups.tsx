@@ -7,15 +7,18 @@ import { accentOptions, APPEARANCES, type AppearanceChoice, themeName } from '@/
 import {
   accentOptionLabel,
   APPEARANCE_NAMES,
+  APPEARANCE_TILE_PADDING,
   appearanceOptionHint,
   appearanceOptionLabel,
   LOW_CONTRAST_NOTE,
+  RING,
   SYSTEM_COLORS_NAME,
   systemColorsHint,
   type SwatchHalf,
   THEME_HINT,
   themeOptionLabel,
   themeSwatch,
+  TILE_GAP,
 } from '@/design/appearance-picker';
 import { useAppearance, useBerean } from '@/design/theme';
 import { THEME_IDS } from '@/design/theme-tokens.generated';
@@ -28,7 +31,6 @@ import { radii, spacing } from '@/design/tokens';
 
 const SWATCH = 56;
 const DOT = 32;
-const RING = 3;
 // Accent names in the grid of three stop growing here (F01: 18pt), so a
 // row of three fits a phone; they wrap rather than truncate.
 const GRID_NAME_SIZE = 18;
@@ -370,22 +372,22 @@ const styles = StyleSheet.create({
   materialHeading: { fontWeight: '500' },
   iosSection: { borderRadius: radii.card, padding: spacing.md },
   option: { borderWidth: RING, borderRadius: radii.card },
-  tileRow: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.md },
+  tileRow: { flexDirection: 'row', justifyContent: 'space-between', gap: TILE_GAP },
   tile: { flex: 1, alignItems: 'center', gap: spacing.xs, paddingVertical: spacing.xs },
   // Padding sits inside the border, and Option keeps the border box RING
   // wide selected or not, so the label stays spacing.sm clear of the ring's
-  // inner edge in every state.
+  // inner edge in every state. pickerLayout counts this chrome.
   appearanceTile: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: APPEARANCE_TILE_PADDING,
     paddingVertical: spacing.sm,
   },
   // The badge is placed from the padding box: pushed out by the ring and
   // spacing.sm, it perches on the tile's corner instead of over the label.
-  appearanceBadge: { top: -(RING + spacing.sm), right: -(RING + spacing.sm) },
+  appearanceBadge: { top: -(RING + spacing.sm), right: -(RING + APPEARANCE_TILE_PADDING) },
   list: { gap: spacing.xs },
   listRow: {
     flexDirection: 'row',

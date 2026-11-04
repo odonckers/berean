@@ -1,6 +1,6 @@
 import { TabList, TabSlot, TabTrigger, Tabs, type TabTriggerSlotProps } from 'expo-router/ui';
 import { SymbolView, type AndroidSymbol } from 'expo-symbols';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { UIText } from '@/components/text';
@@ -56,6 +56,7 @@ type RailItemProps = Pick<TabTriggerSlotProps, 'isFocused' | 'onPress' | 'onLong
 // TabTrigger (asChild) passes isFocused and the press handlers.
 function RailItem({ label, icon, isFocused = false, onPress, onLongPress }: RailItemProps) {
   const { m3, radii, spacing } = useBerean();
+  const { fontScale } = useWindowDimensions();
   return (
     <Pressable
       accessibilityRole="tab"
@@ -74,9 +75,13 @@ function RailItem({ label, icon, isFocused = false, onPress, onLongPress }: Rail
           },
         ]}
       >
+        {/* M3 rail icons stay 24dp. expo-symbols draws Android glyphs as
+            Text at `size`, which the font scale enlarges, so ask for 24 / fontScale
+            inside a fixed 24dp box. */}
         <SymbolView
           name={{ android: icon }}
-          size={24}
+          size={24 / fontScale}
+          style={styles.icon}
           tintColor={isFocused ? m3.onSecondaryContainer : m3.onSurfaceVariant}
           accessible={false}
           importantForAccessibility="no-hide-descendants"
@@ -109,4 +114,5 @@ const styles = StyleSheet.create({
   rail: { flexDirection: 'column', justifyContent: 'flex-start', alignItems: 'center' },
   item: { width: RAIL_WIDTH, minHeight: 56, alignItems: 'center' },
   indicator: { width: 56, height: 32, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  icon: { width: 24, height: 24 },
 });

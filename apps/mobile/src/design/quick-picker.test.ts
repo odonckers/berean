@@ -6,6 +6,7 @@ import { contrast } from './contrast.ts';
 import {
   dragCloses,
   MEDIUM_DETENT,
+  QUICK_PICKER_WIDTH,
   quickPickerLayout,
   quickPickerPlacement,
   quickPickerSheetSurface,
@@ -57,18 +58,26 @@ describe('where the Aa picker opens (themes spec §4)', () => {
 
 describe('the sheet at the text size (rule 12)', () => {
   test('default text: the medium detent with the rows', () => {
-    assert.deepEqual(quickPickerLayout(379, 1), { layout: 'row', detent: 'medium', accentGrid: false });
+    assert.deepEqual(quickPickerLayout(379, 1, 'material'), { layout: 'row', detent: 'medium', accentGrid: false });
   });
 
   test('large text: the large detent, lists, and accents in a grid of three', () => {
-    assert.deepEqual(quickPickerLayout(379, 2), { layout: 'list', detent: 'large', accentGrid: true });
-    assert.deepEqual(quickPickerLayout(361, 3.1), { layout: 'list', detent: 'large', accentGrid: true });
+    assert.deepEqual(quickPickerLayout(379, 2, 'material'), { layout: 'list', detent: 'large', accentGrid: true });
+    assert.deepEqual(quickPickerLayout(361, 3.1, 'material'), { layout: 'list', detent: 'large', accentGrid: true });
   });
 
   test("the switch is Settings › Appearance's own", () => {
     // Four 72-wide tiles and three gaps of 12 fit 379 up to a scale of about 1.19.
-    assert.equal(quickPickerLayout(379, 1.15).detent, 'medium');
-    assert.equal(quickPickerLayout(379, 1.25).detent, 'large');
+    assert.equal(quickPickerLayout(379, 1.15, 'material').detent, 'medium');
+    assert.equal(quickPickerLayout(379, 1.25, 'material').detent, 'large');
+  });
+
+  test('the 328 content of the iPad popover and the M3 side sheet at the default text', () => {
+    const content = QUICK_PICKER_WIDTH - 2 * 16;
+    // Bold "Automatic" at 17pt would truncate in a third of the row, so the popover lists.
+    assert.deepEqual(quickPickerLayout(content, 1, 'ios'), { layout: 'list', detent: 'large', accentGrid: true });
+    // At Roboto's 16sp it fits, so the side sheet keeps the rows.
+    assert.deepEqual(quickPickerLayout(content, 1, 'material'), { layout: 'row', detent: 'medium', accentGrid: false });
   });
 });
 
