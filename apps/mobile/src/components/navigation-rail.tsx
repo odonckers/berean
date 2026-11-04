@@ -100,7 +100,9 @@ function RailItem({ label, icon, isFocused = false, onPress, onLongPress }: Rail
   );
 }
 
-const RAIL_WIDTH = 80;
+// The rail's width before the left inset; headers beside it are this much
+// narrower than the window (the Library header's fit check).
+export const RAIL_WIDTH = 80;
 
 const styles = StyleSheet.create({
   root: { flex: 1, flexDirection: 'row' },
