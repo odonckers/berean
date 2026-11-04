@@ -102,6 +102,13 @@ type SlidingSheetProps = {
    * back down to this, and a drag down from here closes it.
    */
   restHeight?: number;
+  /**
+   * Where it opens: at the lower detent (the default), at its full height,
+   * or not yet, while its owner measures what it holds. Until then it is
+   * laid out below the screen's edge and unseen, so it opens once, straight
+   * to where it settles. Read as it opens; a change while open moves nothing.
+   */
+  opening?: 'rest' | 'full' | 'pending';
   /** Under Reduce Motion, cross-fade rather than appear and go at once. */
   fadeUnderReducedMotion?: boolean;
   /** Driven from 0 (gone) to 1 (shown) with the sheet, for a scrim. */
@@ -125,6 +132,7 @@ export function SlidingSheet({
   onHidden,
   height,
   restHeight,
+  opening = 'rest',
   fadeUnderReducedMotion = false,
   visibility,
   style,
@@ -136,6 +144,8 @@ export function SlidingSheet({
   // How far down the lower detent sits from the full height.
   const rest = restHeight === undefined ? 0 : Math.max(0, height - restHeight);
   const expandable = rest > 0;
+  const pending = opening === 'pending';
+  const opensFull = expandable && opening === 'full';
 
   // Mounted while open and while it slides away.
   const [mounted, setMounted] = useState(open);
@@ -146,17 +156,23 @@ export function SlidingSheet({
   const shown = visibility ?? ownVisibility;
   // At full height (1) or the lower detent (0); the content's hidden strip follows.
   const expanded = useSharedValue(0);
-  const [expandedHere, setExpandedHere] = useState(false);
-  // Each opening starts at the lower detent.
-  const [wasOpen, setWasOpen] = useState(open);
-  if (open !== wasOpen) {
-    setWasOpen(open);
-    if (open) setExpandedHere(false);
+  const opens = open && !pending;
+  const [expandedHere, setExpandedHere] = useState(opens && opensFull);
+  // Each opening starts where its owner asked (the lower detent unless told).
+  const [wasOpening, setWasOpening] = useState(opens);
+  if (opens !== wasOpening) {
+    setWasOpening(opens);
+    if (opens) setExpandedHere(opensFull);
   }
   useEffect(() => {
-    if (open) {
-      expanded.set(0);
-      offset.set(reducedMotion ? rest : withTiming(rest, { duration: OPEN_MS }));
+    if (open && pending) {
+      // Mounted and laid out, but off screen and unseen until it knows where it opens.
+      offset.set(height);
+      shown.set(0);
+    } else if (open) {
+      expanded.set(opensFull ? 1 : 0);
+      const to = opensFull ? 0 : rest;
+      offset.set(reducedMotion ? to : withTiming(to, { duration: OPEN_MS }));
       shown.set(fades ? withTiming(1, { duration: FADE_MS }) : reducedMotion ? 1 : withTiming(1, { duration: OPEN_MS }));
     } else if (fades) {
       shown.set(
@@ -176,7 +192,7 @@ export function SlidingSheet({
     }
     // A new height (rotation, text size) while open moves nothing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, reducedMotion]);
+  }, [open, reducedMotion, pending]);
 
   // Once it has gone, the owner hears so (not on mounting closed).
   const wasMounted = useRef(mounted);
@@ -186,7 +202,7 @@ export function SlidingSheet({
   }, [mounted, onHidden]);
 
   const drag = usePanGesture({
-    enabled: open,
+    enabled: opens,
     activeOffsetY: [-10, 10],
     onUpdate: (e) => {
       'worklet';

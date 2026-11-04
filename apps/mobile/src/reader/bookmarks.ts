@@ -238,3 +238,28 @@ export function bookmarkSheetHeights(
   const height = Math.round(windowHeight - topInset - IOS_LARGE_DETENT_GAP);
   return { height, restHeight: Math.min(height, Math.round(windowHeight / 2)) };
 }
+
+/** The medium detent must show the header and this many whole slots, or the sheet opens large. */
+export const MEDIUM_DETENT_MIN_ROWS = 3;
+
+/**
+ * Which detent the iOS look's phone sheet opens at, from its laid-out
+ * header (grabber included) and slot rows: medium while it shows the header
+ * and the first MEDIUM_DETENT_MIN_ROWS rows whole above the bottom inset
+ * (at large text the header alone can fill it); otherwise large. Fewer
+ * rows than that (or none) only need those to fit.
+ */
+export function bookmarkSheetOpensAt({
+  mediumHeight,
+  headerHeight,
+  rowHeights,
+  bottomInset,
+}: {
+  mediumHeight: number;
+  headerHeight: number;
+  rowHeights: readonly number[];
+  bottomInset: number;
+}): 'medium' | 'large' {
+  const rows = rowHeights.slice(0, MEDIUM_DETENT_MIN_ROWS).reduce((sum, height) => sum + height, 0);
+  return headerHeight + rows <= mediumHeight - bottomInset ? 'medium' : 'large';
+}

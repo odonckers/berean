@@ -9,6 +9,7 @@ import {
 } from 'react';
 import {
   AccessibilityInfo,
+  type LayoutChangeEvent,
   Modal,
   type NativeSyntheticEvent,
   Pressable,
@@ -37,10 +38,12 @@ import { radii, spacing } from '@/design/tokens';
 import { useWindowClass } from '@/design/use-window-class';
 import {
   type BookmarkRow,
+  MEDIUM_DETENT_MIN_ROWS,
   type SaveTarget,
   allSlotsFull,
   bookmarkPickerPlacement,
   bookmarkSheetHeights,
+  bookmarkSheetOpensAt,
   rowAction,
   rowLabel,
   saveLine,
@@ -56,7 +59,8 @@ import { ModalNavigationBarStyle } from '../../modules/berean-system-bars';
 // slots. It opens in its own window (a Modal), so it is modal in every
 // form: an M3 modal bottom sheet with a scrim (Material, capped at 640dp
 // and centered from 600dp), the iOS look's phone sheet at the medium
-// detent with a grabber (drag up to full height, down to dismiss), or the
+// detent with a grabber (drag up to full height, down to dismiss; at the
+// large detent when the medium one can't show three whole slots), or the
 // iOS look's tablet card anchored under the button (a tap outside closes
 // it). Back, and Escape, which Android maps to it, close each of them.
 
@@ -168,12 +172,18 @@ export function BookmarkPicker({ open, onClose, buttonRef, title, target, rows, 
   // the last save's error. Both belong to one opening.
   const [saved, setSaved] = useState<number>();
   const [error, setError] = useState<string>();
+  // The iOS-look sheet's laid-out header and first rows, and the detent
+  // they decide it opens at, once per opening.
+  const [measured, setMeasured] = useState<{ header?: number; rows: readonly (number | undefined)[] }>({ rows: [] });
+  const [opensAt, setOpensAt] = useState<'medium' | 'large'>();
   const [wasOpen, setWasOpen] = useState(open);
   if (open !== wasOpen) {
     setWasOpen(open);
     if (open) {
       setSaved(undefined);
       setError(undefined);
+      setMeasured({ rows: [] });
+      setOpensAt(undefined);
     }
   }
   const dismissTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -234,6 +244,45 @@ export function BookmarkPicker({ open, onClose, buttonRef, title, target, rows, 
     }
   };
 
+  const sheetHeights =
+    placement.form === 'popover'
+      ? undefined
+      : bookmarkSheetHeights(placement.form, { windowHeight: window.height, topInset: insets.top });
+  // Measured before it is seen (the sheet waits off screen), so it opens
+  // once, at the detent it settles at.
+  const counted = 'message' in rows ? 0 : Math.min(MEDIUM_DETENT_MIN_ROWS, rows.length);
+  const rowHeights = measured.rows.slice(0, counted).filter((height) => height !== undefined);
+  if (
+    open &&
+    placement.form === 'sheet' &&
+    sheetHeights?.restHeight !== undefined &&
+    opensAt === undefined &&
+    measured.header !== undefined &&
+    rowHeights.length === counted
+  ) {
+    setOpensAt(
+      bookmarkSheetOpensAt({
+        mediumHeight: sheetHeights.restHeight,
+        headerHeight: measured.header,
+        rowHeights,
+        bottomInset: insets.bottom,
+      }),
+    );
+  }
+  const measureHeader = (e: LayoutChangeEvent) => {
+    const height = e.nativeEvent.layout.height;
+    setMeasured((was) => (was.header === height ? was : { ...was, header: height }));
+  };
+  const measureRow = (index: number) => (e: LayoutChangeEvent) => {
+    const height = e.nativeEvent.layout.height;
+    setMeasured((was) => {
+      if (was.rows[index] === height) return was;
+      const next = [...was.rows];
+      next[index] = height;
+      return { ...was, rows: next };
+    });
+  };
+
   const full = 'message' in rows ? false : allSlotsFull(rows);
   const header = (
     <Header title={title} line={saveLine(target.reference, full)} onClose={onClose} closeButton={!material} />
@@ -258,6 +307,7 @@ export function BookmarkPicker({ open, onClose, buttonRef, title, target, rows, 
               row={row}
               reference={target.reference}
               separated={index > 0}
+              onLayout={index < MEDIUM_DETENT_MIN_ROWS ? measureRow(index) : undefined}
               onPress={() => press(row)}
             />
           ))}
@@ -291,11 +341,8 @@ export function BookmarkPicker({ open, onClose, buttonRef, title, target, rows, 
         )}
       </>
     );
-  } else {
-    const { height, restHeight } = bookmarkSheetHeights(placement.form, {
-      windowHeight: window.height,
-      topInset: insets.top,
-    });
+  } else if (sheetHeights !== undefined) {
+    const { height, restHeight } = sheetHeights;
     const width =
       placement.form === 'bottomSheet' && placement.maxWidth !== undefined
         ? Math.min(placement.maxWidth, window.width)
@@ -308,6 +355,9 @@ export function BookmarkPicker({ open, onClose, buttonRef, title, target, rows, 
         onHidden={hide}
         height={height}
         restHeight={restHeight}
+        opening={
+          placement.form !== 'sheet' ? undefined : opensAt === undefined ? 'pending' : opensAt === 'large' ? 'full' : 'rest'
+        }
         scrim={material ? m3.scrim : m3.scrimWarm}
         style={[
           {
@@ -320,10 +370,10 @@ export function BookmarkPicker({ open, onClose, buttonRef, title, target, rows, 
           edge,
         ]}
         header={
-          <>
+          <View onLayout={measureHeader}>
             <SheetHandle onClose={onClose} />
             {header}
-          </>
+          </View>
         }
       >
         <ScrollView contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + spacing.lg }]}>
@@ -420,11 +470,14 @@ function SlotRow({
   row,
   reference,
   separated,
+  onLayout,
   onPress,
 }: {
   row: BookmarkRow;
   reference: string;
   separated: boolean;
+  /** Its laid-out height, for the detent the iOS-look sheet opens at. */
+  onLayout: ((e: LayoutChangeEvent) => void) | undefined;
   onPress: () => void;
 }) {
   const { look, colors, m3, type } = useBerean();
@@ -438,6 +491,7 @@ function SlotRow({
       accessibilityHint={rowAction(row, reference)}
       onPress={onPress}
       onFocus={followRing}
+      onLayout={onLayout}
       style={({ pressed }) => [
         styles.row,
         { minHeight: material ? 48 : 44, opacity: pressed ? 0.6 : 1 },

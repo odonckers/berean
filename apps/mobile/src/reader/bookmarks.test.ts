@@ -7,6 +7,7 @@ import {
   BOOKMARK_SLOTS,
   IOS_LARGE_DETENT_GAP,
   MATERIAL_SHEET_TOP_MARGIN,
+  MEDIUM_DETENT_MIN_ROWS,
   SNIPPET_MAX,
   type BookmarkLike,
   allSlotsFull,
@@ -15,6 +16,7 @@ import {
   bookmarkPickerPlacement,
   bookmarkRows,
   bookmarkSheetHeights,
+  bookmarkSheetOpensAt,
   bookmarkSnippet,
   isAtPlace,
   jumpAnnouncement,
@@ -303,5 +305,39 @@ describe('sheet heights', () => {
   test('the medium detent is never taller than the large one', () => {
     const { height, restHeight } = bookmarkSheetHeights('sheet', { windowHeight: 300, topInset: 200 });
     assert.equal(restHeight, height);
+  });
+});
+
+describe('the detent the iOS-look sheet opens at', () => {
+  // A 1080x2400 phone at 420dpi: 914dp tall, so a 457dp medium detent; a 24dp gesture bar.
+  const phone = { mediumHeight: 457, bottomInset: 24 };
+
+  test('at default text, the header and five rows fit: medium', () => {
+    assert.equal(bookmarkSheetOpensAt({ ...phone, headerHeight: 120, rowHeights: Array(10).fill(61) }), 'medium');
+  });
+
+  test('at 2x text, a wrapped title leaves room for one row: large', () => {
+    assert.equal(bookmarkSheetOpensAt({ ...phone, headerHeight: 330, rowHeights: Array(10).fill(98) }), 'large');
+  });
+
+  test(`exactly ${MEDIUM_DETENT_MIN_ROWS} whole rows above the bottom inset still opens medium`, () => {
+    assert.equal(MEDIUM_DETENT_MIN_ROWS, 3);
+    assert.equal(bookmarkSheetOpensAt({ ...phone, headerHeight: 133, rowHeights: [100, 100, 100, 100] }), 'medium');
+    assert.equal(bookmarkSheetOpensAt({ ...phone, headerHeight: 134, rowHeights: [100, 100, 100, 100] }), 'large');
+  });
+
+  test('only the first three rows count, whatever follows', () => {
+    assert.equal(bookmarkSheetOpensAt({ ...phone, headerHeight: 133, rowHeights: [100, 100, 100, 900] }), 'medium');
+    assert.equal(bookmarkSheetOpensAt({ ...phone, headerHeight: 133, rowHeights: [100, 100, 101] }), 'large');
+  });
+
+  test('the bottom inset is not room for rows', () => {
+    assert.equal(bookmarkSheetOpensAt({ mediumHeight: 457, bottomInset: 0, headerHeight: 150, rowHeights: [100, 100, 100] }), 'medium');
+    assert.equal(bookmarkSheetOpensAt({ mediumHeight: 457, bottomInset: 48, headerHeight: 150, rowHeights: [100, 100, 100] }), 'large');
+  });
+
+  test('with no rows (the list could not be read), only the header must fit', () => {
+    assert.equal(bookmarkSheetOpensAt({ ...phone, headerHeight: 300, rowHeights: [] }), 'medium');
+    assert.equal(bookmarkSheetOpensAt({ ...phone, headerHeight: 440, rowHeights: [] }), 'large');
   });
 });
