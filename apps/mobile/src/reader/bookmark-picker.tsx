@@ -42,6 +42,7 @@ import {
   type SaveTarget,
   allSlotsFull,
   bookmarkPickerPlacement,
+  bookmarkSheetFit,
   bookmarkSheetHeights,
   bookmarkSheetOpensAt,
   rowAction,
@@ -57,8 +58,9 @@ import { ModalNavigationBarStyle } from '../../modules/berean-system-bars';
 // The Bible reader's bookmarks (bookmarks spec §3, §4, §6): the toolbar
 // button, and the picker, which is the list of the open publication's 10
 // slots. It opens in its own window (a Modal), so it is modal in every
-// form: an M3 modal bottom sheet with a scrim (Material, capped at 640dp
-// and centered from 600dp), the iOS look's phone sheet at the medium
+// form: an M3 modal bottom sheet with a scrim (Material, as tall as its
+// content up to the M3 top margin, capped at 640dp and centered from
+// 600dp), the iOS look's phone sheet at the medium
 // detent with a grabber (drag up to full height, down to dismiss; at the
 // large detent when the medium one can't show three whole slots), or the
 // iOS look's tablet card anchored under the button (a tap outside closes
@@ -172,9 +174,14 @@ export function BookmarkPicker({ open, onClose, buttonRef, title, target, rows, 
   // the last save's error. Both belong to one opening.
   const [saved, setSaved] = useState<number>();
   const [error, setError] = useState<string>();
-  // The iOS-look sheet's laid-out header and first rows, and the detent
-  // they decide it opens at, once per opening.
-  const [measured, setMeasured] = useState<{ header?: number; rows: readonly (number | undefined)[] }>({ rows: [] });
+  // The sheet's laid-out header (handle included): with the first rows,
+  // the detent the iOS-look sheet opens at, once per opening; with the
+  // list's content, the Material sheet's height.
+  const [measured, setMeasured] = useState<{
+    header?: number;
+    rows: readonly (number | undefined)[];
+    content?: number;
+  }>({ rows: [] });
   const [opensAt, setOpensAt] = useState<'medium' | 'large'>();
   const [wasOpen, setWasOpen] = useState(open);
   if (open !== wasOpen) {
@@ -269,6 +276,18 @@ export function BookmarkPicker({ open, onClose, buttonRef, title, target, rows, 
       }),
     );
   }
+  // The Material sheet fits its content up to its max height, and waits
+  // off screen until both parts are measured, so it opens once at that height.
+  const fit =
+    placement.form === 'bottomSheet' &&
+    sheetHeights !== undefined &&
+    measured.header !== undefined &&
+    measured.content !== undefined
+      ? bookmarkSheetFit({ contentHeight: measured.header + measured.content, maxHeight: sheetHeights.height })
+      : undefined;
+  const measureContent = (_width: number, height: number) => {
+    setMeasured((was) => (was.content === height ? was : { ...was, content: height }));
+  };
   const measureHeader = (e: LayoutChangeEvent) => {
     const height = e.nativeEvent.layout.height;
     setMeasured((was) => (was.header === height ? was : { ...was, header: height }));
@@ -342,7 +361,8 @@ export function BookmarkPicker({ open, onClose, buttonRef, title, target, rows, 
       </>
     );
   } else if (sheetHeights !== undefined) {
-    const { height, restHeight } = sheetHeights;
+    const { restHeight } = sheetHeights;
+    const height = fit?.height ?? sheetHeights.height;
     const width =
       placement.form === 'bottomSheet' && placement.maxWidth !== undefined
         ? Math.min(placement.maxWidth, window.width)
@@ -356,7 +376,15 @@ export function BookmarkPicker({ open, onClose, buttonRef, title, target, rows, 
         height={height}
         restHeight={restHeight}
         opening={
-          placement.form !== 'sheet' ? undefined : opensAt === undefined ? 'pending' : opensAt === 'large' ? 'full' : 'rest'
+          placement.form !== 'sheet'
+            ? fit === undefined
+              ? 'pending'
+              : undefined
+            : opensAt === undefined
+              ? 'pending'
+              : opensAt === 'large'
+                ? 'full'
+                : 'rest'
         }
         scrim={material ? m3.scrim : m3.scrimWarm}
         style={[
@@ -376,7 +404,11 @@ export function BookmarkPicker({ open, onClose, buttonRef, title, target, rows, 
           </View>
         }
       >
-        <ScrollView contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + spacing.lg }]}>
+        <ScrollView
+          contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + spacing.lg }]}
+          onContentSizeChange={material ? measureContent : undefined}
+          scrollEnabled={fit?.scrolls ?? true}
+        >
           {body}
         </ScrollView>
       </SheetWithScrim>

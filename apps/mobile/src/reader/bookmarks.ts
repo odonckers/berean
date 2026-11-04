@@ -263,3 +263,19 @@ export function bookmarkSheetOpensAt({
   const rows = rowHeights.slice(0, MEDIUM_DETENT_MIN_ROWS).reduce((sum, height) => sum + height, 0);
   return headerHeight + rows <= mediumHeight - bottomInset ? 'medium' : 'large';
 }
+
+/**
+ * The Material sheet's height: an M3 modal bottom sheet fits its laid-out
+ * content (handle, header, rows and the bottom padding) up to its max
+ * height, the M3 top margin clear; only content taller than that scrolls.
+ */
+export function bookmarkSheetFit({
+  contentHeight,
+  maxHeight,
+}: {
+  contentHeight: number;
+  maxHeight: number;
+}): { height: number; scrolls: boolean } {
+  const height = Math.ceil(contentHeight);
+  return height <= maxHeight ? { height, scrolls: false } : { height: maxHeight, scrolls: true };
+}

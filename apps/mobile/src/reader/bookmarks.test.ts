@@ -15,6 +15,7 @@ import {
   bookmarkLocation,
   bookmarkPickerPlacement,
   bookmarkRows,
+  bookmarkSheetFit,
   bookmarkSheetHeights,
   bookmarkSheetOpensAt,
   bookmarkSnippet,
@@ -339,5 +340,27 @@ describe('the detent the iOS-look sheet opens at', () => {
   test('with no rows (the list could not be read), only the header must fit', () => {
     assert.equal(bookmarkSheetOpensAt({ ...phone, headerHeight: 300, rowHeights: [] }), 'medium');
     assert.equal(bookmarkSheetOpensAt({ ...phone, headerHeight: 440, rowHeights: [] }), 'large');
+  });
+});
+
+describe('the Material sheet fits its content', () => {
+  // A 411x914dp phone with a 24dp status bar: the sheet's max height.
+  const maxHeight = 914 - 24 - MATERIAL_SHEET_TOP_MARGIN;
+
+  test('content shorter than the max: as tall as the content, not scrolling', () => {
+    assert.deepEqual(bookmarkSheetFit({ contentHeight: 600, maxHeight }), { height: 600, scrolls: false });
+  });
+
+  test('content taller than the max: the max height, scrolling', () => {
+    assert.deepEqual(bookmarkSheetFit({ contentHeight: 1400, maxHeight }), { height: maxHeight, scrolls: true });
+  });
+
+  test('content exactly the max fits without scrolling', () => {
+    assert.deepEqual(bookmarkSheetFit({ contentHeight: maxHeight, maxHeight }), { height: maxHeight, scrolls: false });
+  });
+
+  test('a fractional layout rounds up, so nothing is clipped', () => {
+    assert.deepEqual(bookmarkSheetFit({ contentHeight: 600.4, maxHeight }), { height: 601, scrolls: false });
+    assert.deepEqual(bookmarkSheetFit({ contentHeight: maxHeight + 0.4, maxHeight }), { height: maxHeight, scrolls: true });
   });
 });
