@@ -36,6 +36,8 @@ const FIXTURES: [(&str, &str); 5] = [
 const W_ARTICLE_DOC: i64 = 2026520;
 /// it "Chronology", with tables.
 const IT_CHRONOLOGY_DOC: i64 = 1200000970;
+/// it "Aaron", where page 10 starts inside a paragraph.
+const IT_AARON_DOC: i64 = 1200000005;
 /// te chapter 28, with the publication's one footnote.
 const TE_SHEPHERD_DOC: i64 = 1101971128;
 
@@ -262,6 +264,75 @@ fn blocks_text(blocks: &[DocBlock], out: &mut String) {
     }
 }
 
+/// The text a reader draws for `inlines`: as [`inlines_text`], but without
+/// footnote markers.
+fn drawn_text(inlines: &[DocInline], out: &mut String) {
+    for inline in inlines {
+        match inline {
+            DocInline::Common { inline } => inline_text(inline, out),
+            DocInline::Superscript { children }
+            | DocInline::Subscript { children }
+            | DocInline::SmallCaps { children }
+            | DocInline::Link { children, .. } => drawn_text(children, out),
+            DocInline::FootnoteRef { .. } | DocInline::PageMarker { .. } => {}
+        }
+    }
+}
+
+/// The drawn text of each paragraph `blocks` holds, by pid; empty for an
+/// answer field.
+fn drawn_texts(blocks: &[DocBlock]) -> HashMap<u32, String> {
+    let mut texts = HashMap::new();
+    let mut add = |paragraph: u32, inlines: &[DocInline]| {
+        let mut text = String::new();
+        drawn_text(inlines, &mut text);
+        assert!(texts.insert(paragraph, text).is_none(), "{paragraph} twice");
+    };
+    for block in all_blocks(blocks) {
+        match block {
+            DocBlock::Heading {
+                paragraph: Some(paragraph),
+                inlines,
+                ..
+            }
+            | DocBlock::Paragraph {
+                paragraph, inlines, ..
+            }
+            | DocBlock::Question {
+                paragraph, inlines, ..
+            } => add(*paragraph, inlines),
+            DocBlock::AnswerField { paragraph, .. } => add(*paragraph, &[]),
+            DocBlock::Aside {
+                title: Some(title), ..
+            } => add(title.paragraph, &title.inlines),
+            DocBlock::Footnotes { items } => {
+                for item in items {
+                    if let Some(paragraph) = item.paragraph {
+                        add(paragraph, &item.inlines);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    texts
+}
+
+/// The block of paragraph `paragraph` of `doc` that has inlines.
+fn paragraph_inlines(doc: &Document, paragraph: u32) -> &[DocInline] {
+    all_blocks(&doc.blocks)
+        .into_iter()
+        .find_map(|b| match b {
+            DocBlock::Paragraph {
+                paragraph: p,
+                inlines,
+                ..
+            } if *p == paragraph => Some(&inlines[..]),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("document {} has no paragraph {paragraph}", doc.doc_id))
+}
+
 /// Runs of whitespace (any, no-break spaces included) as one space.
 fn normalize(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
@@ -381,6 +452,107 @@ fn every_positioned_paragraph_is_in_exactly_one_block() {
                 .collect();
             positioned.sort_unstable();
             assert_eq!(seen, positioned, "{key} document {}", doc.doc_id);
+        }
+    }
+}
+
+#[test]
+fn paragraph_text_is_its_blocks_drawn_text() {
+    for (key, _) in FIXTURES {
+        for doc in documents(key) {
+            let mut texts = drawn_texts(&doc.blocks);
+            for p in &doc.paragraphs {
+                let expected = match p.begin {
+                    Some(_) => texts.remove(&p.paragraph).unwrap_or_else(|| {
+                        panic!("{key} document {} has no {}", doc.doc_id, p.paragraph)
+                    }),
+                    None => String::new(),
+                };
+                assert_eq!(
+                    p.text, expected,
+                    "{key} document {} paragraph {}",
+                    doc.doc_id, p.paragraph
+                );
+            }
+        }
+    }
+    // w has both answer fields and paragraphs not in the HTML: no text.
+    let empty = |doc: &Document, paragraph: u32| {
+        doc.paragraphs
+            .iter()
+            .any(|p| p.paragraph == paragraph && p.text.is_empty())
+    };
+    let w = documents(W_E);
+    assert!(w.iter().any(|doc| doc.blocks.iter().any(|b| matches!(
+        b,
+        DocBlock::AnswerField { paragraph, .. } if empty(doc, *paragraph)
+    ))));
+    assert!(w.iter().any(|doc| doc
+        .paragraphs
+        .iter()
+        .any(|p| p.begin.is_none() && p.text.is_empty())));
+}
+
+#[test]
+fn paragraph_text_leaves_out_numbers_and_markers() {
+    let doc = document(W_E, W_ARTICLE_DOC);
+    let p8 = doc.paragraphs.iter().find(|p| p.paragraph == 8).unwrap();
+    assert_eq!(p8.label.as_deref(), Some("2"));
+    assert!(doc.blocks.iter().any(|b| matches!(
+        b,
+        DocBlock::Paragraph { paragraph: 8, number: Some(n), .. } if n == "2"
+    )));
+    assert!(
+        p8.text.starts_with("In the midst of a battle,"),
+        "{:?}",
+        p8.text
+    );
+    // The paragraph ends at footnote a, which its text leaves out.
+    assert!(matches!(
+        paragraph_inlines(doc, 8).last(),
+        Some(DocInline::FootnoteRef { marker, .. }) if marker == "a"
+    ));
+    assert!(
+        p8.text.ends_with("in our spiritual warfare."),
+        "{:?}",
+        p8.text
+    );
+
+    // Page 10 starts inside paragraph 10 of "Aaron"; its text reads on.
+    let doc = document(IT_E, IT_AARON_DOC);
+    let p10 = doc.paragraphs.iter().find(|p| p.paragraph == 10).unwrap();
+    assert!(paragraph_inlines(doc, 10)
+        .iter()
+        .any(|i| matches!(i, DocInline::PageMarker { page } if page == "10")));
+    assert!(p10
+        .text
+        .contains("at the tabernacle and supervising the work"));
+}
+
+#[test]
+fn paragraph_text_counts_one_utf16_unit_per_quote_and_space() {
+    let doc = document(W_E, W_ARTICLE_DOC);
+    let text = &doc
+        .paragraphs
+        .iter()
+        .find(|p| p.paragraph == 16)
+        .unwrap()
+        .text;
+    let cited = "(2\u{a0}Cor. 4:3,\u{a0}4)";
+    assert!(text.contains(cited), "{text:?}");
+    assert_eq!(cited.encode_utf16().count(), 15);
+    assert!(text.contains("Satan’s"));
+    assert_eq!("Satan’s".encode_utf16().count(), 7);
+    assert_eq!(text.encode_utf16().count(), text.chars().count());
+}
+
+#[test]
+fn reading_a_document_again_gives_the_same_blocks_and_text() {
+    for key in [W_E, LL_E, TE_E] {
+        for doc in documents(key) {
+            let again = fixtures().core.reader().document(key, doc.doc_id).unwrap();
+            assert_eq!(again.paragraphs, doc.paragraphs, "{key} {}", doc.doc_id);
+            assert_eq!(again.blocks, doc.blocks, "{key} {}", doc.doc_id);
         }
     }
 }

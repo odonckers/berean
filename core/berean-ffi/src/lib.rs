@@ -553,6 +553,9 @@ pub struct ParagraphAnchor {
     pub label: Option<String>,
     pub begin: Option<u32>,
     pub end: Option<u32>,
+    /// The paragraph's plain text, what `ReaderState.char_offset` counts in
+    /// UTF-16 code units; see the core type.
+    pub text: String,
 }
 
 impl From<berean_core::reader::ParagraphAnchor> for ParagraphAnchor {
@@ -562,6 +565,7 @@ impl From<berean_core::reader::ParagraphAnchor> for ParagraphAnchor {
             label: p.label,
             begin: p.begin,
             end: p.end,
+            text: p.text,
         }
     }
 }
@@ -1146,6 +1150,23 @@ impl From<berean_core::reader::Location> for Location {
     }
 }
 
+/// The FFI mirror of [`berean_core::reader::Located`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct Located {
+    pub location: Location,
+    /// False when `location` is a fallback for a place that is gone.
+    pub exact: bool,
+}
+
+impl From<berean_core::reader::Located> for Located {
+    fn from(l: berean_core::reader::Located) -> Self {
+        Located {
+            location: l.location.into(),
+            exact: l.exact,
+        }
+    }
+}
+
 /// The FFI mirror of [`berean_core::reader::LocationSpan`].
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct LocationSpan {
@@ -1354,6 +1375,13 @@ impl Reader {
     /// `pub_key`.
     pub fn document(&self, pub_key: String, doc_id: i64) -> Result<Document, CoreError> {
         Ok(self.inner.document(&pub_key, doc_id)?.into())
+    }
+
+    /// Where a saved location is in the installed publication now, falling
+    /// back to the nearest place that exists; see the core's
+    /// `Reader::locate`.
+    pub fn locate(&self, location: Location) -> Result<Located, CoreError> {
+        Ok(self.inner.locate(&location.into())?.into())
     }
 
     /// Chapter `chapter` of book `book` (1-66) of the installed Bible `bible`.
@@ -3011,6 +3039,26 @@ mod tests {
                 },
             }],
         }));
+        assert_eq!(p6.text, "January 2016 Printing");
+
+        let ll = |doc_id, paragraph| Location {
+            pub_key: "ll:0:0".into(),
+            doc_id,
+            book: None,
+            chapter: None,
+            verse: None,
+            paragraph,
+        };
+        assert_eq!(
+            reader.locate(ll(Some(1102011094), Some(6))).unwrap(),
+            Located {
+                location: ll(Some(1102011094), Some(6)),
+                exact: true,
+            }
+        );
+        let start = reader.locate(ll(Some(1), None)).unwrap();
+        assert_eq!(start.location.doc_id, toc.iter().find_map(|e| e.doc_id));
+        assert!(!start.exact);
 
         let chapter = reader.bible_chapter("nwt:0:0".into(), 43, 3).unwrap();
         assert_eq!((chapter.book, chapter.chapter), (43, 3));
@@ -3067,6 +3115,20 @@ mod tests {
         );
         assert!(matches!(
             reader.resolve("javascript:alert(1)".into()),
+            Err(CoreError::Invalid(_))
+        ));
+        assert_eq!(
+            reader.locate(john(99)).unwrap(),
+            Located {
+                location: john(36),
+                exact: false,
+            }
+        );
+        assert!(matches!(
+            reader.locate(Location {
+                pub_key: "zz".into(),
+                ..john(16)
+            }),
             Err(CoreError::Invalid(_))
         ));
         assert!(matches!(

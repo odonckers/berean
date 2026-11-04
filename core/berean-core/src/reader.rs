@@ -216,6 +216,16 @@ pub struct ParagraphAnchor {
     /// in the HTML).
     pub begin: Option<u32>,
     pub end: Option<u32>,
+    /// The paragraph's plain text as the reader draws it: the text of the
+    /// inlines of its block in [`Document::blocks`], with footnote refs and
+    /// page markers left out and without the printed paragraph or question
+    /// number (`DocBlock::Paragraph::number`, `DocBlock::Question::number`).
+    /// This is what `ReaderState::char_offset` counts (in UTF-16 code units)
+    /// and what a bookmark's snippet starts with. A positioned paragraph is
+    /// on exactly one block; were it on more, the first in reading order
+    /// would give the text. Empty for a paragraph not in the HTML and for an
+    /// `AnswerField`.
+    pub text: String,
 }
 
 /// A Bible chapter's decrypted HTML and verse anchors.
@@ -310,7 +320,9 @@ pub struct VerseAnchor {
     /// The label printed at the verse: its number, the chapter number for a
     /// chapter's first verse, empty for a superscription.
     pub label: String,
-    /// The verse as plain text.
+    /// The verse as plain text: the text of its runs in
+    /// [`BibleChapter::blocks`], in order, joined with a single space. This
+    /// is what `ReaderState::char_offset` counts (in UTF-16 code units).
     pub text: String,
     /// The byte range in the chapter's HTML from the start of the verse's
     /// first part to the end of its last (a verse may be split across
@@ -426,6 +438,17 @@ pub struct StudyReference {
     pub target: Option<Location>,
 }
 
+/// Where a saved location is in the installed publication now; see
+/// [`Reader::locate`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Located {
+    /// A location that exists, so the reader can open it as it is.
+    pub location: Location,
+    /// False when `location` is a fallback: the saved paragraph, verse,
+    /// chapter, book or document is gone.
+    pub exact: bool,
+}
+
 /// Handle to the reader. Cheap to clone; shares the core's state.
 #[derive(Clone)]
 pub struct Reader {
@@ -441,33 +464,7 @@ impl Reader {
     /// Titles are trimmed of surrounding whitespace. Malformed key =>
     /// `Invalid`; not installed => `NotFound`.
     pub fn toc(&self, pub_key: &str) -> Result<Vec<TocEntry>, CoreError> {
-        self.library().with_publication(pub_key, |publication| {
-            let view = publication
-                .publication_views()?
-                .into_iter()
-                .find(|v| v.symbol == TOC_VIEW)
-                .ok_or(CoreError::Corrupt)?;
-            let items = publication.publication_view_items(view.publication_view_id)?;
-            let documents = documents_by_id(publication)?;
-
-            let mut children: HashMap<i64, Vec<&PublicationViewItem>> = HashMap::new();
-            for item in &items {
-                if item.publication_view_item_id == -1 {
-                    return Err(CoreError::Corrupt);
-                }
-                children
-                    .entry(item.parent_publication_view_item_id)
-                    .or_default()
-                    .push(item);
-            }
-            let mut entries = Vec::with_capacity(items.len());
-            toc_walk(&children, &documents, -1, 0, &mut entries)?;
-            // Items not reached from the top level would be silently lost.
-            if entries.len() != items.len() {
-                return Err(CoreError::Corrupt);
-            }
-            Ok(entries)
-        })
+        self.library().with_publication(pub_key, toc)
     }
 
     /// The document with MEPS id `doc_id` in the installed publication
@@ -478,12 +475,12 @@ impl Reader {
             .with_publication_in(pub_key, |publication, dir| {
                 let summary = find_document(publication, doc_id)?.ok_or(CoreError::NotFound)?;
                 let html = publication.document_html(summary.document_id)?;
-                let paragraphs: Vec<ParagraphAnchor> = publication
+                let mut paragraphs: Vec<ParagraphAnchor> = publication
                     .document_paragraphs(summary.document_id)?
                     .into_iter()
                     .map(|p| paragraph_anchor(&html, p))
                     .collect::<Result<_, _>>()?;
-                let blocks = doc_blocks::document_blocks(&html, &paragraphs, dir)?;
+                let blocks = doc_blocks::document_blocks(&html, &mut paragraphs, dir)?;
                 Ok(Document {
                     doc_id,
                     title: summary.title,
@@ -542,6 +539,59 @@ impl Reader {
             }
             Ok(books)
         })
+    }
+
+    /// Where a saved location (a bookmark, a reader state, a card's own
+    /// location) is in the installed publication now. It never fails because
+    /// the place is gone; it falls back, in order:
+    ///
+    /// - The publication alone (no document, no book): the publication's
+    ///   starting document (the first table-of-contents entry with one),
+    ///   exact.
+    /// - A document with a paragraph that is in its HTML, or a document
+    ///   alone: as saved, exact. A paragraph that is gone or not in the
+    ///   HTML: the one in the HTML with the largest pid below it, else the
+    ///   first in reading order, else the document alone; not exact.
+    /// - A document the publication does not have: its starting document,
+    ///   not exact.
+    /// - A Bible book, chapter or verse that exists: as saved, exact. A
+    ///   verse that is gone: the chapter's largest verse below it, else its
+    ///   first verse. A chapter that is gone: the book's first chapter, no
+    ///   verse. A book that is gone: the publication alone. None is exact.
+    ///
+    /// Opens at most one document's paragraph rows or one chapter. A
+    /// malformed key or location => `Invalid`; not installed => `NotFound`.
+    pub fn locate(&self, location: &Location) -> Result<Located, CoreError> {
+        crate::userdata::check_location(location)?;
+        self.library()
+            .with_publication(&location.pub_key, |publication| {
+                if location.book.is_some() {
+                    return locate_verse(publication, location);
+                }
+                let at = |doc_id, paragraph, exact| Located {
+                    location: Location {
+                        pub_key: location.pub_key.clone(),
+                        doc_id,
+                        book: None,
+                        chapter: None,
+                        verse: None,
+                        paragraph,
+                    },
+                    exact,
+                };
+                let found = match location.doc_id {
+                    Some(doc_id) => find_document(publication, doc_id)?,
+                    None => return Ok(at(start_document(publication)?, None, true)),
+                };
+                let Some(summary) = found else {
+                    return Ok(at(start_document(publication)?, None, false));
+                };
+                let (paragraph, exact) = match location.paragraph {
+                    Some(p) => locate_paragraph(publication, summary.document_id, p)?,
+                    None => (None, true),
+                };
+                Ok(at(location.doc_id, paragraph, exact))
+            })
     }
 
     /// Resolve a citation or `jwpub://` link to the span of locations it
@@ -1505,6 +1555,127 @@ fn lemma(content: &str) -> Option<(String, &str)> {
     })
 }
 
+/// The publication's table of contents; see [`Reader::toc`].
+fn toc(publication: &Publication) -> Result<Vec<TocEntry>, CoreError> {
+    let view = publication
+        .publication_views()?
+        .into_iter()
+        .find(|v| v.symbol == TOC_VIEW)
+        .ok_or(CoreError::Corrupt)?;
+    let items = publication.publication_view_items(view.publication_view_id)?;
+    let documents = documents_by_id(publication)?;
+
+    let mut children: HashMap<i64, Vec<&PublicationViewItem>> = HashMap::new();
+    for item in &items {
+        if item.publication_view_item_id == -1 {
+            return Err(CoreError::Corrupt);
+        }
+        children
+            .entry(item.parent_publication_view_item_id)
+            .or_default()
+            .push(item);
+    }
+    let mut entries = Vec::with_capacity(items.len());
+    toc_walk(&children, &documents, -1, 0, &mut entries)?;
+    // Items not reached from the top level would be silently lost.
+    if entries.len() != items.len() {
+        return Err(CoreError::Corrupt);
+    }
+    Ok(entries)
+}
+
+/// The document a whole publication opens at: the first entry of its table
+/// of contents that has a document (for a Watchtower issue, its cover).
+/// `None` when no entry has one.
+fn start_document(publication: &Publication) -> Result<Option<i64>, CoreError> {
+    Ok(toc(publication)?.into_iter().find_map(|e| e.doc_id))
+}
+
+/// Where paragraph `paragraph` of the document with local id `document_id`
+/// is now, and whether that is exact; see [`Reader::locate`].
+fn locate_paragraph(
+    publication: &Publication,
+    document_id: i64,
+    paragraph: u32,
+) -> Result<(Option<u32>, bool), CoreError> {
+    let mut positioned = Vec::new();
+    for p in publication.document_paragraphs(document_id)? {
+        if let Some(begin) = p.begin_position {
+            let pid = u32::try_from(p.paragraph_index).map_err(|_| CoreError::Corrupt)?;
+            positioned.push((pid, begin));
+        }
+    }
+    if positioned.iter().any(|p| p.0 == paragraph) {
+        return Ok((Some(paragraph), true));
+    }
+    let earlier = positioned
+        .iter()
+        .filter(|p| p.0 < paragraph)
+        .map(|p| p.0)
+        .max();
+    let first = || positioned.iter().min_by_key(|p| p.1).map(|p| p.0);
+    Ok((earlier.or_else(first), false))
+}
+
+/// Where the Bible location `location` (with a book) is now in `bible`;
+/// see [`Reader::locate`].
+fn locate_verse(bible: &Publication, location: &Location) -> Result<Located, CoreError> {
+    let found = |location: Location, exact| Ok(Located { location, exact });
+    let Some(book) = location.book else {
+        return Err(CoreError::Invalid(format!(
+            "not a Bible location: {location:?}"
+        )));
+    };
+    let chapters: Vec<u32> = bible
+        .bible_chapter_numbers()?
+        .into_iter()
+        .filter(|c| c.0 == book)
+        .map(|c| c.1)
+        .collect();
+    let Some(&first_chapter) = chapters.first() else {
+        let publication = Location {
+            pub_key: location.pub_key.clone(),
+            doc_id: None,
+            book: None,
+            chapter: None,
+            verse: None,
+            paragraph: None,
+        };
+        return found(publication, false);
+    };
+    let Some(chapter) = location.chapter else {
+        return found(location.clone(), true);
+    };
+    if !chapters.contains(&chapter) {
+        let first = Location {
+            chapter: Some(first_chapter),
+            verse: None,
+            ..location.clone()
+        };
+        return found(first, false);
+    }
+    let Some(verse) = location.verse else {
+        return found(location.clone(), true);
+    };
+    let verses: Vec<u32> = read_chapter(bible, &location.pub_key, book, chapter)?
+        .verses
+        .iter()
+        .map(|v| v.verse)
+        .collect();
+    if verses.contains(&verse) {
+        return found(location.clone(), true);
+    }
+    let earlier = verses.iter().copied().filter(|&v| v < verse).max();
+    let verse = earlier.or(verses.first().copied());
+    found(
+        Location {
+            verse,
+            ..location.clone()
+        },
+        false,
+    )
+}
+
 /// Append the entries under `parent`, and their descendants, to `out`.
 fn toc_walk(
     children: &HashMap<i64, Vec<&PublicationViewItem>>,
@@ -1588,6 +1759,7 @@ pub(crate) fn paragraph_anchor(
         label: p.paragraph_number_label.map(|n| n.to_string()),
         begin,
         end,
+        text: String::new(),
     })
 }
 
@@ -1723,7 +1895,8 @@ pub(crate) fn read_chapter(
         verses.push(VerseAnchor {
             verse,
             label: plain_text(&v.label).trim().to_string(),
-            text: plain_text(&content).trim().to_string(),
+            // Filled in from the blocks below.
+            text: String::new(),
             begin: u32::try_from(begin).map_err(|_| CoreError::Corrupt)?,
             end: u32::try_from(end).map_err(|_| CoreError::Corrupt)?,
         });
@@ -1750,6 +1923,21 @@ pub(crate) fn read_chapter(
         true,
         &mut blocks,
     )?;
+    for verse in &mut verses {
+        let runs: Vec<&str> = blocks
+            .iter()
+            .filter_map(|b| match b {
+                ChapterBlock::Paragraph { style, runs, .. } if *style != ParagraphStyle::Note => {
+                    Some(runs)
+                }
+                _ => None,
+            })
+            .flatten()
+            .filter(|r| r.verse == verse.verse)
+            .map(|r| r.text.as_str())
+            .collect();
+        verse.text = runs.join(" ");
+    }
     Ok(BibleChapter {
         pub_key: pub_key.to_string(),
         book,

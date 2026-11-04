@@ -429,11 +429,16 @@ pub enum CardRef {
 ///   document too) of the same `pub_key`. `missing` is set as for cards.
 /// - `char_offset` counts UTF-16 code units into the core's plain text of
 ///   that verse or paragraph, the unit `markdown_spans` uses: where the
-///   card's top edge is.
+///   card's top edge is. That text is
+///   [`VerseAnchor::text`](crate::reader::VerseAnchor::text) for a verse and
+///   [`ParagraphAnchor::text`](crate::reader::ParagraphAnchor::text) for a
+///   paragraph.
 ///
-/// The core stores both as given. Clamping `char_offset` to the block's
-/// length on restore, and falling back to the nearest earlier block when
-/// `at` no longer exists (a different edition, say), are up to the reader.
+/// The core stores both as given. On restore, the reader finds where `at` is
+/// now with [`Reader::locate`](crate::reader::Reader::locate) (which falls
+/// back to the nearest earlier block when it no longer exists, a different
+/// edition say), and clamps `char_offset` to the block's length (0 when the
+/// place found is not exact).
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReaderState {
     pub at: CardRef,
@@ -631,6 +636,11 @@ fn place_match(a: &str) -> String {
          AND {a}.Track IS NULL AND COALESCE({a}.Specialty, '') = '' \
          AND COALESCE({a}.Edition, '') = ''"
     )
+}
+
+/// Check `loc` is a location user data can store: [`split`]'s errors.
+pub(crate) fn check_location(loc: &Location) -> Result<(), CoreError> {
+    split(loc).map(|_| ())
 }
 
 /// Split one of our locations into a place and an optional block. A

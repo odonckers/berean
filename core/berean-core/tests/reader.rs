@@ -7,7 +7,7 @@ mod common;
 use std::sync::OnceLock;
 
 use berean_core::reader::{
-    BibleBook, BibleChapter, ChapterBlock, Location, LocationSpan, ParagraphStyle, Reader,
+    BibleBook, BibleChapter, ChapterBlock, Located, Location, LocationSpan, ParagraphStyle, Reader,
     Resolved, TocEntry, VerseRun,
 };
 use berean_core::{CancelToken, Core, CoreError};
@@ -24,6 +24,7 @@ const NWT_S: &str = "nwt:1:0";
 const JOHN_DOC: i64 = 1001061147;
 const WIN_THE_BATTLE_DOC: i64 = 2026521;
 const W_CONTENTS_DOC: i64 = 2026527;
+const W_COVER_DOC: i64 = 2026528;
 const LL_TITLE_PAGE_DOC: i64 = 1102011094;
 
 /// A core with every reader fixture installed, shared by all tests (the
@@ -927,10 +928,6 @@ fn verse_runs(ch: &BibleChapter) -> Vec<&VerseRun> {
         .collect()
 }
 
-fn collapse(s: &str) -> String {
-    s.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
 #[test]
 fn john_3_blocks() {
     let ch = reader().bible_chapter(NWT_E, 43, 3).unwrap();
@@ -1063,7 +1060,8 @@ fn split_verse_has_a_run_in_each_paragraph() {
     assert_eq!(with_verse_3, 2);
 }
 
-/// In every chapter of both Bibles, each verse's runs joined are its text.
+/// In every chapter of both Bibles, each verse's text is exactly its runs
+/// joined with a single space.
 #[test]
 fn blocks_hold_every_verse() {
     for bible in [NWT_E, NWT_S] {
@@ -1081,12 +1079,7 @@ fn blocks_hold_every_verse() {
                         .map(|r| r.text.as_str())
                         .collect();
                     assert!(!texts.is_empty(), "{at}:{} has no run", v.verse);
-                    assert_eq!(
-                        collapse(&texts.join(" ")),
-                        collapse(&v.text),
-                        "{at}:{}",
-                        v.verse
-                    );
+                    assert_eq!(texts.join(" "), v.text, "{at}:{}", v.verse);
                 }
                 for r in &runs {
                     assert!(ch.verses.iter().any(|v| v.verse == r.verse), "{at}: {r:?}");
@@ -1094,4 +1087,167 @@ fn blocks_hold_every_verse() {
             }
         }
     }
+}
+
+fn located(location: Location, exact: bool) -> Located {
+    Located { location, exact }
+}
+
+fn locate(location: &Location) -> Located {
+    reader()
+        .locate(location)
+        .unwrap_or_else(|e| panic!("{location:?}: {e:?}"))
+}
+
+fn publication(pub_key: &str) -> Location {
+    Location {
+        pub_key: pub_key.into(),
+        doc_id: None,
+        book: None,
+        chapter: None,
+        verse: None,
+        paragraph: None,
+    }
+}
+
+#[test]
+fn locate_a_paragraph_or_document_that_exists() {
+    for at in [
+        document_location(W_E, WIN_THE_BATTLE_DOC, Some(7)),
+        document_location(W_E, WIN_THE_BATTLE_DOC, None),
+    ] {
+        assert_eq!(locate(&at), located(at, true));
+    }
+}
+
+#[test]
+fn locate_a_missing_paragraph_falls_back_to_the_largest_earlier_one() {
+    let at = |paragraph| document_location(W_E, WIN_THE_BATTLE_DOC, Some(paragraph));
+    // 75 is the document's largest positioned pid.
+    assert_eq!(locate(&at(999)), located(at(75), false));
+    // 35 has no position (it is not in the HTML).
+    let doc = reader().document(W_E, WIN_THE_BATTLE_DOC).unwrap();
+    let unpositioned = doc.paragraphs.iter().find(|p| p.paragraph == 35).unwrap();
+    assert_eq!(unpositioned.begin, None);
+    assert_eq!(locate(&at(35)), located(at(34), false));
+}
+
+#[test]
+fn locate_a_paragraph_before_any_falls_back_to_the_first_in_reading_order() {
+    let doc = reader().document(W_E, WIN_THE_BATTLE_DOC).unwrap();
+    let first = doc
+        .paragraphs
+        .iter()
+        .filter(|p| p.begin.is_some())
+        .min_by_key(|p| p.begin)
+        .unwrap()
+        .paragraph;
+    assert_eq!(first, 1);
+    let at = |paragraph| document_location(W_E, WIN_THE_BATTLE_DOC, Some(paragraph));
+    assert_eq!(locate(&at(0)), located(at(first), false));
+}
+
+#[test]
+fn locate_a_missing_document_falls_back_to_the_starting_document() {
+    // The first table-of-contents entry with a document: the issue's cover.
+    assert_eq!(
+        reader().toc(W_E).unwrap().iter().find_map(|e| e.doc_id),
+        Some(W_COVER_DOC)
+    );
+    let cover = document_location(W_E, W_COVER_DOC, None);
+    for paragraph in [None, Some(7)] {
+        assert_eq!(
+            locate(&document_location(W_E, 1, paragraph)),
+            located(cover.clone(), false)
+        );
+    }
+}
+
+#[test]
+fn locate_a_publication_opens_its_starting_document() {
+    assert_eq!(
+        locate(&publication(W_E)),
+        located(document_location(W_E, W_COVER_DOC, None), true)
+    );
+}
+
+#[test]
+fn locate_a_bible_verse_chapter_or_book_that_exists() {
+    let john = verse_location(NWT_E, 43, 3, Some(16));
+    let chapter = verse_location(NWT_E, 43, 3, None);
+    let book = Location {
+        chapter: None,
+        ..chapter.clone()
+    };
+    for at in [john, chapter, book] {
+        assert_eq!(locate(&at), located(at, true));
+    }
+}
+
+#[test]
+fn locate_a_missing_verse_falls_back_to_the_largest_earlier_one() {
+    // John 3 has 36 verses.
+    assert_eq!(
+        locate(&verse_location(NWT_E, 43, 3, Some(99))),
+        located(verse_location(NWT_E, 43, 3, Some(36)), false)
+    );
+    // Nothing comes before verse 0 but the chapter's first verse.
+    assert_eq!(
+        locate(&verse_location(NWT_E, 43, 3, Some(0))),
+        located(verse_location(NWT_E, 43, 3, Some(1)), false)
+    );
+}
+
+#[test]
+fn locate_a_missing_chapter_falls_back_to_the_books_first() {
+    for verse in [None, Some(16)] {
+        assert_eq!(
+            locate(&verse_location(NWT_E, 43, 99, verse)),
+            located(verse_location(NWT_E, 43, 1, None), false)
+        );
+    }
+}
+
+/// Both Bible fixtures are complete, so a book number past Revelation
+/// stands in for a book a partial Bible lacks.
+#[test]
+fn locate_a_missing_book_falls_back_to_the_publication() {
+    let at = Location {
+        pub_key: NWT_E.into(),
+        doc_id: None,
+        book: Some(67),
+        chapter: Some(1),
+        verse: Some(1),
+        paragraph: None,
+    };
+    assert_eq!(locate(&at), located(publication(NWT_E), false));
+    // A Bible location in a publication that is not a Bible.
+    let at = Location {
+        pub_key: W_E.into(),
+        ..at
+    };
+    assert_eq!(locate(&at), located(publication(W_E), false));
+}
+
+#[test]
+fn locate_rejects_malformed_locations_and_missing_publications() {
+    assert_invalid(
+        reader().locate(&document_location("w26", WIN_THE_BATTLE_DOC, Some(7))),
+        "",
+    );
+    let paragraph_alone = Location {
+        paragraph: Some(7),
+        ..publication(W_E)
+    };
+    assert_invalid(
+        reader().locate(&paragraph_alone),
+        "a paragraph needs a document",
+    );
+    let book_0 = Location {
+        book: Some(0),
+        ..verse_location(NWT_E, 43, 1, Some(1))
+    };
+    assert_invalid(reader().locate(&book_0), "start at 1");
+    assert_not_found(reader().locate(&document_location("it:0:0", 1200000005, None)));
+    assert_not_found(reader().locate(&publication("it:0:0")));
 }

@@ -54,6 +54,8 @@ const W_E: &str = "w26:0:20260800";
 const W_S: &str = "w26:1:20260800";
 const NWT_E: &str = "nwtsty:0:0";
 const NWT_S: &str = "nwtsty:1:0";
+/// The plain New World Translation, beside the study edition.
+const NWT_PLAIN_E: &str = "nwt:0:0";
 
 fn publication(pub_key: &str) -> Location {
     Location {
@@ -988,6 +990,36 @@ fn bookmarks_by_slot() {
         [vec![int(3)]]
     );
 
+    // Bibles get slots per edition (Decision 5): English nwt and nwtsty
+    // each keep their own slot 5.
+    ud.set_bookmark(NWT_E, 5, &verse(NWT_E, 43, 3, 16), "John 3:16", None)
+        .unwrap();
+    ud.set_bookmark(
+        NWT_PLAIN_E,
+        5,
+        &verse(NWT_PLAIN_E, 1, 1, 1),
+        "Gen 1:1",
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        ud.bookmarks(NWT_E).unwrap(),
+        [bm(NWT_E, 5, verse(NWT_E, 43, 3, 16), "John 3:16", None)]
+    );
+    assert_eq!(
+        ud.bookmarks(NWT_PLAIN_E).unwrap(),
+        [bm(
+            NWT_PLAIN_E,
+            5,
+            verse(NWT_PLAIN_E, 1, 1, 1),
+            "Gen 1:1",
+            None
+        )]
+    );
+    ud.remove_bookmark(NWT_PLAIN_E, 5).unwrap();
+    assert_eq!(ud.bookmarks(NWT_E).unwrap().len(), 1);
+    ud.remove_bookmark(NWT_E, 5).unwrap();
+
     assert!(is_invalid(ud.set_bookmark(
         W_E,
         10,
@@ -1293,6 +1325,69 @@ fn markdown_note_bodies_round_trip_byte_identical() {
         )
         .unwrap();
     assert_eq!(raw, body.as_bytes());
+}
+
+/// A core with the English Watchtower fixture installed.
+fn core_with_w_e(env: &Env) -> Core {
+    let core = env.core();
+    core.library()
+        .install(
+            W_E,
+            fixture("w_E_202608.jwpub"),
+            &|_, _| {},
+            &CancelToken::new(),
+        )
+        .unwrap();
+    core
+}
+
+/// A paragraph bookmark made the way the apps make one (its snippet the
+/// start of the paragraph's text) survives a backup and still locates
+/// exactly.
+#[test]
+fn paragraph_bookmark_round_trips_and_locates() {
+    // "You Can Win the Battle!", paragraph 7.
+    let (doc_id, pid) = (2026521, 7);
+    let env = Env::new();
+    let core = core_with_w_e(&env);
+    let doc = core.reader().document(W_E, doc_id).unwrap();
+    let anchor = doc.paragraphs.iter().find(|p| p.paragraph == pid).unwrap();
+    let snippet: String = anchor.text.chars().take(100).collect();
+    assert!(snippet.starts_with("AS SERVANTS of Jehovah"), "{snippet:?}");
+    let title = format!("{} ¶ {}", doc.title, anchor.label.as_deref().unwrap());
+    let at = paragraph(W_E, doc_id, pid);
+    core.userdata()
+        .set_bookmark(W_E, 2, &at, &title, Some(&snippet))
+        .unwrap();
+    let saved = core.userdata().bookmarks(W_E).unwrap();
+
+    let files = tempfile::tempdir().unwrap();
+    let out = files.path().join("out.jwlibrary");
+    core.userdata()
+        .export_backup(&out, &no_progress, &CancelToken::new())
+        .unwrap();
+    let fresh_env = Env::new();
+    let fresh = core_with_w_e(&fresh_env);
+    fresh
+        .userdata()
+        .import_backup(&out, &no_progress, &CancelToken::new())
+        .unwrap();
+
+    let back = fresh.userdata().bookmarks(W_E).unwrap();
+    assert_eq!(back, saved);
+    assert_eq!(back[0].location, at);
+    assert_eq!(back[0].snippet.as_deref(), Some(snippet.as_str()));
+    assert_eq!(
+        rows(
+            &fresh_env.raw(),
+            "SELECT l.DocumentId, b.BlockType, b.BlockIdentifier FROM Bookmark b \
+             JOIN Location l ON l.LocationId = b.LocationId"
+        ),
+        [vec![int(doc_id), int(1), int(pid.into())]]
+    );
+    let located = fresh.reader().locate(&back[0].location).unwrap();
+    assert!(located.exact);
+    assert_eq!(located.location, at);
 }
 
 #[test]
