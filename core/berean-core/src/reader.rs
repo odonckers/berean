@@ -546,8 +546,8 @@ impl Reader {
     /// the place is gone; it falls back, in order:
     ///
     /// - The publication alone (no document, no book): the publication's
-    ///   starting document (the first table-of-contents entry with one),
-    ///   exact.
+    ///   starting document (the first table-of-contents entry with one; for
+    ///   a periodical issue, its first article), exact.
     /// - A document with a paragraph that is in its HTML, or a document
     ///   alone: as saved, exact. A paragraph that is gone or not in the
     ///   HTML: the one in the HTML with the largest pid below it, else the
@@ -1585,10 +1585,45 @@ fn toc(publication: &Publication) -> Result<Vec<TocEntry>, CoreError> {
 }
 
 /// The document a whole publication opens at: the first entry of its table
-/// of contents that has a document (for a Watchtower issue, its cover).
-/// `None` when no entry has one.
+/// of contents that has a document, or for a periodical (an issue tag) its
+/// first article; see [`first_article`]. `None` when no entry has one.
 fn start_document(publication: &Publication) -> Result<Option<i64>, CoreError> {
-    Ok(toc(publication)?.into_iter().find_map(|e| e.doc_id))
+    let mut docs = toc(publication)?.into_iter().filter_map(|e| e.doc_id);
+    if publication.meta().issue_tag == 0 {
+        return Ok(docs.next());
+    }
+    let classes: HashMap<i64, String> = publication
+        .documents()?
+        .into_iter()
+        .map(|d| (d.meps_document_id, d.class))
+        .collect();
+    let docs: Vec<(i64, &str)> = docs
+        .map(|id| (id, classes.get(&id).map_or("", String::as_str)))
+        .collect();
+    Ok(first_article(&docs))
+}
+
+/// `Document.Class` of a study article, the cover, and the tables of
+/// contents.
+const STUDY_ARTICLE_CLASS: &str = "40";
+const COVER_CLASS: &str = "39";
+const CONTENTS_CLASSES: [&str; 2] = ["68", "78"];
+
+/// A periodical's first article among its table-of-contents documents
+/// (MEPS id, `Document.Class`), in order: the first study article (a
+/// Watchtower study edition), else the first document after the last cover
+/// or contents page, else the first document.
+fn first_article(docs: &[(i64, &str)]) -> Option<i64> {
+    let front = |class: &str| class == COVER_CLASS || CONTENTS_CLASSES.contains(&class);
+    let after_front = || {
+        let last_front = docs.iter().rposition(|d| front(d.1))?;
+        docs[last_front + 1..].first()
+    };
+    docs.iter()
+        .find(|d| d.1 == STUDY_ARTICLE_CLASS)
+        .or_else(after_front)
+        .or(docs.first())
+        .map(|d| d.0)
 }
 
 /// Where paragraph `paragraph` of the document with local id `document_id`
@@ -2503,6 +2538,20 @@ mod tests {
             );
         }
         assert!(study_links(&format!("{EMPTY}\n")).unwrap().is_empty());
+    }
+
+    #[test]
+    fn periodicals_open_at_their_first_article() {
+        // A study edition: the first study article, wherever it is.
+        let study = [(1, "39"), (2, "68"), (3, "13"), (4, "40"), (5, "40")];
+        assert_eq!(first_article(&study), Some(4));
+        // Otherwise the first document after the last cover or contents.
+        let issue = [(1, "39"), (2, "94"), (3, "78"), (4, "6"), (5, "6")];
+        assert_eq!(first_article(&issue), Some(4));
+        // Nothing after the front pages, or none at all: the first document.
+        assert_eq!(first_article(&[(1, "39"), (2, "68")]), Some(1));
+        assert_eq!(first_article(&[(1, "6"), (2, "6")]), Some(1));
+        assert_eq!(first_article(&[]), None);
     }
 
     #[test]

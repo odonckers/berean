@@ -15,6 +15,10 @@ c8253d47d03ccab3c8e44f38f9bd373c4b193682146f7b1b7b87e00775cbd514  w_S_202608.jwp
 0b8cf25cc56c6e56caba0b4443019adf92141dc1b89f567445a17f1e384aeea5  nwt_E.jwpub  https://cfp2.jw-cdn.org/a/a2a925/4/o/nwt_E.jwpub
 9fa76bf347ddbb09992ade2bbdebf74131ff5c0e1059ebfc0c94b3b67060b93e  nwt_S.jwpub  https://cfp2.jw-cdn.org/a/03c55e4/3/o/nwt_S.jwpub
 9ecdd3e7e5bf347e34512dc5448bf88d613d97dee8197dce7ddb9bb3f438c74c  te_E.jwpub  https://cfp2.jw-cdn.org/a/e59ecb2/2/o/te_E.jwpub
+# Awake! November 2025 (berean-core/tests/reader.rs): a periodical that is
+# not a study edition, so it opens at the first article after its cover,
+# introduction and contents.
+95f789d4137bd4ee1888e46a387c78edb089d110871bd605f2ccfbd6eb23f727  g_E_202511.jwpub  https://cfp2.jw-cdn.org/a/5fe6dc6/2/o/g_E_202511.jwpub
 # The publication catalog snapshot. Its GUID rotates with every new catalog
 # and the CDN may drop old snapshots. Re-pinning means updating this line and
 # the expectations in berean-core/tests/catalog.rs (revision level, titles,

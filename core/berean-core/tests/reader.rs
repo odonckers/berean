@@ -17,6 +17,7 @@ const W_E: &str = "w26:0:20260800";
 const W_S: &str = "w26:1:20260800";
 const LL_E: &str = "ll:0:0";
 const TE_E: &str = "te:0:0";
+const G_E: &str = "g25:0:20251100";
 const NWT_E: &str = "nwt:0:0";
 const NWT_S: &str = "nwt:1:0";
 
@@ -25,6 +26,8 @@ const JOHN_DOC: i64 = 1001061147;
 const WIN_THE_BATTLE_DOC: i64 = 2026521;
 const W_CONTENTS_DOC: i64 = 2026527;
 const W_COVER_DOC: i64 = 2026528;
+const W_FIRST_STUDY_DOC: i64 = 2026520;
+const G_FIRST_ARTICLE_DOC: i64 = 102025003;
 const LL_TITLE_PAGE_DOC: i64 = 1102011094;
 
 /// A core with every reader fixture installed, shared by all tests (the
@@ -43,6 +46,7 @@ fn core() -> &'static Core {
             (W_S, "w_S_202608.jwpub"),
             (LL_E, "ll_E.jwpub"),
             (TE_E, "te_E.jwpub"),
+            (G_E, "g_E_202511.jwpub"),
             (NWT_E, "nwt_E.jwpub"),
             (NWT_S, "nwt_S.jwpub"),
         ] {
@@ -1149,26 +1153,46 @@ fn locate_a_paragraph_before_any_falls_back_to_the_first_in_reading_order() {
 
 #[test]
 fn locate_a_missing_document_falls_back_to_the_starting_document() {
-    // The first table-of-contents entry with a document: the issue's cover.
-    assert_eq!(
-        reader().toc(W_E).unwrap().iter().find_map(|e| e.doc_id),
-        Some(W_COVER_DOC)
-    );
-    let cover = document_location(W_E, W_COVER_DOC, None);
+    let start = document_location(W_E, W_FIRST_STUDY_DOC, None);
     for paragraph in [None, Some(7)] {
         assert_eq!(
             locate(&document_location(W_E, 1, paragraph)),
-            located(cover.clone(), false)
+            located(start.clone(), false)
         );
     }
 }
 
 #[test]
 fn locate_a_publication_opens_its_starting_document() {
+    // A study edition opens at its first study article, not at the cover
+    // that comes first in its table of contents.
+    assert_eq!(
+        reader().toc(W_E).unwrap().iter().find_map(|e| e.doc_id),
+        Some(W_COVER_DOC)
+    );
     assert_eq!(
         locate(&publication(W_E)),
-        located(document_location(W_E, W_COVER_DOC, None), true)
+        located(document_location(W_E, W_FIRST_STUDY_DOC, None), true)
     );
+    // Another issue opens at the first article after its cover,
+    // introduction and contents.
+    assert_eq!(
+        locate(&publication(G_E)),
+        located(document_location(G_E, G_FIRST_ARTICLE_DOC, None), true)
+    );
+    // A non-periodical opens at its first table-of-contents document.
+    for pub_key in [LL_E, TE_E] {
+        let first = reader()
+            .toc(pub_key)
+            .unwrap()
+            .into_iter()
+            .find_map(|e| e.doc_id);
+        assert_eq!(
+            locate(&publication(pub_key)),
+            located(document_location(pub_key, first.unwrap(), None), true),
+            "{pub_key}"
+        );
+    }
 }
 
 #[test]
