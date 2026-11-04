@@ -58,6 +58,16 @@ import {
   verseReference,
 } from '@/reader/bible-nav';
 import { BiblePicker } from '@/reader/bible-picker';
+import { BookmarkButton, BookmarkPicker, useBookmarkPicker } from '@/reader/bookmark-picker';
+import {
+  type BookmarkRow,
+  bookmarkJump,
+  bookmarkRows,
+  bookmarkSnippet,
+  jumpAnnouncement,
+  saveTarget,
+  toolbarBookmark,
+} from '@/reader/bookmarks';
 import { copiedVerse, copyConfirmation, verseText } from '@/reader/copy-verse';
 import { HighlightSheet } from '@/reader/highlight-sheet';
 import { highlightActionLabel, highlightSpokenName, segmentHighlight } from '@/reader/highlights';
@@ -94,6 +104,7 @@ import {
 import { MARKER_GUTTER, NoteBadge, NoteMarker } from '@/reader/note-marker';
 import { type PaneNote, StudyPane, moveAccessibilityFocus } from '@/reader/study-pane';
 import { useChapterHighlights } from '@/reader/use-chapter-highlights';
+import { useBookmarks } from '@/reader/use-bookmarks';
 import { useChapterNotes } from '@/reader/use-chapter-notes';
 import { markersByVerse, paneStudy, studyActionLabel } from '@/reader/verse-study';
 
@@ -188,6 +199,33 @@ export function BibleChapterView({
   const closing = current?.closing ?? false;
   // The verse whose study is open: not once its close is asked for.
   const open = closing ? undefined : selected;
+
+  // Bookmarks (spec §3): the button beside Aa saves the selected verse while
+  // the study pane is open, else the chapter, and is filled while that is
+  // in one of the publication's 10 slots.
+  const bookmarks = useBookmarks(pubKey);
+  const bookmarkPicker = useBookmarkPicker();
+  const target = saveTarget(heading, { book, chapter }, open);
+  const slotRows: readonly BookmarkRow[] | { message: string } = bookmarks.list.ok
+    ? bookmarkRows(bookmarks.list.value, target.place)
+    : { message: bookmarks.list.message };
+  const toolbarState =
+    'message' in slotRows ? { filled: false, value: undefined } : toolbarBookmark(slotRows, target.reference);
+  const openBookmarks = () => {
+    if (!bookmarkPicker.open) bookmarks.refresh();
+    bookmarkPicker.toggle();
+  };
+  const toolbar = (
+    <View style={styles.toolbar}>
+      {aa}
+      <BookmarkButton
+        buttonRef={bookmarkPicker.buttonRef}
+        filled={toolbarState.filled}
+        value={toolbarState.value}
+        onPress={openBookmarks}
+      />
+    </View>
+  );
 
   // The reader titles the book itself, so the core's book title block goes.
   const chapterContent = useMemo(() => {
@@ -482,6 +520,31 @@ export function BibleChapterView({
     if (arrivalVerse !== undefined) arrive(arrivalVerse);
   }, [arrivalVerse]);
 
+  // A bookmark jump (spec §3.3), by its arrival: each jump is a new one,
+  // even to the verse already landed, and lands once, in its chapter (after
+  // the chapter change it may have asked for, which clears a verse waiting
+  // from before). A verse lands as a search hit does; a chapter at its top,
+  // focus on its first paragraph.
+  const [jump, setJump] = useState<{ chapterKey: string; verse: number | undefined; arrival: number }>();
+  const arrivals = useRef(0);
+  const landedJump = useRef<number | undefined>(undefined);
+  const land = useEffectEvent((verse: number | undefined) => {
+    if (verse !== undefined) {
+      pendingVerse.current = verse;
+      scrollToPending();
+      return;
+    }
+    viewport.current.offset = 0;
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+    const first = chapterContent.findIndex((block) => block.kind === 'paragraph');
+    requestAnimationFrame(() => moveAccessibilityFocus(blockRefs.current.get(first)));
+  });
+  useEffect(() => {
+    if (jump === undefined || jump.chapterKey !== chapterKey || landedJump.current === jump.arrival) return;
+    landedJump.current = jump.arrival;
+    land(jump.verse);
+  }, [jump, chapterKey]);
+
   // Spec §5, as the opening pane lays out: a verse in the bottom 35%
   // scrolls so its first line lands about 20% from the top, alongside the
   // open animation, and the reader scrolls (or the pane opens shorter) so
@@ -533,6 +596,35 @@ export function BibleChapterView({
     if (to.book !== book || to.chapter !== chapter) goToChapter(to);
   };
 
+  // Saving the target into an empty slot: its reference as the title, and
+  // the first line of its text (a chapter's is its first verse's).
+  const saveBookmark = (slot: number) => {
+    const verse = target.place.verse ?? verses.find((v) => v > 0);
+    const text = verse === undefined ? '' : verseText(chapterContent, verse);
+    return bookmarks.save(slot, target.place, target.reference, bookmarkSnippet(text));
+  };
+
+  // Jumping to a filled slot, in this publication: its chapter if it is
+  // another (no animated travel), its verse marked as landed. The study
+  // pane doesn't open.
+  const jumpTo = (row: Extract<BookmarkRow, { kind: 'filled' }>) => {
+    bookmarkPicker.close();
+    const to = bookmarkJump(row.location, { book, chapter });
+    if (to === undefined) return;
+    arrivals.current += 1;
+    const arrival = arrivals.current;
+    const key = keyForChapter(pubKey, to);
+    setJump({ chapterKey: key, verse: to.verse, arrival });
+    const verse = to.verse;
+    setLanded((prev) =>
+      verse === undefined
+        ? undefined
+        : landedVerse(prev, { kind: 'arrive', chapterKey: key, verse, arrival, source: 'bookmark' }),
+    );
+    AccessibilityInfo.announceForAccessibilityWithOptions(jumpAnnouncement(row.number, row.title), { queue: true });
+    if (!to.sameChapter) goToChapter(to);
+  };
+
   // While the pane is open, back closes it first: the Android back button
   // here (also on the Read tab's root, where nothing is removed), and the
   // header back button, the iOS swipe and predictive back through
@@ -564,14 +656,16 @@ export function BibleChapterView({
   // chapter heading; the iOS look has no navigation title, the chapter
   // heading in the content is the title. The title (material) and the
   // in-content heading (iOS) open the book and chapter picker.
-  // Aa opens the reading appearance picker. Pending, as their features
-  // don't exist yet: bookmark, menu, overflow.
+  // Aa opens the reading appearance picker, and the bookmark button beside
+  // it the publication's bookmarks. Pending, as their features don't exist
+  // yet: menu, overflow.
   const screenOptions = (
     <Stack.Screen
       options={{
         title: material ? heading : '',
         headerLargeTitleEnabled: false,
-        headerRight: headerHidden ? undefined : () => aa,
+        // Bookmarks need the chapter: where it couldn't be read, only Aa.
+        headerRight: headerHidden ? undefined : () => (loaded.ok ? toolbar : aa),
         headerTitle:
           material && bookList !== undefined
             ? () => (
@@ -681,6 +775,7 @@ export function BibleChapterView({
                 verseNotesSubject(verse, notesOn(verse), spokenHighlight(verse)),
               ),
               verse === landedHere,
+              landed?.source,
             ),
           },
           ...(notesOn(verse) > 0 ? [{ name: `${NOTES_ACTION}${verse}`, label: showNotesLabel(verse) }] : []),
@@ -902,8 +997,9 @@ export function BibleChapterView({
           scrollToPending();
         }}
       >
-        {/* With no native header, Aa sits at the column's trailing edge, above the heading. */}
-        {headerHidden && <View style={styles.aaRow}>{aa}</View>}
+        {/* With no native header, Aa and the bookmark button sit at the
+            column's trailing edge, above the heading. */}
+        {headerHidden && <View style={styles.aaRow}>{toolbar}</View>}
         {/* Per the reader frames: the iOS look titles the chapter in the
             content; the material look's title is the top app bar's only. */}
         {material ? null : bookList !== undefined ? (
@@ -943,6 +1039,16 @@ export function BibleChapterView({
         </View>
       </ReadingColumn>
       {picker}
+      <BookmarkPicker
+        open={bookmarkPicker.open}
+        onClose={bookmarkPicker.close}
+        buttonRef={bookmarkPicker.buttonRef}
+        title={title}
+        target={target}
+        rows={slotRows}
+        onSave={saveBookmark}
+        onJump={jumpTo}
+      />
       {actionsHere !== undefined && (
         <HighlightSheet
           visible
@@ -977,6 +1083,7 @@ const styles = StyleSheet.create({
   titleButton: { minHeight: 48, justifyContent: 'center' },
   appBarTitle: { letterSpacing: 0 },
   navRow: { flexDirection: 'row', alignItems: 'center' },
+  toolbar: { flexDirection: 'row', alignItems: 'center' },
   // The column's gap would push the heading down; the button's own height is enough.
   aaRow: { alignItems: 'flex-end', marginBottom: -spacing.md },
   navSpacer: { flex: 1 },

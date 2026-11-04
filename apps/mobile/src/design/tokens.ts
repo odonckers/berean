@@ -42,6 +42,7 @@ export const spacing = {
 
 export const radii = {
   chip: 6,
+  iosSheet: 10, // the iOS look's sheet at a detent (bookmarks spec §4)
   materialChip: 8, // M3 assist/filter/input chips
   card: 12,
   studyCard: 14, // Studyspace cards, both looks (guide card)

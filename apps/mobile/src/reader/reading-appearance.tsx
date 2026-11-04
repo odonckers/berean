@@ -1,21 +1,10 @@
 import { useFocusEffect } from 'expo-router';
 import { type ComponentRef, type ReactNode, type RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { BackHandler, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
-import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
-import { scheduleOnRN } from 'react-native-worklets';
 
-import { ScaledSymbol } from '@/components/scaled-symbol';
-import { schemeOf } from '@/design/appearance';
+import { PopoverCard, SheetCloseButton, SheetHandle, SlidingSheet, useSheetChrome } from '@/components/sheet';
 import { AppearanceGroups } from '@/design/appearance-groups';
-import {
-  dragCloses,
-  QUICK_PICKER_WIDTH,
-  quickPickerLayout,
-  quickPickerPlacement,
-  quickPickerSheetSurface,
-  sheetHeight,
-} from '@/design/quick-picker';
+import { QUICK_PICKER_WIDTH, quickPickerLayout, quickPickerPlacement, sheetHeight } from '@/design/quick-picker';
 import { sideSheetEdge } from '@/design/chrome';
 import { useContentInsets } from '@/design/tab-chrome';
 import { useBerean, useSolidChrome } from '@/design/theme';
@@ -39,9 +28,6 @@ import { moveAccessibilityFocus } from '@/reader/study-pane';
 // the sheet just appears and goes. Escape reaches Back on Android.
 
 export const READING_APPEARANCE_TITLE = 'Reading appearance';
-
-const OPEN_MS = 250;
-const CLOSE_MS = 200;
 
 type ButtonRef = RefObject<ComponentRef<typeof View> | null>;
 
@@ -170,48 +156,6 @@ function Title() {
   );
 }
 
-/** The close button: an M3 icon button, or the iOS look's round ×. */
-function CloseButton({ onClose }: { onClose: () => void }) {
-  const { look, colors, m3 } = useBerean();
-  const material = look === 'material';
-  const target = material ? 48 : 44;
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel="Close"
-      onPress={onClose}
-      hitSlop={material ? undefined : spacing.xs}
-      style={({ pressed }) => [
-        styles.close,
-        { width: target, height: target, opacity: pressed ? 0.6 : 1 },
-        !material && { backgroundColor: colors.surface },
-      ]}
-    >
-      <ScaledSymbol
-        name={{ ios: 'xmark', android: 'close' }}
-        size={material ? 24 : 15}
-        tintColor={material ? m3.onSurfaceVariant : colors.textSecondary}
-        accessible={false}
-      />
-    </Pressable>
-  );
-}
-
-/**
- * The sheet's and popover's chrome: never accent-tinted, and solid with a
- * 1px outline under Reduce Transparency or Increase Contrast (rule 5,
- * solidChrome). Its surface is already opaque.
- */
-function useChrome() {
-  const { look, colors, m3, mode } = useBerean();
-  const solid = useSolidChrome();
-  return {
-    material: look === 'material',
-    background: quickPickerSheetSurface(look, schemeOf(mode), m3, colors),
-    edge: solid ? { borderWidth: 1, borderColor: colors.outline } : undefined,
-  };
-}
-
 function BottomSheet({
   open,
   onClose,
@@ -221,11 +165,10 @@ function BottomSheet({
   onClose: () => void;
   area: { width: number; height: number };
 }) {
-  const { look, colors, m3, type } = useBerean();
-  const { material, background, edge } = useChrome();
+  const { look, type } = useBerean();
+  const { material, background, edge } = useSheetChrome();
   const { fontScale } = useWindowDimensions();
   const insets = useContentInsets();
-  const reducedMotion = useReducedMotion();
   const { layout, detent, accentGrid } = quickPickerLayout(area.width - 2 * spacing.lg, fontScale, look);
   const height = sheetHeight(detent, {
     areaHeight: area.height,
@@ -233,81 +176,33 @@ function BottomSheet({
     lineHeight: (type.reading.scripture.lineHeight ?? 0) * fontScale,
   });
 
-  // Mounted while open and while it slides away.
-  const [mounted, setMounted] = useState(open);
-  // Under Reduce Motion it goes at once.
-  if (open !== mounted && (open || reducedMotion)) setMounted(open);
-  const offset = useSharedValue(height);
-  useEffect(() => {
-    if (open) {
-      offset.set(reducedMotion ? 0 : withTiming(0, { duration: OPEN_MS }));
-    } else if (!reducedMotion) {
-      offset.set(
-        withTiming(height, { duration: CLOSE_MS }, (finished) => {
-          if (finished) scheduleOnRN(setMounted, false);
-        }),
-      );
-    }
-    // A new height (rotation, text size) while open moves nothing.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, reducedMotion]);
-
-  const drag = usePanGesture({
-    enabled: open,
-    activeOffsetY: [-10, 10],
-    onUpdate: (e) => {
-      'worklet';
-      offset.set(Math.max(0, e.translationY));
-    },
-    onDeactivate: (e) => {
-      'worklet';
-      if (dragCloses(e.translationY, e.velocityY)) scheduleOnRN(onClose);
-      else offset.set(withTiming(0, { duration: CLOSE_MS }));
-    },
-  });
-
-  const slide = useAnimatedStyle(() => ({ transform: [{ translateY: offset.get() }] }));
-  if (!mounted) return null;
-
   return (
-    <Animated.View
-      onAccessibilityEscape={onClose}
+    <SlidingSheet
+      open={open}
+      onClose={onClose}
+      height={height}
       style={[
-        styles.sheet,
-        { height, backgroundColor: background, borderTopLeftRadius: radii.sheet, borderTopRightRadius: radii.sheet },
+        styles.sheetEdges,
+        { backgroundColor: background, borderTopLeftRadius: radii.sheet, borderTopRightRadius: radii.sheet },
         edge,
-        slide,
       ]}
-    >
-      <GestureDetector gesture={drag}>
-        <View>
-          {/* The drag handle, which TalkBack and VoiceOver can also press to close. */}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={material ? 'Close' : 'Close sheet'}
-            onPress={onClose}
-            style={styles.handleArea}
-          >
-            <View
-              style={[
-                material ? styles.materialHandle : styles.iosHandle,
-                { backgroundColor: material ? m3.onSurfaceVariant : colors.textSecondary },
-              ]}
-            />
-          </Pressable>
+      header={
+        <>
+          <SheetHandle onClose={onClose} />
           <View style={styles.header}>
             <Title />
-            {!material && <CloseButton onClose={onClose} />}
+            {!material && <SheetCloseButton onClose={onClose} />}
           </View>
-        </View>
-      </GestureDetector>
+        </>
+      }
+    >
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + spacing.lg }]}
       >
         <AppearanceGroups layout={layout} accentGrid={accentGrid} sections="plain" />
       </ScrollView>
-    </Animated.View>
+    </SlidingSheet>
   );
 }
 
@@ -315,7 +210,7 @@ function SideSheet({ onClose }: { onClose: () => void }) {
   const { look, colors, m3 } = useBerean();
   const { fontScale } = useWindowDimensions();
   const insets = useContentInsets();
-  const { background } = useChrome();
+  const { background } = useSheetChrome();
   const solid = useSolidChrome();
   const { layout, accentGrid } = quickPickerLayout(QUICK_PICKER_WIDTH - 2 * spacing.lg, fontScale, look);
   return (
@@ -328,7 +223,7 @@ function SideSheet({ onClose }: { onClose: () => void }) {
     >
       <View style={[styles.header, styles.sideHeader]}>
         <Title />
-        <CloseButton onClose={onClose} />
+        <SheetCloseButton onClose={onClose} />
       </View>
       <ScrollView contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + spacing.lg }]}>
         <AppearanceGroups layout={layout} accentGrid={accentGrid} sections="plain" />
@@ -348,7 +243,6 @@ function Popover({
 }) {
   const { look } = useBerean();
   const { fontScale } = useWindowDimensions();
-  const { background, edge } = useChrome();
   const width = Math.min(QUICK_PICKER_WIDTH, area.width - 2 * spacing.lg);
   const { layout, accentGrid } = quickPickerLayout(width - 2 * spacing.lg, fontScale, look);
   // Until the button is measured it hangs from the top trailing corner,
@@ -356,43 +250,31 @@ function Popover({
   const top = anchor?.top ?? spacing.sm;
   const right = Math.min(anchor?.right ?? spacing.lg, area.width - width - spacing.sm);
   return (
-    <View
-      onAccessibilityEscape={onClose}
-      style={[
-        styles.popover,
-        { top, right, width, maxHeight: area.height - top - spacing.lg, backgroundColor: background },
-        edge,
-      ]}
+    <PopoverCard
+      top={top}
+      right={right}
+      width={width}
+      maxHeight={area.height - top - spacing.lg}
+      radius={radii.studyPane}
+      onClose={onClose}
     >
       <View style={[styles.header, styles.sideHeader]}>
         <Title />
-        <CloseButton onClose={onClose} />
+        <SheetCloseButton onClose={onClose} />
       </View>
       <ScrollView contentContainerStyle={[styles.body, { paddingBottom: spacing.lg }]}>
         <AppearanceGroups layout={layout} accentGrid={accentGrid} sections="plain" />
       </ScrollView>
-    </View>
+    </PopoverCard>
   );
 }
-
-const shadow = {
-  shadowColor: '#000',
-  shadowOpacity: 0.18,
-  shadowRadius: 16,
-  shadowOffset: { width: 0, height: 4 },
-  elevation: 6,
-} as const;
 
 const styles = StyleSheet.create({
   row: { flex: 1, flexDirection: 'row' },
   fill: { flex: 1 },
   aa: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.sm },
   aaText: { fontWeight: '600' },
-  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, ...shadow },
-  // M3 drag handle: 32×4 in a 48dp target. iOS grabber: 36×5.
-  handleArea: { minHeight: 48, minWidth: 48, alignItems: 'center', justifyContent: 'center', alignSelf: 'center' },
-  materialHandle: { width: 32, height: 4, borderRadius: 2, opacity: 0.4 },
-  iosHandle: { width: 36, height: 5, borderRadius: 2.5, opacity: 0.5 },
+  sheetEdges: { left: 0, right: 0 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -402,7 +284,5 @@ const styles = StyleSheet.create({
   },
   sideHeader: { paddingTop: spacing.md, paddingRight: spacing.sm },
   title: { flex: 1 },
-  close: { alignItems: 'center', justifyContent: 'center', borderRadius: radii.capsule },
   body: { paddingHorizontal: spacing.lg, gap: spacing.xl },
-  popover: { position: 'absolute', borderRadius: radii.studyPane, ...shadow },
 });
