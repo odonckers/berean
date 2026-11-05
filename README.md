@@ -34,7 +34,9 @@ The tests use real JW files pinned by SHA-256 in `core/scripts/fixtures.txt`. Ol
 
 ### Apple apps (on a Mac)
 
-Requires Xcode 26 and [XcodeGen](https://github.com/yonaskolb/XcodeGen):
+Requires Xcode 27 (iOS 27 SDK) and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
+The deployment target is iOS 26.0 / macOS 26.0 — we build with the newer SDK
+and target 26.
 
 ```sh
 rustup target add aarch64-apple-ios aarch64-apple-ios-sim aarch64-apple-darwin x86_64-apple-darwin
@@ -44,3 +46,11 @@ apple/scripts/build-xcframework.sh      # builds BereanCoreFFI.xcframework + Swi
 xcodegen generate --spec apple/project.yml
 open apple/Berean.xcodeproj
 ```
+
+`build-xcframework.sh --platforms ios|macos|all` picks which slices to build,
+and `apple/scripts/test.sh [ios]` runs the Cupertino package's tests.
+
+`apple/Apps/iOS` is the iOS app. `apple/Apps/Shared` and the `Berean-macOS`
+target belong to the macOS work and are temporary scaffold it will replace.
+See [apple/README.md](apple/README.md) for the layout and the `xcodebuild`
+invocations.

@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
 import PackageDescription
 
 let package = Package(
@@ -26,6 +26,10 @@ let package = Package(
         ),
         .target(
             name: "CupertinoUI",
+            dependencies: ["CupertinoCore"]
+        ),
+        .testTarget(
+            name: "CupertinoCoreTests",
             dependencies: ["CupertinoCore"]
         ),
     ]
