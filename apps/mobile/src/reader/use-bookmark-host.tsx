@@ -5,6 +5,7 @@ import { AccessibilityInfo } from 'react-native';
 import { useBerean } from '@/design/theme';
 import { spacing } from '@/design/tokens';
 import { reader } from '@/ffi/core';
+import { localDay } from '@/ffi/local-day';
 import { load } from '@/library/load';
 import { UndoBar, useUndoBarBottom } from '@/notes/undo-bar';
 import { BookmarkButton, BookmarkPicker, useBookmarkPicker } from '@/reader/bookmark-picker';
@@ -50,7 +51,7 @@ const heldOf = (pubKey: string, row: FilledRow) => ({
 
 /** Reader.locate's answer for a saved location, or that it threw. A sync call that reads at most one chapter or document. */
 export function locateNow(location: BookmarkLocation): LocateResult {
-  const read = load(() => reader().locate(location));
+  const read = load(() => reader().locate(location, localDay()));
   return read.ok ? { ok: true, value: read.value } : { ok: false };
 }
 

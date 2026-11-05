@@ -547,7 +547,8 @@ impl Reader {
     ///
     /// - The publication alone (no document, no book): the publication's
     ///   starting document (the first table-of-contents entry with one; for
-    ///   a periodical issue, its first article), exact.
+    ///   a periodical issue, its first article; for a Meeting Workbook, the
+    ///   week holding `today`, else its first week), exact.
     /// - A document with a paragraph that is in its HTML, or a document
     ///   alone: as saved, exact. A paragraph that is gone or not in the
     ///   HTML: the one in the HTML with the largest pid below it, else the
@@ -559,10 +560,22 @@ impl Reader {
     ///   first verse. A chapter that is gone: the book's first chapter, no
     ///   verse. A book that is gone: the publication alone. None is exact.
     ///
+    /// `today` is the app's local civil date as `YYYYMMDD` (e.g. 20261007):
+    /// the device's local calendar date, not UTC. It is used only when
+    /// `location` names a whole Meeting Workbook (`doc_id`/`book` both
+    /// `None`); otherwise ignored. `None` keeps the start document (for a
+    /// Meeting Workbook: the first week).
+    ///
     /// Opens at most one document's paragraph rows or one chapter. A
-    /// malformed key or location => `Invalid`; not installed => `NotFound`.
-    pub fn locate(&self, location: &Location) -> Result<Located, CoreError> {
+    /// malformed key or location, or a `today` that is not a real Gregorian
+    /// day => `Invalid`; not installed => `NotFound`.
+    pub fn locate(&self, location: &Location, today: Option<i32>) -> Result<Located, CoreError> {
         crate::userdata::check_location(location)?;
+        if let Some(d) = today {
+            if !crate::instant::valid_yyyymmdd(d) {
+                return Err(CoreError::Invalid(format!("not a YYYYMMDD day: {d}")));
+            }
+        }
         self.library()
             .with_publication(&location.pub_key, |publication| {
                 if location.book.is_some() {
@@ -581,10 +594,12 @@ impl Reader {
                 };
                 let found = match location.doc_id {
                     Some(doc_id) => find_document(publication, doc_id)?,
-                    None => return Ok(at(start_document(publication)?, None, true)),
+                    None => return Ok(at(start_document(publication, today)?, None, true)),
                 };
                 let Some(summary) = found else {
-                    return Ok(at(start_document(publication)?, None, false));
+                    // A missing document falls back to the publication start;
+                    // `today` applies only to a whole-publication open.
+                    return Ok(at(start_document(publication, None)?, None, false));
                 };
                 let (paragraph, exact) = match location.paragraph {
                     Some(p) => locate_paragraph(publication, summary.document_id, p)?,
@@ -1586,8 +1601,29 @@ fn toc(publication: &Publication) -> Result<Vec<TocEntry>, CoreError> {
 
 /// The document a whole publication opens at: the first entry of its table
 /// of contents that has a document, or for a periodical (an issue tag) its
-/// first article; see [`first_article`]. `None` when no entry has one.
-fn start_document(publication: &Publication) -> Result<Option<i64>, CoreError> {
+/// first article; see [`first_article`]. A Meeting Workbook opens at the
+/// week holding `today`, else its first week ([`mwb_week`]), else as a
+/// periodical. `None` when no entry has one.
+fn start_document(publication: &Publication, today: Option<i32>) -> Result<Option<i64>, CoreError> {
+    let kind = PubKind::from_publication_type(&publication.meta().publication_type);
+    if kind == PubKind::MeetingWorkbook {
+        let meps: HashMap<i64, i64> = publication
+            .documents()?
+            .into_iter()
+            .map(|d| (d.document_id, d.meps_document_id))
+            .collect();
+        let weeks: Vec<(i64, i32, i32)> = publication
+            .dated_texts()?
+            .into_iter()
+            .filter_map(|t| {
+                let id = *meps.get(&t.document_id)?;
+                Some((id, t.first_date_offset, t.last_date_offset))
+            })
+            .collect();
+        if let Some(week) = mwb_week(&weeks, today) {
+            return Ok(Some(week));
+        }
+    }
     let mut docs = toc(publication)?.into_iter().filter_map(|e| e.doc_id);
     if publication.meta().issue_tag == 0 {
         return Ok(docs.next());
@@ -1601,6 +1637,18 @@ fn start_document(publication: &Publication) -> Result<Option<i64>, CoreError> {
         .map(|id| (id, classes.get(&id).map_or("", String::as_str)))
         .collect();
     Ok(first_article(&docs))
+}
+
+/// The MEPS document a Meeting Workbook opens at, given its dated weeks
+/// `(MEPS id, first day, last day)` (inclusive `YYYYMMDD`) ordered by first
+/// day: the week holding `today`, else (`None` or out of range) the first
+/// week. `None` when there are no weeks; the caller falls back to the cover
+/// or table of contents.
+fn mwb_week(weeks: &[(i64, i32, i32)], today: Option<i32>) -> Option<i64> {
+    today
+        .and_then(|d| weeks.iter().find(|w| (w.1..=w.2).contains(&d)))
+        .or(weeks.first())
+        .map(|w| w.0)
 }
 
 /// `Document.Class` of a study article, the cover, and the tables of
@@ -2552,6 +2600,30 @@ mod tests {
         assert_eq!(first_article(&[(1, "39"), (2, "68")]), Some(1));
         assert_eq!(first_article(&[(1, "6"), (2, "6")]), Some(1));
         assert_eq!(first_article(&[]), None);
+    }
+
+    #[test]
+    fn meeting_workbooks_open_at_todays_week() {
+        let weeks = [
+            (252, 20260907, 20260913),
+            (253, 20260914, 20260920),
+            (256, 20261005, 20261011),
+        ];
+        // Mid-week, and both ends of a week.
+        assert_eq!(mwb_week(&weeks, Some(20261007)), Some(256));
+        assert_eq!(mwb_week(&weeks, Some(20261005)), Some(256));
+        assert_eq!(mwb_week(&weeks, Some(20261011)), Some(256));
+        assert_eq!(mwb_week(&weeks, Some(20260914)), Some(253));
+        assert_eq!(mwb_week(&weeks, Some(20260913)), Some(252));
+        // Before the first week, after the last, in a gap, or no date: the
+        // first week.
+        assert_eq!(mwb_week(&weeks, Some(20260906)), Some(252));
+        assert_eq!(mwb_week(&weeks, Some(20261201)), Some(252));
+        assert_eq!(mwb_week(&weeks, Some(20260930)), Some(252));
+        assert_eq!(mwb_week(&weeks, None), Some(252));
+        // No weeks: the caller's fallback.
+        assert_eq!(mwb_week(&[], Some(20261007)), None);
+        assert_eq!(mwb_week(&[], None), None);
     }
 
     #[test]

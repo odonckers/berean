@@ -18,6 +18,7 @@ const W_S: &str = "w26:1:20260800";
 const LL_E: &str = "ll:0:0";
 const TE_E: &str = "te:0:0";
 const G_E: &str = "g25:0:20251100";
+const MWB_E: &str = "mwb26:0:20260900";
 const NWT_E: &str = "nwt:0:0";
 const NWT_S: &str = "nwt:1:0";
 
@@ -29,6 +30,8 @@ const W_COVER_DOC: i64 = 2026528;
 const W_FIRST_STUDY_DOC: i64 = 2026520;
 const G_FIRST_ARTICLE_DOC: i64 = 102025003;
 const LL_TITLE_PAGE_DOC: i64 = 1102011094;
+const MWB_FIRST_WEEK_DOC: i64 = 202026252;
+const MWB_OCTOBER_5_DOC: i64 = 202026256;
 
 /// A core with every reader fixture installed, shared by all tests (the
 /// Bibles are large). It lives under Cargo's per-target temp dir and is
@@ -47,6 +50,7 @@ fn core() -> &'static Core {
             (LL_E, "ll_E.jwpub"),
             (TE_E, "te_E.jwpub"),
             (G_E, "g_E_202511.jwpub"),
+            (MWB_E, "mwb_E_202609.jwpub"),
             (NWT_E, "nwt_E.jwpub"),
             (NWT_S, "nwt_S.jwpub"),
         ] {
@@ -1098,9 +1102,13 @@ fn located(location: Location, exact: bool) -> Located {
 }
 
 fn locate(location: &Location) -> Located {
+    locate_on(location, None)
+}
+
+fn locate_on(location: &Location, today: Option<i32>) -> Located {
     reader()
-        .locate(location)
-        .unwrap_or_else(|e| panic!("{location:?}: {e:?}"))
+        .locate(location, today)
+        .unwrap_or_else(|e| panic!("{location:?} on {today:?}: {e:?}"))
 }
 
 fn publication(pub_key: &str) -> Location {
@@ -1256,7 +1264,7 @@ fn locate_a_missing_book_falls_back_to_the_publication() {
 #[test]
 fn locate_rejects_malformed_locations_and_missing_publications() {
     assert_invalid(
-        reader().locate(&document_location("w26", WIN_THE_BATTLE_DOC, Some(7))),
+        reader().locate(&document_location("w26", WIN_THE_BATTLE_DOC, Some(7)), None),
         "",
     );
     let paragraph_alone = Location {
@@ -1264,14 +1272,82 @@ fn locate_rejects_malformed_locations_and_missing_publications() {
         ..publication(W_E)
     };
     assert_invalid(
-        reader().locate(&paragraph_alone),
+        reader().locate(&paragraph_alone, None),
         "a paragraph needs a document",
     );
     let book_0 = Location {
         book: Some(0),
         ..verse_location(NWT_E, 43, 1, Some(1))
     };
-    assert_invalid(reader().locate(&book_0), "start at 1");
-    assert_not_found(reader().locate(&document_location("it:0:0", 1200000005, None)));
-    assert_not_found(reader().locate(&publication("it:0:0")));
+    assert_invalid(reader().locate(&book_0, None), "start at 1");
+    assert_not_found(reader().locate(&document_location("it:0:0", 1200000005, None), None));
+    assert_not_found(reader().locate(&publication("it:0:0"), None));
+    // A date that is not a real day, even where the date is not used.
+    for (pub_key, today) in [
+        (MWB_E, 20261032),
+        (MWB_E, 20260229),
+        (MWB_E, 20261300),
+        (MWB_E, 0),
+        (MWB_E, -20261007),
+        (W_E, 20261000),
+        (LL_E, 2026107),
+    ] {
+        assert_invalid(
+            reader().locate(&publication(pub_key), Some(today)),
+            "not a YYYYMMDD day",
+        );
+    }
+}
+
+#[test]
+fn locate_mwb_on_date_opens_that_week() {
+    let week = |doc| located(document_location(MWB_E, doc, None), true);
+    // Mid-week and both ends of the October 5-11 week.
+    for today in [20261005, 20261007, 20261011] {
+        assert_eq!(
+            locate_on(&publication(MWB_E), Some(today)),
+            week(MWB_OCTOBER_5_DOC),
+            "{today}"
+        );
+    }
+    // The first day of the first week, days before and after the issue, and
+    // no date: the first week.
+    for today in [Some(20260907), Some(20260101), Some(20261201), None] {
+        assert_eq!(
+            locate_on(&publication(MWB_E), today),
+            week(MWB_FIRST_WEEK_DOC),
+            "{today:?}"
+        );
+    }
+    // A missing document falls back to the publication start (first week);
+    // `today` applies only when opening the workbook alone.
+    assert_eq!(
+        locate_on(&document_location(MWB_E, 1, None), Some(20261007)),
+        located(document_location(MWB_E, MWB_FIRST_WEEK_DOC, None), false)
+    );
+}
+
+#[test]
+fn locate_ignores_the_date_outside_meeting_workbooks() {
+    let today = Some(20261007);
+    // The Watchtower has DatedText rows too, but they point at its
+    // contents, not at its study articles.
+    assert_eq!(
+        locate_on(&publication(W_E), today),
+        located(document_location(W_E, W_FIRST_STUDY_DOC, None), true)
+    );
+    assert_eq!(
+        locate_on(&publication(G_E), today),
+        located(document_location(G_E, G_FIRST_ARTICLE_DOC, None), true)
+    );
+    for pub_key in [LL_E, TE_E] {
+        assert_eq!(
+            locate_on(&publication(pub_key), today),
+            locate(&publication(pub_key)),
+            "{pub_key}"
+        );
+    }
+    // A saved document is as saved, workbook or not.
+    let at = document_location(MWB_E, MWB_FIRST_WEEK_DOC, None);
+    assert_eq!(locate_on(&at, today), located(at, true));
 }

@@ -1379,9 +1379,11 @@ impl Reader {
 
     /// Where a saved location is in the installed publication now, falling
     /// back to the nearest place that exists; see the core's
-    /// `Reader::locate`.
-    pub fn locate(&self, location: Location) -> Result<Located, CoreError> {
-        Ok(self.inner.locate(&location.into())?.into())
+    /// `Reader::locate`. `today` is the device's local calendar date as
+    /// `YYYYMMDD` (e.g. 20261007), or `None`; a Meeting Workbook opened
+    /// alone uses it to pick the week.
+    pub fn locate(&self, location: Location, today: Option<i32>) -> Result<Located, CoreError> {
+        Ok(self.inner.locate(&location.into(), today)?.into())
     }
 
     /// Chapter `chapter` of book `book` (1-66) of the installed Bible `bible`.
@@ -3050,13 +3052,23 @@ mod tests {
             paragraph,
         };
         assert_eq!(
-            reader.locate(ll(Some(1102011094), Some(6))).unwrap(),
+            reader.locate(ll(Some(1102011094), Some(6)), None).unwrap(),
             Located {
                 location: ll(Some(1102011094), Some(6)),
                 exact: true,
             }
         );
-        let start = reader.locate(ll(Some(1), None)).unwrap();
+        // Not a Meeting Workbook, so the date is checked but not used.
+        assert_eq!(
+            reader
+                .locate(ll(Some(1102011094), Some(6)), Some(20261007))
+                .unwrap(),
+            Located {
+                location: ll(Some(1102011094), Some(6)),
+                exact: true,
+            }
+        );
+        let start = reader.locate(ll(Some(1), None), None).unwrap();
         assert_eq!(start.location.doc_id, toc.iter().find_map(|e| e.doc_id));
         assert!(!start.exact);
 
@@ -3118,17 +3130,20 @@ mod tests {
             Err(CoreError::Invalid(_))
         ));
         assert_eq!(
-            reader.locate(john(99)).unwrap(),
+            reader.locate(john(99), None).unwrap(),
             Located {
                 location: john(36),
                 exact: false,
             }
         );
         assert!(matches!(
-            reader.locate(Location {
-                pub_key: "zz".into(),
-                ..john(16)
-            }),
+            reader.locate(
+                Location {
+                    pub_key: "zz".into(),
+                    ..john(16)
+                },
+                None
+            ),
             Err(CoreError::Invalid(_))
         ));
         assert!(matches!(

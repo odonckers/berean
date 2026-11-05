@@ -16,6 +16,7 @@ import {
 
 import { library, reader, userdata } from '@/ffi/core';
 import { coreErrorMessage } from '@/ffi/errors';
+import { localDay } from '@/ffi/local-day';
 import { displayTitle } from '@/library/labels';
 import { load } from '@/library/load';
 import { notesChanged } from '@/notes/changes';
@@ -206,7 +207,7 @@ export type ReaderTextRead = { rows: Row[]; scope: ReaderScope; wanted: Position
 export function readReaderText({ card, saved }: CardReader): ReaderTextRead {
   const place = cardPlace(card);
   const location = readerLocation(place, saved);
-  const target = readerTarget(place.kind, reader().locate(location), saved);
+  const target = readerTarget(place.kind, reader().locate(location, localDay()), saved);
   if (target?.kind === 'passage') {
     const { book, chapter, wanted, moved } = target;
     const read = reader().bibleChapter(location.pubKey, book, chapter);

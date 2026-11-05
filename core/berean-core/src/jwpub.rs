@@ -79,6 +79,16 @@ pub struct DocumentSummary {
     pub has_content: bool,
 }
 
+/// One row of `DatedText`: the inclusive `YYYYMMDD` days a document covers
+/// (e.g. one Meeting Workbook week).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DatedTextRow {
+    /// Local `Document.DocumentId`.
+    pub(crate) document_id: i64,
+    pub(crate) first_date_offset: i32,
+    pub(crate) last_date_offset: i32,
+}
+
 /// One row of `DocumentParagraph`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DocumentParagraph {
@@ -516,6 +526,28 @@ impl Publication {
                 paragraph_number_label: r.get(3)?,
                 begin_position: r.get(4)?,
                 end_position: r.get(5)?,
+            })
+        })
+    }
+
+    /// `DatedText` rows ordered by `FirstDateOffset`. Empty if the table is
+    /// missing.
+    pub(crate) fn dated_texts(&self) -> Result<Vec<DatedTextRow>, CoreError> {
+        let Some(sql) = select_sql(
+            &self.conn,
+            "DatedText",
+            &["DocumentId", "FirstDateOffset", "LastDateOffset"],
+            &[],
+            " FROM DatedText ORDER BY FirstDateOffset, DatedTextId",
+        )?
+        else {
+            return Ok(Vec::new());
+        };
+        self.query(&sql, [], |r| {
+            Ok(DatedTextRow {
+                document_id: r.get(0)?,
+                first_date_offset: r.get(1)?,
+                last_date_offset: r.get(2)?,
             })
         })
     }

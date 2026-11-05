@@ -1385,7 +1385,7 @@ fn paragraph_bookmark_round_trips_and_locates() {
         ),
         [vec![int(doc_id), int(1), int(pid.into())]]
     );
-    let located = fresh.reader().locate(&back[0].location).unwrap();
+    let located = fresh.reader().locate(&back[0].location, None).unwrap();
     assert!(located.exact);
     assert_eq!(located.location, at);
 }
