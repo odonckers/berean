@@ -1,9 +1,11 @@
 // A reader card's text and its place in it (findings §6.6): the core's
 // chapter or document blocks as rows of plain text, where a saved anchor
-// (a verse or paragraph number plus a UTF-16 offset into its text) lands
-// in them, the anchor at a row offset when a scroll settles, the ~3 lines
-// shown at L3, and the location a ReaderState is saved at. Kept free of
-// React Native (and of the FFI's runtime) for the tests.
+// (a verse or paragraph number plus a UTF-16 offset into its text, the
+// core's VerseAnchor.text or ParagraphAnchor.text) lands in them, the
+// anchor at a row offset when a scroll settles, the ~3 lines shown at L3,
+// what a card reads (Reader.locate's answer for its saved place), and the
+// location a ReaderState is saved at. Kept free of React Native (and of the
+// FFI's runtime) for the tests.
 
 import type { CoreBlock, Run, Segment } from '@/reader/chapter-blocks';
 
@@ -11,8 +13,12 @@ import type { CoreBlock, Run, Segment } from '@/reader/chapter-blocks';
 export type Part = { text: string; number?: boolean; key?: number };
 /** A keyed part's stretch of its row's text: `key` is the verse or paragraph number. */
 export type Piece = { key: number; start: number; length: number };
-/** One block as drawn: a heading, or a paragraph (or line of poetry) of verses. */
-export type Row = { heading: boolean; parts: Part[]; pieces: Piece[]; length: number };
+/**
+ * One block as drawn: a heading, or a paragraph (or line of poetry) of
+ * verses. `textAt[i]` is where `pieces[i]` starts in its verse's or
+ * paragraph's text as the core gives it (what a saved offset counts in).
+ */
+export type Row = { heading: boolean; parts: Part[]; pieces: Piece[]; length: number; textAt: number[] };
 
 /** A place in the text the core's way: verse or paragraph `key`, `charOffset` UTF-16 units into its text. */
 export type Position = { key: number; charOffset: number };
@@ -26,7 +32,41 @@ function row(heading: boolean, parts: Part[]): Row {
     if (part.key !== undefined) pieces.push({ key: part.key, start: at, length: part.text.length });
     at += part.text.length;
   }
-  return { heading, parts, pieces, length: at };
+  return { heading, parts, pieces, length: at, textAt: [] };
+}
+
+/** The core's plain text of each verse or paragraph, by number. */
+export type AnchorTexts = ReadonlyMap<number, string>;
+
+/** The core's anchors (VerseAnchor, ParagraphAnchor) as texts by number. */
+export function anchorTexts(anchors: readonly ({ verse: number; text: string } | { paragraph: number; text: string })[]): AnchorTexts {
+  return new Map(anchors.map((a) => ['verse' in a ? a.verse : a.paragraph, a.text]));
+}
+
+/**
+ * Where each piece starts in its block's text as the core gives it: each
+ * piece of a verse or paragraph found in order in the core's text
+ * (VerseAnchor.text joins a verse's runs with a space; ParagraphAnchor.text
+ * is the paragraph's), so offsets count what the core counts. A block the
+ * core gives no text for, or a piece it doesn't have, counts the drawn
+ * pieces on from the last one.
+ */
+function withTextOffsets(rows: Row[], texts: AnchorTexts | undefined): Row[] {
+  const cursors = new Map<number, number>();
+  for (const r of rows) {
+    const flat = r.parts.map((p) => p.text).join('');
+    r.textAt = r.pieces.map((piece) => {
+      const cursor = cursors.get(piece.key) ?? 0;
+      const core = texts?.get(piece.key);
+      const drawn = flat.slice(piece.start, piece.start + piece.length);
+      const lead = drawn.length - drawn.trimStart().length;
+      const found = core === undefined ? -1 : core.indexOf(drawn.trim(), cursor);
+      const at = found < 0 ? cursor : Math.max(0, found - lead);
+      cursors.set(piece.key, at + piece.length);
+      return at;
+    });
+  }
+  return rows;
 }
 
 const NO_BREAK_SPACE = String.fromCharCode(0xa0);
@@ -37,11 +77,14 @@ const NO_BREAK_SPACE = String.fromCharCode(0xa0);
  * space between runs, as the reader draws them. A note run (verse 0) is
  * drawn but never an anchor. `segments` is the reader's blockSegments
  * (passed in, so Node can run this without the app's path aliases).
+ * Offsets into a verse count in its VerseAnchor.text, from `verses`.
  */
-// Core ask (Echo): the core's "plain text of a verse" isn't exposed; this
-// takes it to be the verse's runs' text, in order, with nothing between.
-export function bibleRows(blocks: readonly CoreBlock[], segments: (runs: readonly Run[]) => Segment[]): Row[] {
-  return blocks.map((block) => {
+export function bibleRows(
+  blocks: readonly CoreBlock[],
+  segments: (runs: readonly Run[]) => Segment[],
+  verses?: AnchorTexts,
+): Row[] {
+  const rows = blocks.map((block) => {
     if (block.tag === 'Heading') return row(true, [{ text: block.inner.text }]);
     const parts = segments(block.inner.runs).flatMap((s): Part[] => {
       if (s.kind === 'space') return [{ text: ' ' }];
@@ -52,6 +95,7 @@ export function bibleRows(blocks: readonly CoreBlock[], segments: (runs: readonl
     });
     return row(false, parts);
   });
+  return withTextOffsets(rows, verses);
 }
 
 // The core's document blocks and inlines, structurally: the generated
@@ -96,9 +140,12 @@ function inlineText(inline: CoreInline): string {
   }
 }
 
-/** A paragraph's plain text from its inlines. Footnote markers and page markers aren't text. */
-// Core ask (Echo): a paragraph's plain text (the unit char_offset counts
-// in) isn't exposed; this flattens the inlines app-side.
+/**
+ * A block's plain text from its inlines, for what the core gives no text
+ * of: a heading without a paragraph id (never an anchor). A paragraph's
+ * text is the core's ParagraphAnchor.text. Footnote markers and page
+ * markers aren't text.
+ */
 export function docText(inlines: readonly CoreDocInline[]): string {
   return inlines
     .map((inline) => {
@@ -119,39 +166,48 @@ export function docText(inlines: readonly CoreDocInline[]): string {
  * A document's rows from the core's blocks, in order: headings, paragraphs
  * and questions (with their printed number), and the paragraphs inside
  * asides, lists and figure captions. Tables, footnotes, rules and answer
- * fields aren't drawn on a card yet.
+ * fields aren't drawn on a card yet. A paragraph's text is the core's
+ * ParagraphAnchor.text, from `paragraphs` (what a saved offset counts in);
+ * one the core gives none for is its inlines' text.
  */
-export function documentRows(blocks: readonly CoreDocBlock[]): Row[] {
-  return blocks.flatMap((block): Row[] => {
-    switch (block.tag) {
-      case 'Heading': {
-        const { paragraph, inlines } = block.inner;
-        return [row(true, [{ text: docText(inlines), key: paragraph }])];
+export function documentRows(blocks: readonly CoreDocBlock[], paragraphs?: AnchorTexts): Row[] {
+  const textOf = (paragraph: number | undefined, inlines: readonly CoreDocInline[]) =>
+    (paragraph === undefined ? undefined : paragraphs?.get(paragraph)) ?? docText(inlines);
+  const rowsOf = (inside: readonly CoreDocBlock[]): Row[] =>
+    inside.flatMap((block): Row[] => {
+      switch (block.tag) {
+        case 'Heading': {
+          const { paragraph, inlines } = block.inner;
+          return [row(true, [{ text: textOf(paragraph, inlines), key: paragraph }])];
+        }
+        case 'Paragraph':
+        case 'Question': {
+          const { paragraph, number, inlines } = block.inner;
+          const text: Part = { text: textOf(paragraph, inlines), key: paragraph };
+          return [row(false, number === undefined ? [text] : [{ text: `${number} `, number: true }, text])];
+        }
+        case 'Aside': {
+          const { title, blocks: nested } = block.inner;
+          const head =
+            title === undefined ? [] : [row(true, [{ text: textOf(title.paragraph, title.inlines), key: title.paragraph }])];
+          return [...head, ...rowsOf(nested)];
+        }
+        case 'List':
+          return block.inner.items.flatMap((item) => rowsOf(item.blocks));
+        case 'Figure':
+          return rowsOf(block.inner.caption);
+        default:
+          return [];
       }
-      case 'Paragraph':
-      case 'Question': {
-        const { paragraph, number, inlines } = block.inner;
-        const text: Part = { text: docText(inlines), key: paragraph };
-        return [row(false, number === undefined ? [text] : [{ text: `${number} `, number: true }, text])];
-      }
-      case 'Aside': {
-        const { title, blocks: inside } = block.inner;
-        const head = title === undefined ? [] : [row(true, [{ text: docText(title.inlines), key: title.paragraph }])];
-        return [...head, ...documentRows(inside)];
-      }
-      case 'List':
-        return block.inner.items.flatMap((item) => documentRows(item.blocks));
-      case 'Figure':
-        return documentRows(block.inner.caption);
-      default:
-        return [];
-    }
-  });
+    });
+  return withTextOffsets(rowsOf(blocks), paragraphs);
 }
 
-/** Every piece of `key`, in order, with its row. */
-function piecesOf(rows: readonly Row[], key: number): { row: number; piece: Piece }[] {
-  return rows.flatMap((r, index) => r.pieces.filter((p) => p.key === key).map((piece) => ({ row: index, piece })));
+/** Every piece of `key`, in order, with its row and where it starts in the core's text. */
+function piecesOf(rows: readonly Row[], key: number): { row: number; piece: Piece; at: number }[] {
+  return rows.flatMap((r, index) =>
+    r.pieces.flatMap((piece, i) => (piece.key === key ? [{ row: index, piece, at: r.textAt[i] ?? 0 }] : [])),
+  );
 }
 
 /**
@@ -162,7 +218,9 @@ function piecesOf(rows: readonly Row[], key: number): { row: number; piece: Piec
  * nothing wanted, the start of the first block. The top of the text if
  * there are no blocks.
  */
-// Core ask (Echo): the nearest-earlier-block fallback is app-side here.
+// The nearest earlier block is the core's own fallback too (Reader.locate);
+// readerTarget already asks it for the saved place, so this only meets a
+// block the card's rows don't draw.
 export function restorePosition(rows: readonly Row[], wanted: Position | undefined): RowPosition {
   const keys = rows.flatMap((r) => r.pieces.map((p) => p.key));
   if (keys.length === 0) return { row: 0, offset: 0 };
@@ -178,12 +236,13 @@ export function restorePosition(rows: readonly Row[], wanted: Position | undefin
     }
   }
   const pieces = piecesOf(rows, key);
-  for (const [i, { row: r, piece }] of pieces.entries()) {
-    // Past this piece's end goes on to the next; the last takes the clamp.
-    if (offset < piece.length || i === pieces.length - 1) {
-      return { row: r, offset: piece.start + Math.min(offset, piece.length) };
+  for (const [i, { row: r, piece, at }] of pieces.entries()) {
+    // Past this piece's end goes on to the next (an offset in the space
+    // the core's text has between two pieces, to the next one's start);
+    // the last takes the clamp.
+    if (offset < at + piece.length || i === pieces.length - 1) {
+      return { row: r, offset: piece.start + Math.min(Math.max(0, offset - at), piece.length) };
     }
-    offset -= piece.length;
   }
   return { row: 0, offset: 0 };
 }
@@ -199,12 +258,10 @@ export function positionAt(rows: readonly Row[], at: RowPosition): Position | un
   const here = rows[at.row];
   if (here !== undefined) {
     // The first piece not ended before the offset: a number (or space) before a piece is the piece's.
-    const piece = here.pieces.find((p) => at.offset <= p.start + p.length);
-    if (piece !== undefined) {
-      const before = piecesOf(rows, piece.key)
-        .filter((p) => p.row < at.row || (p.row === at.row && p.piece.start < piece.start))
-        .reduce((sum, p) => sum + p.piece.length, 0);
-      return { key: piece.key, charOffset: before + Math.max(0, at.offset - piece.start) };
+    const index = here.pieces.findIndex((p) => at.offset <= p.start + p.length);
+    if (index >= 0) {
+      const piece = here.pieces[index];
+      return { key: piece.key, charOffset: (here.textAt[index] ?? 0) + Math.max(0, at.offset - piece.start) };
     }
   }
   // The next block's start, else the last block's end.
@@ -317,3 +374,48 @@ export function readerAt(
   }
   return { kind: 'publication', location: { pubKey: scope.pubKey, docId: scope.docId, paragraph: position.key } };
 }
+
+/** A reader card's own place: a passage's span start, or a publication card's location. */
+export type ReaderCardPlace = { kind: 'passage'; start: Loc } | { kind: 'publication'; location: Loc };
+
+/**
+ * What a reader card asks Reader.locate for (§6.6): where its reader was
+ * left, if it has been read, else the card's own place.
+ */
+export function readerLocation(card: ReaderCardPlace, saved: { at: Loc } | undefined): Loc {
+  return saved?.at ?? (card.kind === 'passage' ? card.start : card.location);
+}
+
+/**
+ * What a reader card reads, from the core's Located for readerLocation: a
+ * passage's chapter (and verse), or a publication's document (and
+ * paragraph), as the core located them, its nearest place where the saved
+ * one is gone (a publication alone is its start document, which the core
+ * picks). The saved offset applies only where the core found the saved
+ * place exactly; else the block's start, and `moved` says the spot moved.
+ * None when the core located nothing this card can read (a passage's book
+ * gone, a publication with no document).
+ */
+export type ReaderTarget =
+  | { kind: 'passage'; book: number; chapter: number; wanted: Position | undefined; moved: boolean }
+  | { kind: 'publication'; docId: bigint; wanted: Position | undefined; moved: boolean };
+
+export function readerTarget(
+  kind: ReaderCardPlace['kind'],
+  located: { location: Loc; exact: boolean },
+  saved: { charOffset: number } | undefined,
+): ReaderTarget | undefined {
+  const { location, exact } = located;
+  const wanted = (key: number | undefined): Position | undefined =>
+    key === undefined ? undefined : { key, charOffset: exact ? (saved?.charOffset ?? 0) : 0 };
+  if (kind === 'passage') {
+    const { book, chapter, verse } = location;
+    if (book === undefined || chapter === undefined) return undefined;
+    return { kind, book, chapter, wanted: wanted(verse), moved: !exact };
+  }
+  if (location.docId === undefined) return undefined;
+  return { kind, docId: location.docId, wanted: wanted(location.paragraph), moved: !exact };
+}
+
+/** What the reader says where the core couldn't find a card's exact place. */
+export const MOVED_NOTE = 'Couldn’t find the exact place. Showing the nearest one.';

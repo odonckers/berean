@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import { DEFAULT_CHOICE, resolvePalette } from './appearance.ts';
-import { glassFace, sideSheetEdge, solidChrome } from './chrome.ts';
+import { cardEdge, glassFace, sideSheetEdge, solidChrome } from './chrome.ts';
 import { contrast } from './contrast.ts';
 import { THEME_IDS, THEME_MODES } from './theme-tokens.generated.ts';
 
@@ -46,5 +46,39 @@ describe('glass vs solid chrome (themes spec rules 4 and 5)', () => {
         assert.ok(contrast(edge, colors.surfaceRaised) >= 3);
       });
     }
+  }
+});
+
+describe('the edge of a card over the reader (Lumen, #80 and #83)', () => {
+  const colors = { separator: '#38312A', outline: '#8B8275' };
+
+  test('look × scheme × solid: IC’s outline anywhere; the iOS look’s dark hairline; else none', () => {
+    for (const look of ['ios', 'material'] as const) {
+      for (const dark of [false, true]) {
+        // Increase Contrast (or Reduce Transparency) keeps the outline every sheet gets.
+        assert.deepEqual(cardEdge({ look, dark, solid: true }, colors, 0.5), { borderColor: '#8B8275', borderWidth: 1 });
+      }
+    }
+    assert.deepEqual(cardEdge({ look: 'ios', dark: true, solid: false }, colors, 0.5), { borderColor: '#38312A', borderWidth: 0.5 });
+    assert.equal(cardEdge({ look: 'ios', dark: false, solid: false }, colors, 0.5), undefined);
+    assert.equal(cardEdge({ look: 'material', dark: true, solid: false }, colors, 0.5), undefined);
+    assert.equal(cardEdge({ look: 'material', dark: false, solid: false }, colors, 0.5), undefined);
+  });
+
+  test('the dark hairline is glassFace’s edge', () => {
+    const face = glassFace(false, { ...colors, surfaceRaised: '#211D18' }, 0.5);
+    assert.deepEqual(cardEdge({ look: 'ios', dark: true, solid: false }, colors, 0.5), {
+      borderColor: face.borderColor,
+      borderWidth: face.borderWidth,
+    });
+  });
+
+  for (const theme of THEME_IDS) {
+    test(`${theme} dark: the hairline stands further off the page than the card's own fill`, () => {
+      const { colors: set } = resolvePalette({ ...DEFAULT_CHOICE, theme }, 'dark');
+      const edge = cardEdge({ look: 'ios', dark: true, solid: false }, set, 0.5);
+      assert.ok(edge !== undefined);
+      assert.ok(contrast(edge.borderColor, set.surface) > contrast(set.surfaceRaised, set.surface));
+    });
   }
 });

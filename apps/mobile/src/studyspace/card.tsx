@@ -1,5 +1,5 @@
 import { type ComponentRef, type Ref, useEffect } from 'react';
-import { Platform, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Platform, StyleSheet, Text, View } from 'react-native';
 import {
   GestureDetector,
   type PanGesture,
@@ -45,6 +45,7 @@ import { type CardAction, dragFrame, type Guide, lineChanged, SNAP_DISTANCE, sna
 import { focusedLabel } from '@/studyspace/focus';
 import { liftHaptic, snapHaptic } from '@/studyspace/haptics';
 import { LiveReader, ReaderSnippet, useReaderPlace } from '@/studyspace/reader-card';
+import { MOVED_NOTE } from '@/studyspace/reader-state';
 
 const GLYPHS: Record<CardKind, SymbolName> = {
   note: { ios: 'note.text', android: 'sticky_note_2' },
@@ -213,6 +214,15 @@ export function StudyCard(props: StudyCardProps) {
   useEffect(() => {
     if (!scrolls || !focused) saver.flush();
   }, [scrolls, focused, saver]);
+
+  // Where the core couldn't find the card's exact place (its edition no
+  // longer has it), the focused card says it opened the nearest one. The
+  // card's layout has no line to spare for a note; the full-screen reader
+  // shows one.
+  const moved = text?.moved === true;
+  useEffect(() => {
+    if (focused && moved) AccessibilityInfo.announceForAccessibilityWithOptions(MOVED_NOTE, { queue: true });
+  }, [focused, moved, textKey]);
 
   // The verse a focus announces (§9): where a passage card's reader is, else the span's first.
   const verse =

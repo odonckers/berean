@@ -10,6 +10,7 @@ import {
 import ReanimatedSwipeable, {
   type SwipeableMethods,
 } from 'react-native-gesture-handler/ReanimatedSwipeable';
+import Animated, { type SharedValue, useAnimatedStyle } from 'react-native-reanimated';
 
 import { ScaledSymbol } from '@/components/scaled-symbol';
 import { UIText } from '@/components/text';
@@ -204,9 +205,37 @@ export function SwipeRow({
   enabled?: boolean;
   children: ReactNode;
 }) {
+  const renderRightActions = (progress: SharedValue<number>, _t: unknown, swipe: SwipeableMethods) => (
+    <SwipeActions actions={actions} progress={progress} swipe={swipe} />
+  );
+  return (
+    <ReanimatedSwipeable enabled={enabled} friction={2} rightThreshold={40} overshootRight={false} renderRightActions={renderRightActions}>
+      {children}
+    </ReanimatedSwipeable>
+  );
+}
+
+/**
+ * The panel under a swiped row. Swipeable lays it out behind the row at the
+ * row's full size whether or not it is open, so the row's own fill is all
+ * that hides it, and where the row's edges fall between pixels its fills
+ * (the grey Replace, the red Delete) showed through the antialiased edge
+ * as a faint line from the panel's start to the trailing edge. So it is
+ * drawn only while the row is swiped open at all.
+ */
+function SwipeActions({
+  actions,
+  progress,
+  swipe,
+}: {
+  actions: readonly SwipeAction[];
+  progress: SharedValue<number>;
+  swipe: SwipeableMethods;
+}) {
   const { look, colors, m3 } = useBerean();
-  const renderRightActions = (_p: unknown, _t: unknown, swipe: SwipeableMethods) => (
-    <View style={styles.swipeActions} {...hidden}>
+  const shown = useAnimatedStyle(() => ({ opacity: progress.get() > 0 ? 1 : 0 }));
+  return (
+    <Animated.View style={[styles.swipeActions, shown]} {...hidden}>
       {actions.map((action) => {
         const { fill, ink } = swipeActionColors(look, action.destructive === true, colors, m3);
         return (
@@ -226,12 +255,7 @@ export function SwipeRow({
           </Pressable>
         );
       })}
-    </View>
-  );
-  return (
-    <ReanimatedSwipeable enabled={enabled} friction={2} rightThreshold={40} overshootRight={false} renderRightActions={renderRightActions}>
-      {children}
-    </ReanimatedSwipeable>
+    </Animated.View>
   );
 }
 

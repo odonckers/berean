@@ -1,23 +1,16 @@
 // A verse as Copy verse puts it on the clipboard, kept free of React Native
-// so Node can test it. The text is the chapter's runs as the core gave them;
-// nothing here reads or rewrites the Bible.
-
-import type { Block } from './chapter-blocks.ts';
+// so Node can test it. The text is the verse's plain text as the core gives
+// it (VerseAnchor.text); nothing here reads or rewrites the Bible.
 
 /**
- * A verse's text: each of its runs, in the chapter's order across blocks
- * (a verse can run on over lines of poetry), joined with a space as the
- * reader draws them. Notes (verse 0) are never a verse's text. Empty if the
- * chapter doesn't have the verse.
+ * A verse's text: the chapter's VerseAnchor.text for it (the core joins a
+ * verse's runs across blocks, lines of poetry included), without the
+ * whitespace at its ends. Notes (verse 0) are never a verse's text. Empty
+ * if the chapter doesn't have the verse.
  */
-export function verseText(blocks: readonly Block[], verse: number): string {
+export function verseText(verses: readonly { verse: number; text: string }[], verse: number): string {
   if (verse === 0) return '';
-  return blocks
-    .flatMap((block) => (block.kind === 'paragraph' ? block.runs : []))
-    .filter((run) => run.verse === verse)
-    .map((run) => run.text.trim())
-    .filter((text) => text !== '')
-    .join(' ');
+  return verses.find((v) => v.verse === verse)?.text.trim() ?? '';
 }
 
 /**

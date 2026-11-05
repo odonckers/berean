@@ -3,12 +3,16 @@ import { describe, test } from 'node:test';
 
 import { blockSegments, type CoreBlock } from '../reader/chapter-blocks.ts';
 import {
+  MOVED_NOTE,
+  anchorTexts,
   bibleRows,
   type CoreDocBlock,
   docText,
   documentRows,
   positionAt,
   readerAt,
+  readerLocation,
+  readerTarget,
   restorePosition,
   type Row,
   rowPositionAt,
@@ -230,5 +234,146 @@ describe('readerAt', () => {
       kind: 'publication',
       location: { pubKey: 'w:1', docId: 9n, paragraph: 4 },
     });
+  });
+});
+
+// Offsets as the core counts them (#81): in VerseAnchor.text, which joins a
+// verse's runs with a space, and in ParagraphAnchor.text.
+describe('offsets in the core’s anchor text', () => {
+  const verses = anchorTexts([
+    { verse: 1, text: 'No condemnation.' },
+    { verse: 2, text: 'For the law.' },
+    // Verse 3's two runs, joined by the core with a space.
+    { verse: 3, text: 'What the law could not do.' },
+  ]);
+  const core = bibleRows(chapter, blockSegments, verses);
+
+  test('the rows draw the same text and pieces', () => {
+    assert.deepEqual(core.map(text), rows.map(text));
+    assert.deepEqual(
+      core.map((r) => r.pieces),
+      rows.map((r) => r.pieces),
+    );
+  });
+
+  test('a split verse’s later piece starts after the core’s space', () => {
+    assert.deepEqual(core[2].textAt, [0]);
+    assert.deepEqual(core[3].textAt, ['What the law '.length]);
+  });
+
+  test('a saved offset lands where the core’s text has it', () => {
+    // "could" starts at 13 in the core's text: the later piece's start.
+    assert.deepEqual(restorePosition(core, { key: 3, charOffset: 13 }), { row: 3, offset: 0 });
+    assert.deepEqual(restorePosition(core, { key: 3, charOffset: 15 }), { row: 3, offset: 2 });
+    // The core's joining space is the next piece's start.
+    assert.deepEqual(restorePosition(core, { key: 3, charOffset: 12 }), { row: 3, offset: 0 });
+    assert.deepEqual(restorePosition(core, { key: 3, charOffset: 99 }), { row: 3, offset: 13 });
+  });
+
+  test('and the anchor saved is the core’s offset', () => {
+    assert.deepEqual(positionAt(core, { row: 3, offset: 2 }), { key: 3, charOffset: 15 });
+    for (const p of [
+      { key: 1, charOffset: 7 },
+      { key: 3, charOffset: 5 },
+      { key: 3, charOffset: 20 },
+    ]) {
+      assert.deepEqual(positionAt(core, restorePosition(core, p)), p);
+    }
+  });
+
+  test('offsets count UTF-16 units, as the core does', () => {
+    const [r] = bibleRows(
+      [{ tag: 'Paragraph', inner: { paragraph: 1, style: 'Prose' as never, runs: [{ verse: 1, label: '1', text: '“Jehovah” 😀 is near.' }] } }],
+      blockSegments,
+      anchorTexts([{ verse: 1, text: '“Jehovah” 😀 is near.' }]),
+    );
+    // The emoji is two units: "is" starts at 13.
+    assert.deepEqual(positionAt([r], { row: 0, offset: 2 + 13 }), { key: 1, charOffset: 13 });
+  });
+
+  test('a paragraph’s text is the core’s ParagraphAnchor.text', () => {
+    const t = (s: string) => ({ tag: 'Common' as const, inner: { inline: { tag: 'Text' as const, inner: { text: s } } } });
+    const doc = documentRows(
+      [
+        { tag: 'Heading', inner: { inlines: [t('Unnumbered heading')] } },
+        { tag: 'Paragraph', inner: { paragraph: 2, number: '1', inlines: [t('First '), { tag: 'FootnoteRef' }, t('one.')] } },
+      ],
+      anchorTexts([{ paragraph: 2, text: 'First one.' }]),
+    );
+    assert.deepEqual(doc.map(text), ['Unnumbered heading', '1 First one.']);
+    assert.deepEqual(doc[1].textAt, [0]);
+    assert.deepEqual(restorePosition(doc, { key: 2, charOffset: 6 }), { row: 1, offset: 8 });
+  });
+});
+
+describe('what a reader card reads (Reader.locate, #81)', () => {
+  const span = { pubKey: 'nwtsty', book: 45, chapter: 8, verse: 1 };
+  const card = { kind: 'passage' as const, start: span };
+  const pub = { kind: 'publication' as const, location: { pubKey: 'w:0:20260800' } };
+
+  test('it locates where its reader was left, else its own place', () => {
+    const at = { pubKey: 'nwtsty', book: 45, chapter: 9, verse: 3 };
+    assert.deepEqual(readerLocation(card, { at }), at);
+    assert.deepEqual(readerLocation(card, undefined), span);
+    assert.deepEqual(readerLocation(pub, undefined), { pubKey: 'w:0:20260800' });
+  });
+
+  test('found exactly: the saved verse and offset', () => {
+    const located = { location: { pubKey: 'nwtsty', book: 45, chapter: 9, verse: 3 }, exact: true };
+    assert.deepEqual(readerTarget('passage', located, { charOffset: 12 }), {
+      kind: 'passage',
+      book: 45,
+      chapter: 9,
+      wanted: { key: 3, charOffset: 12 },
+      moved: false,
+    });
+  });
+
+  test('moved: the core’s nearest verse, from its start, and noted', () => {
+    const located = { location: { pubKey: 'nwtsty', book: 45, chapter: 9, verse: 2 }, exact: false };
+    assert.deepEqual(readerTarget('passage', located, { charOffset: 12 }), {
+      kind: 'passage',
+      book: 45,
+      chapter: 9,
+      wanted: { key: 2, charOffset: 0 },
+      moved: true,
+    });
+  });
+
+  test('a whole chapter has no verse to start at', () => {
+    const located = { location: { pubKey: 'nwtsty', book: 45, chapter: 9 }, exact: true };
+    assert.equal(readerTarget('passage', located, undefined)?.wanted, undefined);
+  });
+
+  test('a passage whose book is gone has nothing to read', () => {
+    assert.equal(readerTarget('passage', { location: { pubKey: 'nwtsty' }, exact: false }, undefined), undefined);
+  });
+
+  test('a whole-publication card reads the start document the core picks', () => {
+    const located = { location: { pubKey: 'w:0:20260800', docId: 1102026201n }, exact: true };
+    assert.deepEqual(readerTarget('publication', located, undefined), {
+      kind: 'publication',
+      docId: 1102026201n,
+      wanted: undefined,
+      moved: false,
+    });
+  });
+
+  test('a gone paragraph: the core’s nearest one, from its start, noted', () => {
+    const located = { location: { pubKey: 'w:0:20260800', docId: 9n, paragraph: 4 }, exact: false };
+    assert.deepEqual(readerTarget('publication', located, { charOffset: 30 }), {
+      kind: 'publication',
+      docId: 9n,
+      wanted: { key: 4, charOffset: 0 },
+      moved: true,
+    });
+  });
+
+  test('a publication the core gives no document for has nothing to read', () => {
+    assert.equal(readerTarget('publication', { location: { pubKey: 'w:0:20260800' }, exact: true }, undefined), undefined);
+  });
+
+  test('the moved note says so plainly', () => {
+    assert.match(MOVED_NOTE, /exact place/);
   });
 });

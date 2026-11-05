@@ -52,3 +52,23 @@ export function sideSheetEdge(
     ? { borderLeftWidth: 1, borderColor: colors.outline }
     : { borderLeftWidth: hairline, borderColor: m3.outlineVariant };
 }
+
+/**
+ * The edge of a card that hangs over the reader (the iOS look's anchored
+ * cards: the bookmark picker's, its ⋯ menu's, and the Aa popover's). Solid
+ * (Increase Contrast, Reduce Transparency): the 1 px outline every sheet
+ * gets. Otherwise, in the iOS look's dark schemes, a hairline separator as
+ * glassFace draws: the card's surfaceRaised sits barely off the page there
+ * (about 1.1:1) and its shadow doesn't show on a dark page. Light pages
+ * show the shadow, and Material's cards are tonal or elevated, so neither
+ * gets one.
+ */
+export function cardEdge(
+  { look, dark, solid }: { look: Look; dark: boolean; solid: boolean },
+  colors: Pick<ColorSet, 'separator' | 'outline'>,
+  hairline: number,
+): { borderColor: string; borderWidth: number } | undefined {
+  if (solid) return { borderColor: colors.outline, borderWidth: 1 };
+  if (look === 'ios' && dark) return { borderColor: colors.separator, borderWidth: hairline };
+  return undefined;
+}

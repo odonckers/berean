@@ -11,6 +11,8 @@ import {
   bookmarkUndoMessages,
   restoreArgs,
   restoredAnnouncement,
+  BAR_HEIGHT_ESTIMATE,
+  barContentInset,
 } from './bookmark-undo.ts';
 
 const pubKey = 'nwtsty_E';
@@ -106,5 +108,22 @@ describe('the bar’s words and time', () => {
     assert.equal(barDuration({ id: 1, kind: 'notice', message: 'x' }, false), BOOKMARK_NOTICE_MS);
     assert.equal(barDuration({ id: 1, kind: 'undo', change: deleted }, true), 16_000);
     assert.equal(barDuration({ id: 1, kind: 'notice', message: 'x' }, true), 16_000);
+  });
+});
+
+describe('the reader’s bottom inset while a bar shows (Lumen, #83)', () => {
+  test('none without a bar', () => {
+    assert.equal(barContentInset(false, 52, 16), 0);
+    assert.equal(barContentInset(false, undefined, 16), 0);
+  });
+
+  test('the bar’s laid-out height and the gap above it', () => {
+    assert.equal(barContentInset(true, 52, 16), 68);
+    // A two-line toast at large text pads for both lines.
+    assert.equal(barContentInset(true, 96, 16), 112);
+  });
+
+  test('before it has laid out, one line’s height', () => {
+    assert.equal(barContentInset(true, undefined, 16), BAR_HEIGHT_ESTIMATE + 16);
   });
 });

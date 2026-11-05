@@ -42,8 +42,8 @@ import {
   DELETE_LABEL,
   MEDIUM_DETENT_MIN_ROWS,
   NOT_FOUND_NOTE,
+  PICKER_SCRIM_FOCUS,
   type SaveTarget,
-  type SlotPlace,
   allSlotsFull,
   bookmarkPickerPlacement,
   bookmarkSheetFit,
@@ -176,8 +176,8 @@ type PickerProps = {
   onSave: (slot: number) => string | undefined;
   /** Go to a filled slot's place; the picker closes and focus goes with the jump. */
   onJump: (row: FilledRow) => void;
-  /** Where each filled slot opens (by slot), from the core's locate: a missing one is noted. */
-  places: ReadonlyMap<number, SlotPlace>;
+  /** Where each filled slot is now (by slot), from the core's locate: a missing one is noted. */
+  places: ReadonlyMap<number, { missing: boolean }>;
   /** Replace a filled slot with the target, or empty it, at once. A core error's message, or none. */
   onReplace: (row: FilledRow) => string | undefined;
   onDelete: (row: FilledRow) => string | undefined;
@@ -408,8 +408,8 @@ export function BookmarkPicker({
     const right = Math.min(anchor?.right ?? 0, window.width - width - spacing.sm);
     content = (
       <>
-        {/* A tap outside the card closes it. */}
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessible={false} />
+        {/* A tap outside the card closes it; it is no focus stop either. */}
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} {...PICKER_SCRIM_FOCUS} />
         {anchor !== undefined && (
         <PopoverCard
           top={top}
@@ -435,7 +435,6 @@ export function BookmarkPicker({
     const corner = material ? radii.sheet : radii.iosSheet;
     content = (
       <SheetWithScrim
-        firstRowTag={tags[0]}
         open={open}
         onClose={onClose}
         onHidden={hide}
@@ -524,27 +523,25 @@ export function BookmarkPicker({
   );
 }
 
-/** A sliding sheet over a scrim that fades with it; tapping the scrim closes it. */
+/**
+ * A sliding sheet over a scrim that fades with it; tapping the scrim closes
+ * it. The scrim is no focus stop (PICKER_SCRIM_FOCUS), so a hardware
+ * keyboard's first ↑/↓ lands in the sheet.
+ */
 function SheetWithScrim({
   scrim,
-  firstRowTag,
   ...sheet
 }: Omit<Parameters<typeof SlidingSheet>[0], 'visibility' | 'fadeUnderReducedMotion'> & {
   scrim: string;
-  /** Hardware ↓ from the scrim (where Android's first arrow press can land) goes to slot 1. */
-  firstRowTag: number | undefined;
 }) {
   const visibility = useSharedValue(0);
   const fade = useAnimatedStyle(() => ({ opacity: visibility.get() }));
   return (
     <>
-      <Animated.View style={[StyleSheet.absoluteFill, fade]}>
+      <Animated.View style={[StyleSheet.absoluteFill, fade]} {...PICKER_SCRIM_FOCUS}>
         <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Close"
+          {...PICKER_SCRIM_FOCUS}
           onPress={sheet.onClose}
-          onFocus={followRing}
-          nextFocusDown={firstRowTag}
           style={[StyleSheet.absoluteFill, { backgroundColor: scrim }]}
         />
       </Animated.View>
