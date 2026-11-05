@@ -19,6 +19,9 @@ c8253d47d03ccab3c8e44f38f9bd373c4b193682146f7b1b7b87e00775cbd514  w_S_202608.jwp
 # not a study edition, so it opens at the first article after its cover,
 # introduction and contents.
 95f789d4137bd4ee1888e46a387c78edb089d110871bd605f2ccfbd6eb23f727  g_E_202511.jwpub  https://cfp2.jw-cdn.org/a/5fe6dc6/2/o/g_E_202511.jwpub
+# Meeting Workbook Sept–Oct 2026 English (berean-core/tests/reader.rs):
+# locate with today's date opens the matching DatedText week.
+7f9a863844adc9fc8d4f98eb39c178c0e2d1f16f0a26e58db6c9ca6afac91eb1  mwb_E_202609.jwpub  https://cfp2.jw-cdn.org/a/82003a/1/o/mwb_E_202609.jwpub
 # The publication catalog snapshot. Its GUID rotates with every new catalog
 # and the CDN may drop old snapshots. Re-pinning means updating this line and
 # the expectations in berean-core/tests/catalog.rs (revision level, titles,

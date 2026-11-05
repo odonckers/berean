@@ -276,7 +276,7 @@ export function BibleChapterView({
   // each place is located once per opening (and Bible), only while the
   // picker is open. Kept as state, added to as the rows render.
   const locateNow = (location: BookmarkLocationOf): SlotPlace => {
-    const read = load(() => reader().locate(location));
+    const read = load(() => reader().locate(location, undefined));
     return slotPlace(read.ok ? { ok: true, value: read.value } : { ok: false });
   };
   const [located, setLocated] = useState<{ opening: number; pubKey: string; places: ReadonlyMap<string, SlotPlace> }>(
