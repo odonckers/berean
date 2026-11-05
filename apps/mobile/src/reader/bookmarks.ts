@@ -240,6 +240,16 @@ export function rowContentKey(row: BookmarkRow): string {
   return row.kind === 'empty' ? 'empty' : `filled|${row.title}|${row.snippet ?? ''}|${locationKey(row.location)}`;
 }
 
+/**
+ * What a row shows at its trailing edge, outside the cross-fading content:
+ * the filled glyph at the current place, and the ⋯ / ⋮ on any filled slot.
+ * It follows the row as it is now, so a slot that empties and fills again
+ * (a Delete and its Undo, or a save) shows them again.
+ */
+export function rowTrailing(row: BookmarkRow): { glyph: boolean; menu: boolean } {
+  return row.kind === 'filled' ? { glyph: row.current, menu: true } : { glyph: false, menu: false };
+}
+
 /** The row note for a place the installed edition no longer has (spec §7). */
 export const NOT_FOUND_NOTE = 'Not found in this edition';
 

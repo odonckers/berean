@@ -59,6 +59,7 @@ import {
   rowLabel,
   rowMenuLabel,
   rowMenuPresentation,
+  rowTrailing,
   saveLine,
   savedAnnouncement,
 } from '@/reader/bookmarks';
@@ -636,6 +637,7 @@ function SlotRow({
   const { fontScale } = useWindowDimensions();
   const accent = material ? m3.primary : colors.accent;
   const filled = row.kind === 'filled';
+  const trailing = rowTrailing(row);
   const target = material ? 48 : 44;
   const rowRef = useRef<ComponentRef<typeof View>>(null);
   const menuRef = useRef<ComponentRef<typeof View>>(null);
@@ -679,70 +681,82 @@ function SlotRow({
           filled && styles.rowBeforeMenu,
         ]}
       >
-        {/* Keyed by what it shows, so a save, Replace, Delete or Undo cross-fades it. */}
-        <Animated.View key={rowContentKey(row)} entering={fadeIn} exiting={fadeOut} style={styles.rowContent}>
-          {row.kind === 'empty' ? (
-            <>
-              <UIText secondary style={styles.rowText}>
-                {`Slot ${row.number}`}
-              </UIText>
-              <View style={styles.saveHere}>
-                <ScaledSymbol
-                  name={{ ios: 'plus', android: 'add' }}
-                  size={material ? 18 : 15}
-                  tintColor={accent}
-                  accessible={false}
-                  importantForAccessibility="no-hide-descendants"
-                  accessibilityElementsHidden
-                />
-                <UIText style={{ color: accent }}>Save here</UIText>
-              </View>
-            </>
-          ) : (
-            <>
-              <Text style={[type.ui.body, styles.number, { minWidth: NUMBER_EMS * (type.ui.body.fontSize ?? 17) * fontScale, color: colors.textSecondary }]}>
-                {row.number}
-              </Text>
-              <View style={styles.rowText}>
-                <UIText>{row.title}</UIText>
-                {row.snippet !== undefined && (
-                  <UIText variant="caption" secondary numberOfLines={fontScale >= LARGE_TEXT_SCALE ? 2 : 1}>
-                    {row.snippet}
-                  </UIText>
-                )}
-                {missing && (
-                  <UIText variant="caption" secondary>
-                    {NOT_FOUND_NOTE}
-                  </UIText>
-                )}
-              </View>
-              {row.current && <BookmarkGlyph filled size={material ? 20 : 17} tintColor={accent} />}
-            </>
-          )}
-        </Animated.View>
+        <View style={styles.rowInner}>
+          {/* Keyed by what it shows, so a save, Replace, Delete or Undo cross-fades it. */}
+          <Animated.View key={rowContentKey(row)} entering={fadeIn} exiting={fadeOut} style={[styles.rowContent, styles.rowFade]}>
+            {row.kind === 'empty' ? (
+              <>
+                <UIText secondary style={styles.rowText}>
+                  {`Slot ${row.number}`}
+                </UIText>
+                <View style={styles.saveHere}>
+                  <ScaledSymbol
+                    name={{ ios: 'plus', android: 'add' }}
+                    size={material ? 18 : 15}
+                    tintColor={accent}
+                    accessible={false}
+                    importantForAccessibility="no-hide-descendants"
+                    accessibilityElementsHidden
+                  />
+                  <UIText style={{ color: accent }}>Save here</UIText>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={[type.ui.body, styles.number, { minWidth: NUMBER_EMS * (type.ui.body.fontSize ?? 17) * fontScale, color: colors.textSecondary }]}>
+                  {row.number}
+                </Text>
+                <View style={styles.rowText}>
+                  <UIText>{row.title}</UIText>
+                  {row.snippet !== undefined && (
+                    <UIText variant="caption" secondary numberOfLines={fontScale >= LARGE_TEXT_SCALE ? 2 : 1}>
+                      {row.snippet}
+                    </UIText>
+                  )}
+                  {missing && (
+                    <UIText variant="caption" secondary>
+                      {NOT_FOUND_NOTE}
+                    </UIText>
+                  )}
+                </View>
+              </>
+            )}
+          </Animated.View>
+          {/* The glyph and the ⋯ / ⋮ stay mounted, collapsed while the row
+              hasn't them: mounted with a cross-fade running, Android's
+              SymbolView (which draws its glyph a render later) kept its box
+              but drew nothing, so a save or an Undo lost both. */}
+          <View style={trailing.glyph ? styles.glyph : styles.collapsed}>
+            <BookmarkGlyph filled size={material ? 20 : 17} tintColor={accent} />
+          </View>
+        </View>
       </Pressable>
-      {row.kind === 'filled' && (
-        <Pressable
-          ref={menuRef}
-          accessibilityRole="button"
-          accessibilityLabel={rowMenuLabel(row)}
-          importantForAccessibility="no"
-          accessibilityElementsHidden
-          onPress={openMenu}
-          onFocus={followRing}
-          nextFocusUp={focus.up}
-          nextFocusDown={focus.down}
-          style={({ pressed }) => [styles.menuButton, { minWidth: target, minHeight: target, opacity: pressed ? 0.6 : 1 }]}
-        >
-          <ScaledSymbol
-            // ⋮ in Material, ⋯ in the iOS look.
-            name={material ? { ios: 'ellipsis', android: 'more_vert' } : { ios: 'ellipsis', android: 'more_horiz' }}
-            size={material ? 24 : 20}
-            tintColor={material ? m3.onSurfaceVariant : colors.textSecondary}
-            accessible={false}
-          />
-        </Pressable>
-      )}
+      <Pressable
+        ref={menuRef}
+        accessibilityRole="button"
+        accessibilityLabel={filled ? rowMenuLabel(row) : undefined}
+        importantForAccessibility="no"
+        accessibilityElementsHidden
+        disabled={!trailing.menu}
+        focusable={trailing.menu}
+        onPress={openMenu}
+        onFocus={followRing}
+        nextFocusUp={focus.up}
+        nextFocusDown={focus.down}
+        style={({ pressed }) =>
+          trailing.menu
+            ? [styles.menuButton, { minWidth: target, minHeight: target, opacity: pressed ? 0.6 : 1 }]
+            : styles.collapsed
+        }
+      >
+        <ScaledSymbol
+          // ⋮ in Material, ⋯ in the iOS look.
+          name={material ? { ios: 'ellipsis', android: 'more_vert' } : { ios: 'ellipsis', android: 'more_horiz' }}
+          size={material ? 24 : 20}
+          tintColor={material ? m3.onSurfaceVariant : colors.textSecondary}
+          accessible={false}
+        />
+      </Pressable>
     </View>
   );
   if (material) return line;
@@ -778,6 +792,12 @@ const styles = StyleSheet.create({
   rowBeforeMenu: { paddingEnd: 0 },
   menuButton: { alignItems: 'center', justifyContent: 'center', marginEnd: spacing.xs },
   rowContent: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  // No gap: the glyph brings its own space, and none while collapsed.
+  rowInner: { flexDirection: 'row', alignItems: 'center' },
+  rowFade: { flex: 1 },
+  glyph: { marginStart: spacing.md },
+  // Laid out at no size, drawn at none: there, but not shown.
+  collapsed: { width: 0, height: 0, opacity: 0, overflow: 'hidden' },
   number: { fontVariant: ['tabular-nums'], textAlign: 'right' },
   rowText: { flex: 1 },
   saveHere: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },

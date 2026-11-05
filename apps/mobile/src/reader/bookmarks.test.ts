@@ -33,6 +33,7 @@ import {
   bookmarkSwipeActions,
   isAtPlace,
   rowMenuPresentation,
+  rowTrailing,
   TABLET_MIN_WIDTH,
   jumpAnnouncement,
   rowAction,
@@ -454,6 +455,19 @@ describe('managing a filled slot (spec §3.2, §6)', () => {
     assert.equal(keys.size, 3);
     const [again] = bookmarkRows([bookmark(0, john316, 'John 3:16', 'For God')], john316);
     assert.equal(rowContentKey(again), rowContentKey(john));
+  });
+
+  test('a slot that empties and fills again (Delete, then Undo) gets its glyph and ⋮ back', () => {
+    const saved = [bookmark(0, john316, 'John 3:16', 'For God'), bookmark(1, john3, 'John 3')];
+    const [, before] = bookmarkRows(saved, john3);
+    const [, deleted] = bookmarkRows(saved.slice(0, 1), john3);
+    const [, restored] = bookmarkRows(saved, john3);
+    assert.deepEqual(rowTrailing(before), { glyph: true, menu: true });
+    assert.deepEqual(rowTrailing(deleted), { glyph: false, menu: false });
+    assert.deepEqual(rowTrailing(restored), rowTrailing(before));
+    // Away from the save target: the ⋮ still, no glyph.
+    const [elsewhere] = bookmarkRows(saved, john3);
+    assert.deepEqual(rowTrailing(elsewhere), { glyph: false, menu: true });
   });
 
   test('the iOS-look swipe: a short Replace inner, the red Delete on the outer edge', () => {
