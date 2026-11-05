@@ -63,6 +63,16 @@ fn digits(b: &[u8]) -> Option<i64> {
     })
 }
 
+/// True when `yyyymmdd` is a real proleptic Gregorian civil day,
+/// `YYYY * 10000 + MM * 100 + DD` with year 1 to 9999.
+pub(crate) fn valid_yyyymmdd(yyyymmdd: i32) -> bool {
+    let n = i64::from(yyyymmdd);
+    let (year, month, day) = (n / 10_000, n / 100 % 100, n % 100);
+    (1..=9999).contains(&year)
+        && (1..=12).contains(&month)
+        && (1..=days_in_month(year, month)).contains(&day)
+}
+
 fn days_in_month(year: i64, month: i64) -> i64 {
     match month {
         2 if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) => 29,
@@ -134,6 +144,19 @@ mod tests {
             parse("2024-03-01T00:00:00Z").unwrap() - parse("2024-02-29T00:00:00Z").unwrap(),
             86_400
         );
+    }
+
+    #[test]
+    fn civil_days() {
+        for d in [20261007, 20240229, 20000229, 10101, 99991231, 20261231] {
+            assert!(valid_yyyymmdd(d), "{d}");
+        }
+        for d in [
+            0, -20261007, 20260007, 20261307, 20261000, 20261032, 20260431, 20230229, 19000229,
+            1231, 100000101, 2026107,
+        ] {
+            assert!(!valid_yyyymmdd(d), "{d}");
+        }
     }
 
     #[test]
