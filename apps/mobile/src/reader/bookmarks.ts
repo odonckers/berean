@@ -171,6 +171,24 @@ export function toolbarBookmark(
 }
 
 /**
+ * The toolbar button's label and value. Pressable always hands View an
+ * accessibilityValue object, so on Android a value going back to undefined
+ * reaches BaseViewManager.setAccessibilityValue as a map without "text",
+ * which leaves the old content description ("Bookmarks, John 3 is in slot
+ * 2") in place; an empty text would leave "Bookmarks, ". There the value goes
+ * in the label, whose every change rebuilds the content description.
+ */
+export function bookmarkButtonLabel(
+  value: string | undefined,
+  os: string,
+): { accessibilityLabel: string; accessibilityValue?: { text: string } } {
+  const label = 'Bookmarks';
+  if (value === undefined) return { accessibilityLabel: label };
+  if (os === 'android') return { accessibilityLabel: `${label}, ${value}` };
+  return { accessibilityLabel: label, accessibilityValue: { text: value } };
+}
+
+/**
  * Each slot is one element (spec §6). Filled: "Slot 3, John 3:16, For God
  * loved…", with ", not found in this edition" where the row notes it and
  * ", current place" where the glyph marks it. Empty: "Slot 4, empty".

@@ -41,6 +41,7 @@ import {
   saveTarget,
   savedAnnouncement,
   toolbarBookmark,
+  bookmarkButtonLabel,
   PICKER_SCRIM_FOCUS,
   documentJump,
   documentSaveTarget,
@@ -199,6 +200,36 @@ describe('the toolbar button (spec §3.2, §6)', () => {
     assert.equal(toolbarBookmark(two, 'John 3').value, 'John 3 is in slots 2 and 5');
     const three = bookmarkRows([bookmark(1, john3, 'John 3'), bookmark(4, john3, 'John 3'), bookmark(9, john3, 'John 3')], john3);
     assert.equal(toolbarBookmark(three, 'John 3').value, 'John 3 is in slots 2, 5 and 10');
+  });
+});
+
+describe("the toolbar button's label and value on each platform", () => {
+  test('iOS keeps the value apart from the label', () => {
+    assert.deepEqual(bookmarkButtonLabel('John 3 is in slot 2', 'ios'), {
+      accessibilityLabel: 'Bookmarks',
+      accessibilityValue: { text: 'John 3 is in slot 2' },
+    });
+  });
+
+  test('Android folds the value into the label', () => {
+    const props = bookmarkButtonLabel('John 3 is in slot 2', 'android');
+    assert.deepEqual(props, { accessibilityLabel: 'Bookmarks, John 3 is in slot 2' });
+    assert.equal('accessibilityValue' in props, false);
+  });
+
+  test('with nothing saved, only the label, and no value to go stale', () => {
+    for (const os of ['ios', 'android']) {
+      const props = bookmarkButtonLabel(undefined, os);
+      assert.deepEqual(props, { accessibilityLabel: 'Bookmarks' });
+      assert.equal('accessibilityValue' in props, false);
+    }
+  });
+
+  test('on Android the label changes when the value is cleared, so the description is rebuilt', () => {
+    assert.notEqual(
+      bookmarkButtonLabel('Genesis 1 is in slot 1', 'android').accessibilityLabel,
+      bookmarkButtonLabel(undefined, 'android').accessibilityLabel,
+    );
   });
 });
 

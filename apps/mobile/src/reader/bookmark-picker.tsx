@@ -12,6 +12,7 @@ import {
   type LayoutChangeEvent,
   Modal,
   type NativeSyntheticEvent,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -45,6 +46,7 @@ import {
   PICKER_SCRIM_FOCUS,
   type SaveTarget,
   allSlotsFull,
+  bookmarkButtonLabel,
   bookmarkPickerPlacement,
   bookmarkSheetFit,
   bookmarkSwipeActions,
@@ -141,8 +143,7 @@ export function BookmarkButton({
     <Pressable
       ref={buttonRef}
       accessibilityRole="button"
-      accessibilityLabel="Bookmarks"
-      accessibilityValue={value === undefined ? undefined : { text: value }}
+      {...bookmarkButtonLabel(value, Platform.OS)}
       onPress={onPress}
       style={({ pressed }) => [styles.button, { minWidth: target, minHeight: target, opacity: pressed ? 0.6 : 1 }]}
     >
