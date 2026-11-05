@@ -9,6 +9,7 @@ import {
   useEffectEvent,
   useLayoutEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
 } from 'react';
@@ -40,6 +41,7 @@ import { load } from '@/library/load';
 import { addNoteAt, snippetOf } from '@/notes/data';
 import { noteTitle, shortDate } from '@/notes/note-list';
 import { openNote } from '@/notes/routes';
+import { UndoBar, useUndoBarBottom } from '@/notes/undo-bar';
 import {
   addNoteLabel,
   mergeMarkers,
@@ -60,17 +62,33 @@ import {
 import { BiblePicker } from '@/reader/bible-picker';
 import { BookmarkButton, BookmarkPicker, useBookmarkPicker } from '@/reader/bookmark-picker';
 import {
+  type BiblePlace,
   type BookmarkRow,
+  type SlotPlace,
   bookmarkJump,
   bookmarkRows,
   bookmarkSnippet,
   jumpAnnouncement,
+  locationKey,
+  notFoundMessage,
   saveTarget,
+  shortcutOpensBookmarks,
+  slotPlace,
+  startPlace,
   toolbarBookmark,
 } from '@/reader/bookmarks';
+import {
+  type BookmarkChange,
+  barDuration,
+  bookmarkBar,
+  bookmarkUndoMessages,
+  restoredAnnouncement,
+} from '@/reader/bookmark-undo';
+import { type Wash, landingWash, washAccent } from '@/reader/landing-wash';
+import { WashText } from '@/reader/wash-text';
 import { copiedVerse, copyConfirmation, verseText } from '@/reader/copy-verse';
 import { HighlightSheet } from '@/reader/highlight-sheet';
-import { highlightActionLabel, highlightSpokenName, segmentHighlight } from '@/reader/highlights';
+import { highlightActionLabel, highlightSpokenName, segmentHighlight, segmentVerse } from '@/reader/highlights';
 import { type LandedVerse, landedLabel, landedVerse } from '@/reader/landed-verse';
 import {
   type Run,
@@ -107,6 +125,7 @@ import { useChapterHighlights } from '@/reader/use-chapter-highlights';
 import { useBookmarks } from '@/reader/use-bookmarks';
 import { useChapterNotes } from '@/reader/use-chapter-notes';
 import { markersByVerse, paneStudy, studyActionLabel } from '@/reader/verse-study';
+import { useBookmarkShortcut } from '../../modules/berean-shortcuts';
 
 // Study guide installation isn't modelled yet, so the guide is treated as
 // not installed (the pane offers a Research tab when there is content).
@@ -120,6 +139,18 @@ const COPY_ACTION = 'copy-';
 // And, per verse: Show notes (with notes) and Add note.
 const NOTES_ACTION = 'notes-';
 const ADD_NOTE_ACTION = 'addnote-';
+
+type FilledRow = Extract<BookmarkRow, { kind: 'filled' }>;
+type BookmarkLocationOf = FilledRow['location'];
+
+/** A filled slot as the core holds it, for Undo to put back. */
+const heldOf = (pubKey: string, row: FilledRow) => ({
+  pubKey,
+  slot: row.slot,
+  location: row.location,
+  title: row.title,
+  snippet: row.snippet,
+});
 
 type LineBox = { y: number; height: number; text: string };
 type BlockBox = { top?: number; lines?: readonly LineBox[] };
@@ -152,7 +183,7 @@ export function BibleChapterView({
   /** A verse to open the chapter at (a search hit), scrolled to once. */
   verse?: number;
 }) {
-  const { look, colors, m3, type, highlights: fills } = useBerean();
+  const { look, mode, colors, m3, type, highlights: fills } = useBerean();
   const material = look === 'material';
   const reducedMotion = useReducedMotion();
   // The Read tab's root: the material top app bar's tonal fill, and the
@@ -206,15 +237,129 @@ export function BibleChapterView({
   const bookmarks = useBookmarks(pubKey);
   const bookmarkPicker = useBookmarkPicker();
   const target = saveTarget(heading, { book, chapter }, open);
-  const slotRows: readonly BookmarkRow[] | { message: string } = bookmarks.list.ok
+  const toolbarRows: readonly BookmarkRow[] | { message: string } = bookmarks.list.ok
     ? bookmarkRows(bookmarks.list.value, target.place)
     : { message: bookmarks.list.message };
   const toolbarState =
-    'message' in slotRows ? { filled: false, value: undefined } : toolbarBookmark(slotRows, target.reference);
+    'message' in toolbarRows ? { filled: false, value: undefined } : toolbarBookmark(toolbarRows, target.reference);
+  // A verse's Bookmark… opens the picker in save mode for that verse (spec
+  // §3.1); the button and Ctrl+D save what the button would. Set as the
+  // picker opens, for that opening.
+  const [pickerVerse, setPickerVerse] = useState<{ chapterKey: string; verse: number }>();
+  const pickerTarget =
+    pickerVerse?.chapterKey === keyForChapter(pubKey, { book, chapter })
+      ? saveTarget(heading, { book, chapter }, pickerVerse.verse)
+      : target;
+  const slotRows: readonly BookmarkRow[] | { message: string } =
+    'message' in toolbarRows || pickerTarget === target
+      ? toolbarRows
+      : bookmarkRows(bookmarks.list.ok ? bookmarks.list.value : [], pickerTarget.place);
+  // Each opening reads the list again and locates its places afresh.
+  const [pickerOpenings, setPickerOpenings] = useState(0);
   const openBookmarks = () => {
-    if (!bookmarkPicker.open) bookmarks.refresh();
+    if (!bookmarkPicker.open) {
+      bookmarks.refresh();
+      setPickerVerse(undefined);
+      setPickerOpenings((n) => n + 1);
+    }
     bookmarkPicker.toggle();
   };
+  const openBookmarksFor = (verse: number) => {
+    bookmarks.refresh();
+    setPickerVerse({ chapterKey: keyForChapter(pubKey, { book, chapter }), verse });
+    setPickerOpenings((n) => n + 1);
+    bookmarkPicker.show();
+  };
+
+  // Where each filled slot is now in this edition (spec §7), from the
+  // core's Reader.locate: a sync call that reads at most one chapter, so
+  // each place is located once per opening (and Bible), only while the
+  // picker is open. Kept as state, added to as the rows render.
+  const locateNow = (location: BookmarkLocationOf): SlotPlace => {
+    const read = load(() => reader().locate(location));
+    return slotPlace(read.ok ? { ok: true, value: read.value } : { ok: false });
+  };
+  const [located, setLocated] = useState<{ opening: number; pubKey: string; places: ReadonlyMap<string, SlotPlace> }>(
+    () => ({ opening: pickerOpenings, pubKey, places: new Map() }),
+  );
+  let locatedNow =
+    located.opening === pickerOpenings && located.pubKey === pubKey
+      ? located
+      : { opening: pickerOpenings, pubKey, places: new Map<string, SlotPlace>() };
+  const unlocated =
+    bookmarkPicker.open && !('message' in slotRows)
+      ? slotRows.flatMap((row) =>
+          row.kind === 'filled' && !locatedNow.places.has(locationKey(row.location)) ? [row.location] : [],
+        )
+      : [];
+  if (unlocated.length > 0) {
+    const places = new Map(locatedNow.places);
+    for (const location of unlocated) places.set(locationKey(location), locateNow(location));
+    locatedNow = { ...locatedNow, places };
+  }
+  if (locatedNow !== located) setLocated(locatedNow);
+  const placeOf = (location: BookmarkLocationOf): SlotPlace =>
+    locatedNow.places.get(locationKey(location)) ?? locateNow(location);
+  const slotPlaces = new Map<number, SlotPlace>(
+    bookmarkPicker.open && !('message' in slotRows)
+      ? slotRows.flatMap((row) => (row.kind === 'filled' ? [[row.slot, placeOf(row.location)] as const] : []))
+      : [],
+  );
+
+  // The bar over the picker, or over the reader once it closes: Undo for
+  // the last Delete or Replace (6 s), or where a not-found jump went. It
+  // goes with the reader (spec §7): when it loses focus or the Bible
+  // changes.
+  const [bar, dispatchBar] = useReducer(bookmarkBar, undefined);
+  const [barPubKey, setBarPubKey] = useState(pubKey);
+  if (barPubKey !== pubKey) {
+    setBarPubKey(pubKey);
+    dispatchBar({ kind: 'left' });
+  }
+  useEffect(() => {
+    if (bar === undefined) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let cancelled = false;
+    AccessibilityInfo.isScreenReaderEnabled()
+      .catch(() => false)
+      .then((on) => {
+        if (!cancelled) timer = setTimeout(() => dispatchBar({ kind: 'expired', id: bar.id }), barDuration(bar, on));
+      });
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) clearTimeout(timer);
+    };
+  }, [bar]);
+  const [focused, setFocused] = useState(false);
+  useFocusEffect(
+    useCallback(() => {
+      setFocused(true);
+      return () => {
+        setFocused(false);
+        dispatchBar({ kind: 'left' });
+      };
+    }, []),
+  );
+  const barBottom = useUndoBarBottom();
+  const offerUndo = (change: BookmarkChange) => {
+    dispatchBar({ kind: 'changed', change });
+    AccessibilityInfo.announceForAccessibilityWithOptions(bookmarkUndoMessages(look, change).announcement, {
+      queue: true,
+    });
+  };
+  const undoBookmark = () => {
+    if (bar?.kind !== 'undo') return;
+    const { previous } = bar.change;
+    dispatchBar({ kind: 'undone' });
+    const message = bookmarks.restore(previous);
+    AccessibilityInfo.announceForAccessibility(message ?? restoredAnnouncement(previous));
+  };
+  const barShown =
+    bar === undefined
+      ? undefined
+      : bar.kind === 'undo'
+        ? { label: bookmarkUndoMessages(look, bar.change).label, onUndo: undoBookmark }
+        : { label: bar.message };
   const toolbar = (
     <View style={styles.toolbar}>
       {aa}
@@ -596,20 +741,51 @@ export function BibleChapterView({
     if (to.book !== book || to.chapter !== chapter) goToChapter(to);
   };
 
-  // Saving the target into an empty slot: its reference as the title, and
-  // the first line of its text (a chapter's is its first verse's).
+  // Saving the picker's target into a slot (an empty one, or a Replace):
+  // its reference as the title, and the first line of its text as the core
+  // gives it (a chapter's is its first verse's).
   const saveBookmark = (slot: number) => {
-    const verse = target.place.verse ?? verses.find((v) => v > 0);
-    const text = verse === undefined ? '' : verseText(chapterContent, verse);
-    return bookmarks.save(slot, target.place, target.reference, bookmarkSnippet(text));
+    const verse = pickerTarget.place.verse ?? verses.find((v) => v > 0);
+    const text = loaded.ok ? (loaded.value.verses.find((v) => v.verse === verse)?.text ?? '') : '';
+    const message = bookmarks.save(slot, pickerTarget.place, pickerTarget.reference, bookmarkSnippet(text));
+    if (message === undefined) dispatchBar({ kind: 'saved', pubKey, slot });
+    return message;
   };
+  // Replace and Delete take effect at once, then offer Undo (Decision 4).
+  const replaceBookmark = (row: FilledRow) => {
+    const message = saveBookmark(row.slot);
+    if (message === undefined) {
+      offerUndo({ kind: 'replace', previous: heldOf(pubKey, row), reference: pickerTarget.reference });
+    }
+    return message;
+  };
+  const deleteBookmark = (row: FilledRow) => {
+    const message = bookmarks.remove(row.slot);
+    if (message === undefined) offerUndo({ kind: 'delete', previous: heldOf(pubKey, row) });
+    return message;
+  };
+
+  // The landing wash (spec §3.3): a jumped-to verse's text, fading after
+  // 2 s, static under Reduce Motion; the next scroll or tap clears it.
+  const [wash, dispatchWash] = useReducer(landingWash, undefined);
+  const [washFrom, setWashFrom] = useState(chapterKey);
+  if (washFrom !== chapterKey) {
+    setWashFrom(chapterKey);
+    dispatchWash({ kind: 'chapter', chapterKey });
+  }
+  const washHere: Wash = wash?.chapterKey === chapterKey ? wash : undefined;
 
   // Jumping to a filled slot, in this publication: its chapter if it is
   // another (no animated travel), its verse marked as landed. The study
   // pane doesn't open.
-  const jumpTo = (row: Extract<BookmarkRow, { kind: 'filled' }>) => {
+  // A slot whose place this edition no longer has opens the nearest place
+  // the core found (or the Bible's start), and a toast says where (spec §7).
+  // The slot stays.
+  const jumpTo = (row: FilledRow) => {
     bookmarkPicker.close();
-    const to = bookmarkJump(row.location, { book, chapter });
+    const place = placeOf(row.location);
+    const opens: BiblePlace | undefined = place.opens === 'start' ? startPlace(bookList) : place.opens;
+    const to = opens === undefined ? undefined : bookmarkJump({ pubKey, ...opens }, { book, chapter });
     if (to === undefined) return;
     arrivals.current += 1;
     const arrival = arrivals.current;
@@ -621,9 +797,25 @@ export function BibleChapterView({
         ? undefined
         : landedVerse(prev, { kind: 'arrive', chapterKey: key, verse, arrival, source: 'bookmark' }),
     );
+    dispatchWash(
+      verse === undefined
+        ? { kind: 'tap' }
+        : { kind: 'land', chapterKey: key, verse, arrival, reducedMotion: reducedMotion ?? false },
+    );
     AccessibilityInfo.announceForAccessibilityWithOptions(jumpAnnouncement(row.number, row.title), { queue: true });
+    if (place.missing) {
+      const toHeading = chapterHeading(bookList?.find((b) => b.book === to.book), to.chapter);
+      const message = notFoundMessage(verse === undefined ? toHeading : verseReference(toHeading, verse));
+      dispatchBar({ kind: 'notice', message });
+      AccessibilityInfo.announceForAccessibilityWithOptions(message, { queue: true });
+    }
     if (!to.sameChapter) goToChapter(to);
   };
+
+  // Ctrl+D (or Meta+D) in the focused reader opens the picker in save mode (spec §4).
+  useBookmarkShortcut((key) => {
+    if (shortcutOpensBookmarks(key, { focused, chapterRead: loaded.ok }) && !bookmarkPicker.open) openBookmarks();
+  }, focused);
 
   // While the pane is open, back closes it first: the Android back button
   // here (also on the Read tab's root, where nothing is removed), and the
@@ -737,6 +929,8 @@ export function BibleChapterView({
   // of a paragraph after the pane) has the same style as its first block;
   // once paragraphs carry an indent, the continuation leaves it off.
   const drawnBlocks: { key: string; runs: readonly Run[] }[] = [];
+  const washInk = washAccent(look, colors, m3);
+  const increaseContrast = mode === 'lightIC' || mode === 'darkIC';
   const renderBlock = (key: string, runs: readonly Run[], blockIndex?: number) => {
     const segments = blockSegments(runs);
     drawnBlocks.push({ key, runs });
@@ -815,6 +1009,21 @@ export function BibleChapterView({
             // Between two parts of a highlighted verse, the space is filled too.
             case 'space': {
               const fill = segmentHighlight(segments, index, highlights.byVerse);
+              if (washHere !== undefined && segmentVerse(segments, index) === washHere.verse) {
+                return (
+                  <WashText
+                    key={`${index}-${washHere.arrival}`}
+                    base={fill === undefined ? colors.surface : fills[fill]}
+                    accent={washInk}
+                    text={colors.text}
+                    increaseContrast={increaseContrast}
+                    fades={washHere.fades}
+                    onFaded={() => dispatchWash({ kind: 'faded', arrival: washHere.arrival })}
+                  >
+                    {' '}
+                  </WashText>
+                );
+              }
               return fill === undefined ? (
                 <Fragment key={index}> </Fragment>
               ) : (
@@ -854,6 +1063,22 @@ export function BibleChapterView({
             // fills the text only, never the number.
             case 'text': {
               const fill = segmentHighlight(segments, index, highlights.byVerse);
+              if (washHere !== undefined && segment.verse === washHere.verse) {
+                return (
+                  <WashText
+                    key={`${index}-${washHere.arrival}`}
+                    base={fill === undefined ? colors.surface : fills[fill]}
+                    accent={washInk}
+                    text={colors.text}
+                    increaseContrast={increaseContrast}
+                    fades={washHere.fades}
+                    onFaded={() => dispatchWash({ kind: 'faded', arrival: washHere.arrival })}
+                    onLongPress={() => openActions(segment.verse)}
+                  >
+                    {segment.text}
+                  </WashText>
+                );
+              }
               return (
                 <Text
                   key={index}
@@ -996,6 +1221,10 @@ export function BibleChapterView({
           updatePaneMax();
           scrollToPending();
         }}
+        // The reader's own scroll or tap clears the landing wash; the jump's
+        // own scroll is no drag.
+        onTouchStart={washHere === undefined ? undefined : () => dispatchWash({ kind: 'tap' })}
+        onScrollBeginDrag={washHere === undefined ? undefined : () => dispatchWash({ kind: 'scroll' })}
       >
         {/* With no native header, Aa and the bookmark button sit at the
             column's trailing edge, above the heading. */}
@@ -1044,11 +1273,24 @@ export function BibleChapterView({
         onClose={bookmarkPicker.close}
         buttonRef={bookmarkPicker.buttonRef}
         title={title}
-        target={target}
+        target={pickerTarget}
         rows={slotRows}
         onSave={saveBookmark}
         onJump={jumpTo}
+        places={slotPlaces}
+        onReplace={replaceBookmark}
+        onDelete={deleteBookmark}
+        bar={bookmarkPicker.open ? barShown : undefined}
       />
+      {/* Over the reader once the picker has closed; above the tab bar. */}
+      {!bookmarkPicker.open && barShown !== undefined && (
+        <UndoBar
+          key={bar?.id}
+          label={barShown.label}
+          onUndo={barShown.onUndo}
+          bottom={barBottom}
+        />
+      )}
       {actionsHere !== undefined && (
         <HighlightSheet
           visible
@@ -1067,6 +1309,13 @@ export function BibleChapterView({
             // dismissing; it waits out the sheet's fade there.
             if (Platform.OS === 'ios') setTimeout(() => addNote(verse), 350);
             else addNote(verse);
+          }}
+          onBookmark={() => {
+            const verse = actionsHere.verse;
+            closeActions();
+            // As Add note: iOS waits out the sheet's fade before the picker's Modal.
+            if (Platform.OS === 'ios') setTimeout(() => openBookmarksFor(verse), 350);
+            else openBookmarksFor(verse);
           }}
           onClose={closeActions}
         />

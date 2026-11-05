@@ -9,8 +9,19 @@ import {
   MATERIAL_SHEET_TOP_MARGIN,
   MEDIUM_DETENT_MIN_ROWS,
   SNIPPET_MAX,
+  DELETE_LABEL,
+  NOT_FOUND_NOTE,
   type BookmarkLike,
   allSlotsFull,
+  locationKey,
+  notFoundMessage,
+  replaceLabel,
+  rowContentKey,
+  rowFocusNeighbours,
+  rowMenuLabel,
+  shortcutOpensBookmarks,
+  slotPlace,
+  startPlace,
   bookmarkJump,
   bookmarkLocation,
   bookmarkPickerPlacement,
@@ -19,7 +30,10 @@ import {
   bookmarkSheetHeights,
   bookmarkSheetOpensAt,
   bookmarkSnippet,
+  bookmarkSwipeActions,
   isAtPlace,
+  rowMenuPresentation,
+  TABLET_MIN_WIDTH,
   jumpAnnouncement,
   rowAction,
   rowLabel,
@@ -288,6 +302,25 @@ describe('where the picker opens (spec §4)', () => {
   });
 });
 
+describe('where a slot’s ⋯ / ⋮ opens Replace and Delete', () => {
+  test('a tablet is 600dp and wider', () => {
+    assert.equal(TABLET_MIN_WIDTH, 600);
+  });
+
+  test('iOS look: the action sheet on a phone, a card at the ⋯ on a tablet', () => {
+    assert.equal(rowMenuPresentation('ios', 390), 'sheet');
+    assert.equal(rowMenuPresentation('ios', 599), 'sheet');
+    assert.equal(rowMenuPresentation('ios', 600), 'anchored');
+    assert.equal(rowMenuPresentation('ios', 1024), 'anchored');
+  });
+
+  test('Material: the M3 menu at the ⋮, phone and tablet', () => {
+    assert.equal(rowMenuPresentation('material', 390), 'anchored');
+    assert.equal(rowMenuPresentation('material', 599), 'anchored');
+    assert.equal(rowMenuPresentation('material', 600), 'anchored');
+  });
+});
+
 describe('sheet heights', () => {
   test('Material: one height, the M3 top margin clear below the status bar', () => {
     assert.deepEqual(bookmarkSheetHeights('bottomSheet', { windowHeight: 900, topInset: 24 }), {
@@ -362,5 +395,139 @@ describe('the Material sheet fits its content', () => {
   test('a fractional layout rounds up, so nothing is clipped', () => {
     assert.deepEqual(bookmarkSheetFit({ contentHeight: 600.4, maxHeight }), { height: 601, scrolls: false });
     assert.deepEqual(bookmarkSheetFit({ contentHeight: maxHeight + 0.4, maxHeight }), { height: maxHeight, scrolls: true });
+  });
+});
+
+describe('managing a filled slot (spec §3.2, §6)', () => {
+  const [filled] = bookmarkRows([bookmark(2, john316, 'John 3:16', 'For God')], john3).slice(2);
+
+  test('its actions: Replace with the save target, and Delete', () => {
+    assert.equal(replaceLabel('John 3'), 'Replace with John 3');
+    assert.equal(replaceLabel('John 3:16'), 'Replace with John 3:16');
+    assert.equal(DELETE_LABEL, 'Delete');
+    assert.ok(filled.kind === 'filled');
+    if (filled.kind === 'filled') assert.equal(rowMenuLabel(filled), 'More actions for slot 3');
+  });
+
+  test('a Replace, Delete or Undo changes the content key, so the row cross-fades', () => {
+    const [empty] = bookmarkRows([], john3);
+    const [genesis] = bookmarkRows([bookmark(0, { book: 1, chapter: 1 }, 'Genesis 1')], john3);
+    const [john] = bookmarkRows([bookmark(0, john316, 'John 3:16', 'For God')], john3);
+    const keys = new Set([rowContentKey(empty), rowContentKey(genesis), rowContentKey(john)]);
+    assert.equal(keys.size, 3);
+    const [again] = bookmarkRows([bookmark(0, john316, 'John 3:16', 'For God')], john316);
+    assert.equal(rowContentKey(again), rowContentKey(john));
+  });
+
+  test('the iOS-look swipe: a short Replace inner, the red Delete on the outer edge', () => {
+    const calls: string[] = [];
+    const actions = bookmarkSwipeActions(
+      () => calls.push('replace'),
+      () => calls.push('delete'),
+    );
+    assert.deepEqual(
+      actions.map(({ key, label }) => ({ key, label })),
+      [
+        { key: 'replace', label: 'Replace' },
+        { key: 'delete', label: DELETE_LABEL },
+      ],
+    );
+    // Rendered in order from the row's edge outward: the last is trailing-most.
+    assert.equal(actions.at(-1)?.key, 'delete');
+    assert.equal('destructive' in actions[0], false);
+    assert.equal(actions[1].destructive, true);
+    actions[0].onPress();
+    actions[1].onPress();
+    assert.deepEqual(calls, ['replace', 'delete']);
+  });
+
+  test('a location key is the same for the same place only', () => {
+    assert.equal(locationKey({ pubKey, ...john316 }), locationKey({ pubKey, ...john316 }));
+    assert.notEqual(locationKey({ pubKey, ...john316 }), locationKey({ pubKey, ...john3 }));
+    assert.notEqual(locationKey({ pubKey, book: 1, chapter: 11 }), locationKey({ pubKey, book: 11, chapter: 1 }));
+  });
+});
+
+describe('a place not found in this edition (spec §7)', () => {
+  test('found exactly: not missing, opening the saved place', () => {
+    assert.deepEqual(slotPlace({ ok: true, value: { location: { pubKey, ...john316 }, exact: true } }), {
+      missing: false,
+      opens: john316,
+    });
+    assert.deepEqual(slotPlace({ ok: true, value: { location: { pubKey, ...john3 }, exact: true } }), {
+      missing: false,
+      opens: john3,
+    });
+  });
+
+  test('a verse that is gone: missing, opening the nearest verse the core found', () => {
+    assert.deepEqual(slotPlace({ ok: true, value: { location: { pubKey, book: 43, chapter: 3, verse: 15 }, exact: false } }), {
+      missing: true,
+      opens: { book: 43, chapter: 3, verse: 15 },
+    });
+  });
+
+  test('a chapter that is gone: missing, opening the chapter the core fell back to', () => {
+    assert.deepEqual(slotPlace({ ok: true, value: { location: { pubKey, book: 43, chapter: 1 }, exact: false } }), {
+      missing: true,
+      opens: { book: 43, chapter: 1 },
+    });
+  });
+
+  test('a book that is gone (the publication alone): missing, opening the start', () => {
+    assert.deepEqual(slotPlace({ ok: true, value: { location: { pubKey }, exact: false } }), { missing: true, opens: 'start' });
+  });
+
+  test('locate threw: missing, opening the start', () => {
+    assert.deepEqual(slotPlace({ ok: false }), { missing: true, opens: 'start' });
+  });
+
+  test('the start is the first book’s first chapter, in the core’s order', () => {
+    assert.deepEqual(startPlace([{ book: 40 }, { book: 41 }]), { book: 40, chapter: 1 });
+    assert.equal(startPlace([]), undefined);
+    assert.equal(startPlace(undefined), undefined);
+  });
+
+  test('the row says so, in its label too; the toast names where it opened', () => {
+    assert.equal(NOT_FOUND_NOTE, 'Not found in this edition');
+    const [row] = bookmarkRows([bookmark(0, john316, 'John 3:16', 'For God')], john3);
+    assert.equal(rowLabel(row, true), 'Slot 1, John 3:16, For God, not found in this edition');
+    assert.equal(rowLabel(row, false), 'Slot 1, John 3:16, For God');
+    const [empty] = bookmarkRows([], john3);
+    assert.equal(rowLabel(empty, true), 'Slot 1, empty');
+    assert.equal(notFoundMessage('John 3'), "Couldn't find the exact place. Opened John 3.");
+  });
+});
+
+describe('the hardware keyboard (spec §4)', () => {
+  const tags = [11, 12, 13, undefined, 15];
+
+  test('↑/↓ go to the slot above and below', () => {
+    assert.deepEqual(rowFocusNeighbours(1, tags), { up: 11, down: 13 });
+  });
+
+  test('the first and last rows leave the outer edge to Android', () => {
+    assert.deepEqual(rowFocusNeighbours(0, tags), { up: undefined, down: 12 });
+    assert.deepEqual(rowFocusNeighbours(4, tags), { up: undefined, down: undefined });
+  });
+
+  test('a row not laid out yet has no tag to go to', () => {
+    assert.deepEqual(rowFocusNeighbours(2, tags), { up: 12, down: undefined });
+  });
+
+  test('Ctrl+D opens the picker only in the focused reader with its chapter', () => {
+    assert.equal(shortcutOpensBookmarks('d', { focused: true, chapterRead: true }), true);
+    assert.equal(shortcutOpensBookmarks('d', { focused: false, chapterRead: true }), false);
+    assert.equal(shortcutOpensBookmarks('d', { focused: true, chapterRead: false }), false);
+    assert.equal(shortcutOpensBookmarks('k', { focused: true, chapterRead: true }), false);
+  });
+});
+
+describe('the header when all 10 are full (spec §3.2)', () => {
+  test('a full list says Replace one, naming what it would save', () => {
+    const ten = Array.from({ length: 10 }, (_, slot) => bookmark(slot, { book: 1, chapter: slot + 1 }, `Genesis ${slot + 1}`));
+    const rows = bookmarkRows(ten, john316);
+    assert.equal(saveLine('John 3:16', allSlotsFull(rows)), 'All 10 slots are in use. Replace one to save John 3:16.');
+    assert.equal(saveLine('John 3', allSlotsFull(bookmarkRows(ten.slice(0, 9), john3))), 'Save John 3');
   });
 });

@@ -23,12 +23,14 @@ class BereanShortcutsPackage : Package {
       }
     )
 
-  // K opens search; 1 and 2 switch the note editor to Write and Read.
+  // K opens search; 1 and 2 switch the note editor to Write and Read; D
+  // opens the Bible reader's bookmarks.
   private val shortcutKeys =
     mapOf(
       KeyEvent.KEYCODE_K to "k",
       KeyEvent.KEYCODE_1 to "1",
-      KeyEvent.KEYCODE_2 to "2"
+      KeyEvent.KEYCODE_2 to "2",
+      KeyEvent.KEYCODE_D to "d"
     )
 
   // metaStateHasModifiers folds left/right variants and ignores lock keys, so

@@ -33,6 +33,8 @@ type HighlightSheetProps = {
   onCopy: () => void;
   /** Add note: a new note at the verse, opened in the editor. */
   onAddNote: () => void;
+  /** Bookmark…: the bookmark picker, in save mode for the verse. */
+  onBookmark: () => void;
   onClose: () => void;
 };
 
@@ -43,7 +45,7 @@ const followRing = (e: NativeSyntheticEvent<TargetedEvent>) => followFocusRingIn
  * A verse's context menu, opened by a long press on its text or its
  * Highlight accessibility action. Highlight comes first: its chips row,
  * each chip "Aa" on its fill and the color's name, and Remove highlight
- * while the verse has one. Then Copy verse. iOS look: a compact sheet on
+ * while the verse has one. Then Copy verse, Add note and Bookmark…. iOS look: a compact sheet on
  * the raised surface, with Cancel, Copy verse a plain row. Material: an M3
  * bottom sheet on surface-container with a drag handle, Copy verse a
  * one-line list item; the scrim or Back closes it.
@@ -57,6 +59,7 @@ export function HighlightSheet({
   onRemove,
   onCopy,
   onAddNote,
+  onBookmark,
   onClose,
 }: HighlightSheetProps) {
   const { look, scheme, colors, m3, highlights, type } = useBerean();
@@ -224,6 +227,31 @@ export function HighlightSheet({
               />
             )}
             <UIText style={{ color: material ? m3.onSurface : colors.accent }}>Add note</UIText>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Bookmark…"
+            onPress={onBookmark}
+            onFocus={followRing}
+            style={({ pressed }) => [
+              material ? styles.materialItem : styles.iosRow,
+              !material && { borderTopColor: colors.separator },
+              material && styles.materialItemNext,
+              !material && styles.iosRowNext,
+              { opacity: pressed ? 0.6 : 1 },
+            ]}
+          >
+            {material && (
+              <ScaledSymbol
+                name={{ ios: 'bookmark', android: 'bookmark_add' }}
+                size={24}
+                tintColor={m3.onSurfaceVariant}
+                accessible={false}
+                importantForAccessibility="no-hide-descendants"
+                accessibilityElementsHidden
+              />
+            )}
+            <UIText style={{ color: material ? m3.onSurface : colors.accent }}>Bookmark…</UIText>
           </Pressable>
         </View>
       </View>

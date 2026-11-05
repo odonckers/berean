@@ -2,7 +2,7 @@ import { requireOptionalNativeModule } from 'expo';
 import { useEffect, useRef } from 'react';
 import type { EventSubscription } from 'react-native';
 
-type ShortcutEvent = { key: 'k' | '1' | '2' };
+type ShortcutEvent = { key: 'k' | '1' | '2' | 'd' };
 export type ListKey = 'up' | 'down';
 type ListKeyEvent = { key: ListKey };
 
@@ -47,6 +47,23 @@ export function useEditorModeShortcuts(onWrite: () => void, onRead: () => void, 
     const subscription = BereanShortcuts?.addListener('onShortcut', (event) => {
       if (event.key === '1') callbacksRef.current.onWrite();
       else if (event.key === '2') callbacksRef.current.onRead();
+    });
+    return () => subscription?.remove();
+  }, [enabled]);
+}
+
+// Ctrl+D (or Meta+D) calls `callback` with the key, only while `enabled`
+// (the focused Bible reader, which opens its bookmarks).
+export function useBookmarkShortcut(callback: (key: string) => void, enabled: boolean) {
+  const callbackRef = useRef(callback);
+  useEffect(() => {
+    callbackRef.current = callback;
+  }, [callback]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const subscription = BereanShortcuts?.addListener('onShortcut', (event) => {
+      if (event.key === 'd') callbackRef.current(event.key);
     });
     return () => subscription?.remove();
   }, [enabled]);

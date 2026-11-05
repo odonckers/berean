@@ -132,15 +132,112 @@ export function toolbarBookmark(
 
 /**
  * Each slot is one element (spec §6). Filled: "Slot 3, John 3:16, For God
- * loved…", with ", current place" where the glyph marks it. Empty:
- * "Slot 4, empty".
+ * loved…", with ", not found in this edition" where the row notes it and
+ * ", current place" where the glyph marks it. Empty: "Slot 4, empty".
  */
-export function rowLabel(row: BookmarkRow): string {
+export function rowLabel(row: BookmarkRow, missing = false): string {
   if (row.kind === 'empty') return `Slot ${row.number}, empty`;
   const parts = [`Slot ${row.number}`, row.title];
   if (row.snippet !== undefined) parts.push(row.snippet);
+  if (missing) parts.push(NOT_FOUND_NOTE.toLowerCase());
   if (row.current) parts.push('current place');
   return parts.join(', ');
+}
+
+/** A filled slot's actions (spec §3.2, §6): its menu, long press, swipe and custom actions. */
+export function replaceLabel(reference: string): string {
+  return `Replace with ${reference}`;
+}
+
+export const DELETE_LABEL = 'Delete';
+
+/**
+ * A filled slot's iOS-look trailing swipe (spec §3.2): Replace (short, as
+ * a swipe button has no room for the reference) inner, and the red Delete
+ * on the outer, trailing-most edge. Each does what the menu's item does.
+ */
+export function bookmarkSwipeActions(onReplace: () => void, onDelete: () => void) {
+  return [
+    { key: 'replace', label: 'Replace', icon: { ios: 'arrow.triangle.2.circlepath', android: 'swap_horiz' }, onPress: onReplace },
+    { key: 'delete', label: DELETE_LABEL, icon: { ios: 'trash', android: 'delete' }, destructive: true, onPress: onDelete },
+  ] as const;
+}
+
+/** The trailing ⋯ / ⋮ button's label. */
+export function rowMenuLabel(row: Extract<BookmarkRow, { kind: 'filled' }>): string {
+  return `More actions for slot ${row.number}`;
+}
+
+/** A location as a string, the same for the same place: a cache key. */
+export function locationKey(location: BookmarkLocation): string {
+  const { pubKey, docId, book, chapter, verse, paragraph } = location;
+  return [pubKey, docId ?? '', book ?? '', chapter ?? '', verse ?? '', paragraph ?? ''].join(':');
+}
+
+/**
+ * What a row shows, as a key: a change of it (a save, a Replace, a Delete,
+ * an Undo) cross-fades the row's content (spec §5).
+ */
+export function rowContentKey(row: BookmarkRow): string {
+  return row.kind === 'empty' ? 'empty' : `filled|${row.title}|${row.snippet ?? ''}|${locationKey(row.location)}`;
+}
+
+/** The row note for a place the installed edition no longer has (spec §7). */
+export const NOT_FOUND_NOTE = 'Not found in this edition';
+
+/** The core's Located: where a saved location is now, and whether it is the saved place. */
+export type LocatedLike = { location: BookmarkLocation; exact: boolean };
+
+/** Reader.locate's answer for a slot, or that it threw. */
+export type LocateResult = { ok: true; value: LocatedLike } | { ok: false };
+
+/**
+ * Where a filled slot opens (spec §7, "Location no longer exists"), from
+ * the core's Reader.locate: missing unless the core found the saved place
+ * exactly, and the place to open, which is the core's nearest one (an
+ * earlier verse, the chapter, the book's first chapter). Where the core
+ * fell back to the publication alone, or couldn't locate it at all, it
+ * opens the Bible's start.
+ */
+export type SlotPlace = { missing: boolean; opens: BiblePlace | 'start' };
+
+export function slotPlace(result: LocateResult): SlotPlace {
+  if (!result.ok) return { missing: true, opens: 'start' };
+  const { location, exact } = result.value;
+  const { book, chapter, verse } = location;
+  if (book === undefined || chapter === undefined) return { missing: !exact, opens: 'start' };
+  return { missing: !exact, opens: verse === undefined ? { book, chapter } : { book, chapter, verse } };
+}
+
+/** The Bible's start: the first chapter of its first book, in the core's order. */
+export function startPlace(books: readonly { book: number }[] | undefined): BiblePlace | undefined {
+  const first = books?.[0];
+  return first === undefined ? undefined : { book: first.book, chapter: 1 };
+}
+
+/** The toast after opening the nearest place (spec §7): "… Opened John 3." */
+export function notFoundMessage(opened: string): string {
+  return `Couldn't find the exact place. Opened ${opened}.`;
+}
+
+/**
+ * Hardware ↑/↓ in the picker (spec §4): each slot's next focus up and
+ * down is the slot above and below (never its own ⋯ / ⋮ button), by their
+ * native view tags; the first and last rows leave it to Android.
+ */
+export function rowFocusNeighbours(
+  index: number,
+  tags: readonly (number | undefined)[],
+): { up: number | undefined; down: number | undefined } {
+  return { up: index > 0 ? tags[index - 1] : undefined, down: tags[index + 1] };
+}
+
+/**
+ * Ctrl+D (or Meta+D) on a hardware keyboard opens the picker in save mode
+ * (spec §4), only in the focused Bible reader with its chapter read.
+ */
+export function shortcutOpensBookmarks(key: string, reader: { focused: boolean; chapterRead: boolean }): boolean {
+  return key === 'd' && reader.focused && reader.chapterRead;
 }
 
 /** A slot's default action: "Jump to John 3:16", or "Save John 3:16 here". */
@@ -216,6 +313,20 @@ export function bookmarkPickerPlacement(look: Look, windowClass: WindowClass): B
     return { form: 'bottomSheet', maxWidth: windowClass === 'compact' ? undefined : BOOKMARK_SHEET_MAX_WIDTH };
   }
   return windowClass === 'compact' ? { form: 'sheet' } : { form: 'popover', maxWidth: BOOKMARK_POPOVER_WIDTH };
+}
+
+/** A tablet's window is at least this wide, in dp (the medium breakpoint). */
+export const TABLET_MIN_WIDTH = 600;
+
+/**
+ * How a filled slot's ⋯ / ⋮ opens Replace and Delete: Material, an M3 menu
+ * anchored to the ⋮ at any width; the iOS look, a card anchored to the ⋯
+ * on a tablet (≥ 600dp, spec §4) and the bottom action sheet on a phone.
+ * A long press has no button to anchor to, so it opens the sheet.
+ */
+export function rowMenuPresentation(look: Look, windowWidthDp: number): 'sheet' | 'anchored' {
+  if (look === 'material') return 'anchored';
+  return windowWidthDp >= TABLET_MIN_WIDTH ? 'anchored' : 'sheet';
 }
 
 /** M3 modal bottom sheets keep 72dp clear above them. */

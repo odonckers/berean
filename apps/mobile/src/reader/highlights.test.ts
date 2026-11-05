@@ -10,6 +10,7 @@ import {
   highlightSpokenName,
   highlightsByVerse,
   segmentHighlight,
+  segmentVerse,
   toCoreColorName,
   toHighlightName,
   verseSubject,
@@ -152,6 +153,14 @@ describe('segment highlight', () => {
 
   test('out of range is none', () => {
     assert.equal(segmentHighlight(segments, 99, byVerse), undefined);
+  });
+
+  test('the verse each segment’s text belongs to (the landing wash’s too)', () => {
+    assert.deepEqual(
+      segments.map((_, i) => segmentVerse(segments, i)),
+      [undefined, 1, 1, 1, undefined, 2, undefined, undefined, undefined, 3],
+    );
+    assert.equal(segmentVerse(segments, 99), undefined);
   });
 });
 
