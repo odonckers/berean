@@ -30,7 +30,10 @@ import {
   bookmarkSheetHeights,
   bookmarkSheetOpensAt,
   bookmarkSnippet,
+  bookmarkSwipeActions,
   isAtPlace,
+  rowMenuPresentation,
+  TABLET_MIN_WIDTH,
   jumpAnnouncement,
   rowAction,
   rowLabel,
@@ -299,6 +302,25 @@ describe('where the picker opens (spec §4)', () => {
   });
 });
 
+describe('where a slot’s ⋯ / ⋮ opens Replace and Delete', () => {
+  test('a tablet is 600dp and wider', () => {
+    assert.equal(TABLET_MIN_WIDTH, 600);
+  });
+
+  test('iOS look: the action sheet on a phone, a card at the ⋯ on a tablet', () => {
+    assert.equal(rowMenuPresentation('ios', 390), 'sheet');
+    assert.equal(rowMenuPresentation('ios', 599), 'sheet');
+    assert.equal(rowMenuPresentation('ios', 600), 'anchored');
+    assert.equal(rowMenuPresentation('ios', 1024), 'anchored');
+  });
+
+  test('Material: the M3 menu at the ⋮, phone and tablet', () => {
+    assert.equal(rowMenuPresentation('material', 390), 'anchored');
+    assert.equal(rowMenuPresentation('material', 599), 'anchored');
+    assert.equal(rowMenuPresentation('material', 600), 'anchored');
+  });
+});
+
 describe('sheet heights', () => {
   test('Material: one height, the M3 top margin clear below the status bar', () => {
     assert.deepEqual(bookmarkSheetHeights('bottomSheet', { windowHeight: 900, topInset: 24 }), {
@@ -395,6 +417,28 @@ describe('managing a filled slot (spec §3.2, §6)', () => {
     assert.equal(keys.size, 3);
     const [again] = bookmarkRows([bookmark(0, john316, 'John 3:16', 'For God')], john316);
     assert.equal(rowContentKey(again), rowContentKey(john));
+  });
+
+  test('the iOS-look swipe: a short Replace inner, the red Delete on the outer edge', () => {
+    const calls: string[] = [];
+    const actions = bookmarkSwipeActions(
+      () => calls.push('replace'),
+      () => calls.push('delete'),
+    );
+    assert.deepEqual(
+      actions.map(({ key, label }) => ({ key, label })),
+      [
+        { key: 'replace', label: 'Replace' },
+        { key: 'delete', label: DELETE_LABEL },
+      ],
+    );
+    // Rendered in order from the row's edge outward: the last is trailing-most.
+    assert.equal(actions.at(-1)?.key, 'delete');
+    assert.equal('destructive' in actions[0], false);
+    assert.equal(actions[1].destructive, true);
+    actions[0].onPress();
+    actions[1].onPress();
+    assert.deepEqual(calls, ['replace', 'delete']);
   });
 
   test('a location key is the same for the same place only', () => {

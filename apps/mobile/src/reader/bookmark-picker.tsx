@@ -47,6 +47,7 @@ import {
   allSlotsFull,
   bookmarkPickerPlacement,
   bookmarkSheetFit,
+  bookmarkSwipeActions,
   bookmarkSheetHeights,
   bookmarkSheetOpensAt,
   replaceLabel,
@@ -55,6 +56,7 @@ import {
   rowFocusNeighbours,
   rowLabel,
   rowMenuLabel,
+  rowMenuPresentation,
   saveLine,
   savedAnnouncement,
 } from '@/reader/bookmarks';
@@ -499,7 +501,7 @@ export function BookmarkPicker({
         <ActionSheet
           visible
           title={`Slot ${menu.row.number}, ${menu.row.title}`}
-          anchor={material ? menu.anchor : undefined}
+          anchor={rowMenuPresentation(look, window.width) === 'anchored' ? menu.anchor : undefined}
           items={[
             {
               key: 'replace',
@@ -751,10 +753,7 @@ function SlotRow({
   return (
     <SwipeRow
       enabled={filled}
-      actions={[
-        { key: 'replace', label: 'Replace', icon: { ios: 'arrow.triangle.2.circlepath', android: 'swap_horiz' }, onPress: onReplace },
-        { key: 'delete', label: DELETE_LABEL, icon: { ios: 'trash', android: 'delete' }, destructive: true, onPress: onDelete },
-      ]}
+      actions={bookmarkSwipeActions(onReplace, onDelete)}
     >
       {line}
     </SwipeRow>

@@ -84,7 +84,7 @@ import {
   bookmarkUndoMessages,
   restoredAnnouncement,
 } from '@/reader/bookmark-undo';
-import { type Wash, landingWash } from '@/reader/landing-wash';
+import { type Wash, landingWash, washAccent } from '@/reader/landing-wash';
 import { WashText } from '@/reader/wash-text';
 import { copiedVerse, copyConfirmation, verseText } from '@/reader/copy-verse';
 import { HighlightSheet } from '@/reader/highlight-sheet';
@@ -183,7 +183,7 @@ export function BibleChapterView({
   /** A verse to open the chapter at (a search hit), scrolled to once. */
   verse?: number;
 }) {
-  const { look, colors, m3, type, highlights: fills } = useBerean();
+  const { look, mode, colors, m3, type, highlights: fills } = useBerean();
   const material = look === 'material';
   const reducedMotion = useReducedMotion();
   // The Read tab's root: the material top app bar's tonal fill, and the
@@ -929,7 +929,8 @@ export function BibleChapterView({
   // of a paragraph after the pane) has the same style as its first block;
   // once paragraphs carry an indent, the continuation leaves it off.
   const drawnBlocks: { key: string; runs: readonly Run[] }[] = [];
-  const washAccent = material ? m3.primary : colors.accent;
+  const washInk = washAccent(look, colors, m3);
+  const increaseContrast = mode === 'lightIC' || mode === 'darkIC';
   const renderBlock = (key: string, runs: readonly Run[], blockIndex?: number) => {
     const segments = blockSegments(runs);
     drawnBlocks.push({ key, runs });
@@ -1013,7 +1014,9 @@ export function BibleChapterView({
                   <WashText
                     key={`${index}-${washHere.arrival}`}
                     base={fill === undefined ? colors.surface : fills[fill]}
-                    accent={washAccent}
+                    accent={washInk}
+                    text={colors.text}
+                    increaseContrast={increaseContrast}
                     fades={washHere.fades}
                     onFaded={() => dispatchWash({ kind: 'faded', arrival: washHere.arrival })}
                   >
@@ -1065,7 +1068,9 @@ export function BibleChapterView({
                   <WashText
                     key={`${index}-${washHere.arrival}`}
                     base={fill === undefined ? colors.surface : fills[fill]}
-                    accent={washAccent}
+                    accent={washInk}
+                    text={colors.text}
+                    increaseContrast={increaseContrast}
                     fades={washHere.fades}
                     onFaded={() => dispatchWash({ kind: 'faded', arrival: washHere.arrival })}
                     onLongPress={() => openActions(segment.verse)}

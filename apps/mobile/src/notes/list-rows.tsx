@@ -15,6 +15,7 @@ import { ScaledSymbol } from '@/components/scaled-symbol';
 import { UIText } from '@/components/text';
 import { useBerean } from '@/design/theme';
 import { hairline, spacing } from '@/design/tokens';
+import { swipeActionColors } from '@/notes/sheet-colors';
 
 export type SymbolName = SymbolViewProps['name'];
 
@@ -188,9 +189,10 @@ export function ListRow({
 export type SwipeAction = { key: string; label: string; icon: SymbolName; destructive?: boolean; onPress: () => void };
 
 /**
- * Swipe actions on a phone row: drag left to show them. Each is also in
- * the row's menu and its accessibility actions (WCAG 2.5.7), so the panel
- * itself is hidden from assistive tech.
+ * Swipe actions on a phone row: drag left to show them, the last at the
+ * trailing (outer) edge; a destructive one is red in the iOS look. Each is
+ * also in the row's menu and its accessibility actions (WCAG 2.5.7), so
+ * the panel itself is hidden from assistive tech.
  */
 export function SwipeRow({
   actions,
@@ -203,18 +205,10 @@ export function SwipeRow({
   children: ReactNode;
 }) {
   const { look, colors, m3 } = useBerean();
-  const material = look === 'material';
   const renderRightActions = (_p: unknown, _t: unknown, swipe: SwipeableMethods) => (
     <View style={styles.swipeActions} {...hidden}>
       {actions.map((action) => {
-        const fill = action.destructive
-          ? material
-            ? m3.primary
-            : colors.accent
-          : material
-            ? m3.secondaryContainer
-            : colors.textSecondary;
-        const ink = action.destructive || !material ? m3.onPrimary : m3.onSecondaryContainer;
+        const { fill, ink } = swipeActionColors(look, action.destructive === true, colors, m3);
         return (
           <Pressable
             key={action.key}

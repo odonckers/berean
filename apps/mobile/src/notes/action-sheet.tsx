@@ -15,6 +15,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ScaledSymbol } from '@/components/scaled-symbol';
+import { sheetShadow, useSheetChrome } from '@/components/sheet';
 import { UIText } from '@/components/text';
 import { TextButton } from '@/components/text-button';
 import { systemBarStyle, useBerean } from '@/design/theme';
@@ -43,7 +44,11 @@ type ActionSheetProps = {
   visible: boolean;
   title: string;
   items: readonly SheetItem[];
-  /** Material look: open as an M3 menu at this button instead of a bottom sheet. */
+  /**
+   * Open at this button instead of as a bottom sheet: an M3 menu in
+   * Material, an anchored card in the iOS look (callers pass one there only
+   * on a tablet).
+   */
   anchor?: Anchor;
   /** The anchor's edge the menu lines up with: 'start' for a dropdown, 'end' (default) for an overflow ⋮. */
   anchorEdge?: MenuEdge;
@@ -60,19 +65,23 @@ const hidden = {
 } as const;
 
 const MENU_ITEM = 48;
+const CARD_ITEM = 44;
 const MENU_WIDTH = 280;
 
 /**
  * A row's context menu, or a Move to… folder picker. A long press opens it
  * as a sheet: iOS look, a compact sheet on the raised surface with Cancel;
  * Material, an M3 bottom sheet with a drag handle and one-line list items.
- * Material's overflow ⋮ opens it as an M3 menu under the button.
+ * With an anchor it opens under the button: Material's overflow ⋮ as an M3
+ * menu; the iOS look's ⋯ on a tablet as an anchored card (12pt corners and
+ * a shadow, like the bookmark picker's card), 44pt rows with separators.
  */
 export function ActionSheet({ visible, title, items, anchor, anchorEdge = 'end', onClose }: ActionSheetProps) {
   const { look, scheme, colors, m3, type } = useBerean();
   const material = look === 'material';
   const insets = useSafeAreaInsets();
   const window = useWindowDimensions();
+  const chrome = useSheetChrome();
 
   const titleRef = useRef<ComponentRef<typeof Text>>(null);
   const firstRef = useRef<ComponentRef<typeof Pressable>>(null);
@@ -80,10 +89,10 @@ export function ActionSheet({ visible, title, items, anchor, anchorEdge = 'end',
     if (!visible) return;
     // A screen reader lands on the title (a sheet) or the first item (a menu).
     const frame = requestAnimationFrame(() =>
-      moveAccessibilityFocus(anchor && material ? firstRef.current : titleRef.current),
+      moveAccessibilityFocus(anchor ? firstRef.current : titleRef.current),
     );
     return () => cancelAnimationFrame(frame);
-  }, [visible, anchor, material]);
+  }, [visible, anchor]);
 
   // The chosen item runs once the sheet has gone: iOS won't present an
   // alert or another Modal while one is still dismissing, so there it waits
@@ -124,9 +133,9 @@ export function ActionSheet({ visible, title, items, anchor, anchorEdge = 'end',
         onFocus={followRing}
         android_ripple={material ? { color: colors.separator } : undefined}
         style={({ pressed }) => [
-          menu ? styles.menuItem : material ? styles.materialItem : styles.iosRow,
-          !menu && !material && index > 0 && { borderTopWidth: hairline, borderTopColor: colors.separator },
-          { paddingStart: (menu ? spacing.md : 0) + (item.depth ?? 0) * spacing.lg },
+          menu ? (material ? styles.menuItem : styles.cardItem) : material ? styles.materialItem : styles.iosRow,
+          !material && index > 0 && { borderTopWidth: hairline, borderTopColor: colors.separator },
+          { paddingStart: (menu ? (material ? spacing.md : spacing.lg) : 0) + (item.depth ?? 0) * spacing.lg },
           !material && { opacity: pressed ? 0.6 : 1 },
         ]}
       >
@@ -141,13 +150,14 @@ export function ActionSheet({ visible, title, items, anchor, anchorEdge = 'end',
     );
   };
 
-  if (anchor && material) {
+  if (anchor) {
     // Under the anchor, lined up with its `anchorEdge`; above it when
-    // there's no room below.
+    // there's no room below. The card's rows grow with Dynamic Type.
+    const itemHeight = material ? MENU_ITEM : CARD_ITEM * Math.max(1, window.fontScale);
     const { top, left } = menuPlacement({
       anchor,
       edge: anchorEdge,
-      menu: { width: MENU_WIDTH, height: items.length * MENU_ITEM + spacing.sm * 2 },
+      menu: { width: MENU_WIDTH, height: items.length * itemHeight + (material ? spacing.sm * 2 : 0) },
       window,
       insets,
       margin: spacing.sm,
@@ -169,7 +179,12 @@ export function ActionSheet({ visible, title, items, anchor, anchorEdge = 'end',
           accessibilityViewIsModal
           accessibilityRole="menu"
           accessibilityLabel={title}
-          style={[styles.menu, { top, ...across, backgroundColor: sheetSurface(look, colors, m3) }]}
+          onAccessibilityEscape={onClose}
+          style={
+            material
+              ? [styles.menu, { top, ...across, backgroundColor: sheetSurface(look, colors, m3) }]
+              : [styles.card, { top, ...across, backgroundColor: chrome.background }, chrome.edge]
+          }
         >
           {items.map((item, i) => row(item, i, true))}
         </View>
@@ -255,5 +270,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
     paddingEnd: spacing.md,
+  },
+  // The iOS look's anchored card: the picker card's corners and shadow.
+  card: {
+    position: 'absolute',
+    width: MENU_WIDTH,
+    borderRadius: radii.card,
+    ...sheetShadow,
+  },
+  cardItem: {
+    minHeight: CARD_ITEM,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingEnd: spacing.lg,
   },
 });

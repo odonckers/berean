@@ -151,6 +151,18 @@ export function replaceLabel(reference: string): string {
 
 export const DELETE_LABEL = 'Delete';
 
+/**
+ * A filled slot's iOS-look trailing swipe (spec §3.2): Replace (short, as
+ * a swipe button has no room for the reference) inner, and the red Delete
+ * on the outer, trailing-most edge. Each does what the menu's item does.
+ */
+export function bookmarkSwipeActions(onReplace: () => void, onDelete: () => void) {
+  return [
+    { key: 'replace', label: 'Replace', icon: { ios: 'arrow.triangle.2.circlepath', android: 'swap_horiz' }, onPress: onReplace },
+    { key: 'delete', label: DELETE_LABEL, icon: { ios: 'trash', android: 'delete' }, destructive: true, onPress: onDelete },
+  ] as const;
+}
+
 /** The trailing ⋯ / ⋮ button's label. */
 export function rowMenuLabel(row: Extract<BookmarkRow, { kind: 'filled' }>): string {
   return `More actions for slot ${row.number}`;
@@ -301,6 +313,20 @@ export function bookmarkPickerPlacement(look: Look, windowClass: WindowClass): B
     return { form: 'bottomSheet', maxWidth: windowClass === 'compact' ? undefined : BOOKMARK_SHEET_MAX_WIDTH };
   }
   return windowClass === 'compact' ? { form: 'sheet' } : { form: 'popover', maxWidth: BOOKMARK_POPOVER_WIDTH };
+}
+
+/** A tablet's window is at least this wide, in dp (the medium breakpoint). */
+export const TABLET_MIN_WIDTH = 600;
+
+/**
+ * How a filled slot's ⋯ / ⋮ opens Replace and Delete: Material, an M3 menu
+ * anchored to the ⋮ at any width; the iOS look, a card anchored to the ⋯
+ * on a tablet (≥ 600dp, spec §4) and the bottom action sheet on a phone.
+ * A long press has no button to anchor to, so it opens the sheet.
+ */
+export function rowMenuPresentation(look: Look, windowWidthDp: number): 'sheet' | 'anchored' {
+  if (look === 'material') return 'anchored';
+  return windowWidthDp >= TABLET_MIN_WIDTH ? 'anchored' : 'sheet';
 }
 
 /** M3 modal bottom sheets keep 72dp clear above them. */

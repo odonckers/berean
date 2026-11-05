@@ -1,7 +1,20 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { WASH_FADE_MS, WASH_HOLD_MS, WASH_TINT, landingWash, washFill, washStrength } from './landing-wash.ts';
+import { DEFAULT_CHOICE, resolvePalette } from '../design/appearance.ts';
+import { contrast } from '../design/contrast.ts';
+import { THEME_IDS, THEME_MODES, type ThemeMode } from '../design/theme-tokens.generated.ts';
+import {
+  IC_TEXT_CONTRAST,
+  WASH_FADE_MS,
+  WASH_HOLD_MS,
+  WASH_TINT,
+  landingWash,
+  washAccent,
+  washFill,
+  washStrength,
+  washTint,
+} from './landing-wash.ts';
 
 const land = (arrival: number, reducedMotion = false) =>
   ({ kind: 'land', chapterKey: 'a', verse: 16, arrival, reducedMotion }) as const;
@@ -85,5 +98,90 @@ describe('the wash’s fill', () => {
   test('colours it can’t read leave the base', () => {
     assert.equal(washFill('transparent', '#9B3F2A', 1), 'transparent');
     assert.equal(washFill('#FFFCF5', 'rgb(1,2,3)', 1), '#FFFCF5');
+  });
+});
+
+// Every set's wash: each theme, accent slot and look, over the page and
+// each highlight, as the reader draws it (the verse text in textPrimary).
+function washCases(modes: readonly ThemeMode[]) {
+  const cases: { name: string; base: string; accent: string; text: string; highlight: boolean }[] = [];
+  for (const theme of THEME_IDS) {
+    for (const mode of modes) {
+      for (const accent of [1, 2, 3, 4, 5, 6] as const) {
+        const palette = resolvePalette({ ...DEFAULT_CHOICE, theme, accent }, mode);
+        for (const look of ['ios', 'material'] as const) {
+          const ink = washAccent(look, palette.colors, palette.m3);
+          const bases = [['page', palette.colors.surface], ...Object.entries(palette.highlights)];
+          for (const [where, base] of bases) {
+            cases.push({
+              name: `${theme} ${mode} slot ${accent} ${look} over ${where}`,
+              base,
+              accent: ink,
+              text: palette.colors.text,
+              highlight: where !== 'page',
+            });
+          }
+        }
+      }
+    }
+  }
+  return cases;
+}
+
+describe('the wash under Increase Contrast', () => {
+  const icModes = THEME_MODES.filter((mode) => mode === 'lightIC' || mode === 'darkIC');
+
+  test('the cases cover both IC sets, every theme, slot, look, the page and every highlight', () => {
+    assert.deepEqual(icModes, ['lightIC', 'darkIC']);
+    assert.equal(washCases(icModes).length, 4 * 2 * 6 * 2 * 7);
+  });
+
+  test('the verse text keeps 7:1 on the washed fill, through the fade too', () => {
+    for (const { name, base, accent, text } of washCases(icModes)) {
+      const tint = washTint(base, accent, text, true);
+      assert.ok(tint >= 0 && tint <= WASH_TINT, name);
+      for (let step = 0; step <= 12; step++) {
+        const ratio = contrast(text, washFill(base, accent, step / 12, tint));
+        assert.ok(ratio >= IC_TEXT_CONTRAST, `${name} at ${step}/12: ${ratio.toFixed(2)}:1`);
+      }
+    }
+  });
+
+  test('it is the most tint that holds 7:1', () => {
+    for (const { name, base, accent, text } of washCases(icModes)) {
+      const tint = washTint(base, accent, text, true);
+      if (tint >= WASH_TINT) continue;
+      assert.ok(contrast(text, washFill(base, accent, 1, tint + 0.001)) < IC_TEXT_CONTRAST, name);
+    }
+  });
+
+  test('Lumen’s measured cases lose the wash over the highlight', () => {
+    // Light IC Sepia, orange highlight, accent #005748: 5.48:1 at the full tint.
+    const sepia = resolvePalette({ ...DEFAULT_CHOICE, theme: 'sepia' }, 'lightIC');
+    const sepiaTint = washTint(sepia.highlights.orange, '#005748', sepia.colors.text, true);
+    assert.ok(contrast(sepia.colors.text, washFill(sepia.highlights.orange, '#005748', 1)) < IC_TEXT_CONTRAST);
+    assert.ok(contrast(sepia.colors.text, washFill(sepia.highlights.orange, '#005748', 1, sepiaTint)) >= IC_TEXT_CONTRAST);
+    // Dark IC Paper, green highlight, accent #9AD6A1: 5.06:1 at the full tint.
+    const paper = resolvePalette({ ...DEFAULT_CHOICE, theme: 'paper' }, 'darkIC');
+    const paperTint = washTint(paper.highlights.green, '#9AD6A1', paper.colors.text, true);
+    assert.ok(contrast(paper.colors.text, washFill(paper.highlights.green, '#9AD6A1', 1)) < IC_TEXT_CONTRAST);
+    assert.ok(contrast(paper.colors.text, washFill(paper.highlights.green, '#9AD6A1', 1, paperTint)) >= IC_TEXT_CONTRAST);
+  });
+
+  test('a base the text already fails, or colours it can’t read, get no tint', () => {
+    assert.equal(washTint('#777777', '#000000', '#FFFFFF', true), 0);
+    assert.equal(washTint('transparent', '#9B3F2A', '#000000', true), 0);
+  });
+});
+
+describe('the wash without Increase Contrast', () => {
+  test('every light and dark set keeps the full tint', () => {
+    for (const { name, base, accent, text } of washCases(['light', 'dark'])) {
+      assert.equal(washTint(base, accent, text, false), WASH_TINT, name);
+    }
+  });
+
+  test('the full tint is the default fill', () => {
+    assert.equal(washFill('#FFFCF5', '#9B3F2A', 1), washFill('#FFFCF5', '#9B3F2A', 1, WASH_TINT));
   });
 });
