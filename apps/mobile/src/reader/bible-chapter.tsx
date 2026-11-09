@@ -110,6 +110,7 @@ import { useChapterHighlights } from '@/reader/use-chapter-highlights';
 import { type FilledRow, locateNow, useBookmarkHost } from '@/reader/use-bookmark-host';
 import { useChapterNotes } from '@/reader/use-chapter-notes';
 import { markersByVerse, paneStudy, studyActionLabel } from '@/reader/verse-study';
+import { TodayButton } from '@/today/today-button';
 
 // Study guide installation isn't modelled yet, so the guide is treated as
 // not installed (the pane offers a Research tab when there is content).
@@ -645,10 +646,19 @@ export function BibleChapterView({
   });
   // A verse's Bookmark… opens the picker in save mode for that verse (spec §3.1).
   const openBookmarksFor = (verse: number) => bookmarkHost.openFor(saveTarget(heading, { book, chapter }, verse));
+  // Today (the day's text and the week's meetings) leads the reader's
+  // actions: Read is where Berean keeps them, not tabs of their own.
   const toolbar = (
     <View style={styles.toolbar}>
+      <TodayButton />
       {aa}
       {bookmarkHost.button}
+    </View>
+  );
+  const unreadToolbar = (
+    <View style={styles.toolbar}>
+      <TodayButton />
+      {aa}
     </View>
   );
 
@@ -692,7 +702,7 @@ export function BibleChapterView({
         title: material ? heading : '',
         headerLargeTitleEnabled: false,
         // Bookmarks need the chapter: where it couldn't be read, only Aa.
-        headerRight: headerHidden ? undefined : () => (loaded.ok ? toolbar : aa),
+        headerRight: headerHidden ? undefined : () => (loaded.ok ? toolbar : unreadToolbar),
         headerTitle:
           material && bookList !== undefined
             ? () => (
@@ -729,7 +739,7 @@ export function BibleChapterView({
       <ReadingAppearanceHost open={appearance.open} onClose={appearance.close} buttonRef={appearance.buttonRef}>
         {screenOptions}
         <ReadingColumn tabRoot>
-          {headerHidden && <View style={styles.aaRow}>{aa}</View>}
+          {headerHidden && <View style={styles.aaRow}>{unreadToolbar}</View>}
           <UIText secondary>{loaded.message}</UIText>
           <View style={styles.navRow}>{previous}</View>
         </ReadingColumn>

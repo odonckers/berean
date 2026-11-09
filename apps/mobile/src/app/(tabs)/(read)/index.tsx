@@ -11,6 +11,7 @@ import { displayTitle } from '@/library/labels';
 import { load, type Loaded } from '@/library/load';
 import { BibleChapterView } from '@/reader/bible-chapter';
 import { type BibleLocation, rememberBible, rememberedBible } from '@/reader/session';
+import { TODAY_LABEL } from '@/today/today-button';
 
 // verse opens the chapter at a verse (a search hit); it isn't remembered.
 type ReadParams = {
@@ -83,6 +84,7 @@ export default function ReadScreen() {
                 align="leading"
                 onPress={() => router.navigate('/library')}
               />
+              <TextButton title={TODAY_LABEL} align="leading" onPress={() => router.push('/today')} />
             </>
           ) : (
             <UIText secondary>{installed.message}</UIText>

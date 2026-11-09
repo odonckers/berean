@@ -13,7 +13,7 @@ const SelectedLanguageContext = createContext<SelectedLanguage>({
   setMepsLanguage: () => {},
 });
 
-/** The catalog's selected language, for the library Stack. Not persisted. */
+/** The browsed language: Library's catalog and Read's Today. Not persisted. */
 export function SelectedLanguageProvider({ children }: { children: ReactNode }) {
   const [mepsLanguage, setMepsLanguage] = useState(DEFAULT_MEPS_LANGUAGE);
   const value = useMemo(() => ({ mepsLanguage, setMepsLanguage }), [mepsLanguage]);

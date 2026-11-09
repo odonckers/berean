@@ -8,6 +8,7 @@ import { ThemeFade } from '@/components/theme-fade';
 import { LookProvider } from '@/design/look';
 import { focusRing } from '@/design/focus-ring';
 import { BereanThemeProvider, systemBarStyle, useBerean } from '@/design/theme';
+import { SelectedLanguageProvider } from '@/library/selected-language';
 import { SearchProvider } from '@/search/search-context';
 import { useKeyboardFocusRing } from '../../modules/berean-shortcuts';
 import { useNavigationBarStyle } from '../../modules/berean-system-bars';
@@ -21,19 +22,22 @@ function RootStack() {
   return (
     // One search for every entry, so the query carries over between them.
     <SearchProvider>
-      <Stack screenOptions={{ contentStyle: { backgroundColor: colors.surface } }}>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen
-          name="search-view"
-          options={{ presentation: 'modal', title: 'Search', headerShown: true }}
-        />
-        {/* Settings › Appearance (themes spec §4): a normal push with the native header. */}
-        <Stack.Screen name="appearance" options={{ title: 'Appearance', headerShown: true }} />
-        <Stack.Screen
-          name="note-editor"
-          options={{ presentation: 'modal', title: '', headerShown: true }}
-        />
-      </Stack>
+      {/* The browsed language: Library picks it, and Read's Today follows it. */}
+      <SelectedLanguageProvider>
+        <Stack screenOptions={{ contentStyle: { backgroundColor: colors.surface } }}>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="search-view"
+            options={{ presentation: 'modal', title: 'Search', headerShown: true }}
+          />
+          {/* Settings › Appearance (themes spec §4): a normal push with the native header. */}
+          <Stack.Screen name="appearance" options={{ title: 'Appearance', headerShown: true }} />
+          <Stack.Screen
+            name="note-editor"
+            options={{ presentation: 'modal', title: '', headerShown: true }}
+          />
+        </Stack>
+      </SelectedLanguageProvider>
       <SearchShortcut />
       <ThemeFade />
       <StatusBar style={barStyle} />
