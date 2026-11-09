@@ -70,7 +70,7 @@ function emitThrottled() {
   timer = setTimeout(emit, wait);
 }
 
-function subscribe(listener: () => void): () => void {
+export function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
