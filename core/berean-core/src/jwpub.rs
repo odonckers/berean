@@ -80,13 +80,18 @@ pub struct DocumentSummary {
 }
 
 /// One row of `DatedText`: the inclusive `YYYYMMDD` days a document covers
-/// (e.g. one Meeting Workbook week).
+/// (e.g. one Meeting Workbook week, or one day of the daily text).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DatedTextRow {
+    pub(crate) dated_text_id: i64,
     /// Local `Document.DocumentId`.
     pub(crate) document_id: i64,
     pub(crate) first_date_offset: i32,
     pub(crate) last_date_offset: i32,
+    /// The `data-pid`s of the document the row covers (a daily text's day
+    /// within its month); `None` when the publication leaves them out.
+    pub(crate) begin_paragraph: Option<i64>,
+    pub(crate) end_paragraph: Option<i64>,
 }
 
 /// One row of `DocumentParagraph`.
@@ -536,8 +541,13 @@ impl Publication {
         let Some(sql) = select_sql(
             &self.conn,
             "DatedText",
-            &["DocumentId", "FirstDateOffset", "LastDateOffset"],
-            &[],
+            &[
+                "DatedTextId",
+                "DocumentId",
+                "FirstDateOffset",
+                "LastDateOffset",
+            ],
+            &["BeginParagraphOrdinal", "EndParagraphOrdinal"],
             " FROM DatedText ORDER BY FirstDateOffset, DatedTextId",
         )?
         else {
@@ -545,11 +555,40 @@ impl Publication {
         };
         self.query(&sql, [], |r| {
             Ok(DatedTextRow {
-                document_id: r.get(0)?,
-                first_date_offset: r.get(1)?,
-                last_date_offset: r.get(2)?,
+                dated_text_id: r.get(0)?,
+                document_id: r.get(1)?,
+                first_date_offset: r.get(2)?,
+                last_date_offset: r.get(3)?,
+                begin_paragraph: r.get(4)?,
+                end_paragraph: r.get(5)?,
             })
         })
+    }
+
+    /// The decrypted `DatedText.Content` of one row: for a Watchtower study
+    /// week, the table-of-contents entry that links its study article.
+    /// `None` when the row or its content is missing.
+    pub(crate) fn dated_text_content(
+        &self,
+        dated_text_id: i64,
+    ) -> Result<Option<String>, CoreError> {
+        let Some(sql) = select_sql(
+            &self.conn,
+            "DatedText",
+            &[],
+            &["Content"],
+            " FROM DatedText WHERE DatedTextId = ?1",
+        )?
+        else {
+            return Ok(None);
+        };
+        let blob: Option<Vec<u8>> = self
+            .conn
+            .query_row(&sql, [dated_text_id], |r| r.get(0))
+            .optional()
+            .map_err(db_err)?
+            .flatten();
+        blob.map(|b| self.decrypt(&b)).transpose()
     }
 
     /// `BibleCitation` rows for one document, by `BibleCitationId`.

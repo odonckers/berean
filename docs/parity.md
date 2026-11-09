@@ -101,12 +101,12 @@ Only features that a cited source describes are listed. Rows marked **to verify*
 ## Meetings tab / Meeting Workbook
 | ID | Feature | JW Library behavior | Status | Layer | UI | Board row / PR | Notes |
 |---|---|---|---|---|---|---|---|
-| MT-1 | Meetings tab | Shows the publications for the current meeting. [S1] | Not started | both | Kiwi/Moss | — | `PubKind::MeetingWorkbook` exists (#16), and `mwb` issues are day-level tags. An installed `mwb` issue opens at the current week via `Reader::locate(location, today)` (`today` the device's local date as `YYYYMMDD`; the `DatedText` week holding it, else the issue's first week). Meetings tab composition (which publications for today's meeting) is not started; no board row yet. **to verify** the exact 15.9.2 layout (workbook + Watchtower study article). |
+| MT-1 | Meetings tab | Shows the publications for the current meeting. [S1] | UI pending | both | Kiwi/Moss | Core: meetings and daily text (#86) | `Reader::meeting_week(meps_language, day)` (`day` the device's local date as `YYYYMMDD`) gives the week (Monday to Sunday) holding the day: `midweek`, the Meeting Workbook week, and `weekend`, the Watchtower study article. Each is `Ready` (the installed issue's `DatedText` row holding the day, with the publication, the document's MEPS id and title), `NotInstalled` (the catalog's `DatedText` names the issue: class 106 for `mwb`, 68 for `w`) or `Unavailable` (neither has the week, e.g. the Memorial week skips the midweek meeting). A study week's row links its article through its contents entry; JW Library-style fallback: the study article (`Class` 40) at the row's position. Berean shows it inside Read, not as a tab (Owen, Nov 9). **to verify** the exact 15.9.2 layout. |
 
 ## Daily text
 | ID | Feature | JW Library behavior | Status | Layer | UI | Board row / PR | Notes |
 |---|---|---|---|---|---|---|---|
-| DT-1 | Daily Text tab | Today's text. [S1] | Not started | both | Kiwi/Moss | — | The catalog has a `DatedText` table and jwpubs have `DatedText`. No board row yet. |
+| DT-1 | Daily Text tab | Today's text. [S1] | UI pending | both | Kiwi/Moss | Core: meetings and daily text (#86) | `Reader::daily_text(meps_language, day)`: `Ready` with the day's blocks (date heading, theme scripture, comment) cut from its month's document by the yearbook's `DatedText` paragraph range, plus the month's MEPS id and the range; `NotInstalled` with the catalog's yearbook (catalog `DatedText` class 4, e.g. `es27`); else `Unavailable`. Berean shows it inside Read, not as a tab (Owen, Nov 9). |
 
 ## Audio / video
 | ID | Feature | JW Library behavior | Status | Layer | UI | Board row / PR | Notes |

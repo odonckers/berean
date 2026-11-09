@@ -11,6 +11,7 @@ mod instant;
 pub mod jwpub;
 pub mod languages;
 pub mod library;
+pub mod meetings;
 pub mod notes;
 pub mod reader;
 pub mod search;
