@@ -15,6 +15,7 @@ pub mod meetings;
 pub mod notes;
 pub mod reader;
 pub mod search;
+pub mod titles;
 pub mod userdata;
 
 use std::path::{Path, PathBuf};

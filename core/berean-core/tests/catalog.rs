@@ -12,10 +12,13 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use berean_core::catalog::{Catalog, CatalogFilter, CatalogRevision, CatalogUpdate};
+use berean_core::catalog::{
+    Catalog, CatalogFilter, CatalogRevision, CatalogUpdate, NewPublication,
+};
 use berean_core::jwpub::Publication;
 use berean_core::languages::{self, Language};
 use berean_core::library::{DownloadPlan, Library, PubKind, PublicationSummary};
+use berean_core::titles::TitleMatch;
 use berean_core::{CancelToken, Core, CoreError};
 use common::fixture;
 use rusqlite::Connection;
@@ -1624,4 +1627,183 @@ fn unreadable_recorded_id_counts_as_none() {
         .plan_update(&manifest(CURRENT_ID))
         .unwrap()
         .is_some());
+}
+
+fn title_keys(matches: &[TitleMatch]) -> Vec<(&str, bool)> {
+    matches
+        .iter()
+        .map(|m| (m.publication.pub_key.as_str(), m.installed))
+        .collect()
+}
+
+#[test]
+fn find_titles_without_a_catalog_searches_the_installed() {
+    let env = Env::new();
+    let library = env.core().library();
+    install_fixture(&library, "ll_E.jwpub", LL_E);
+    install_fixture(&library, "w_E_202608.jwpub", W_E);
+
+    let found = library.find_titles("LISTEN to god", None, 10).unwrap();
+    assert_eq!(title_keys(&found), [(LL_E, true)]);
+    assert_eq!(found[0].publication.title, LL_E_TITLE);
+    // A symbol finds its publication too.
+    assert_eq!(
+        title_keys(&library.find_titles("w26", None, 10).unwrap()),
+        [(W_E, true)]
+    );
+    // Punctuation alone is no query.
+    assert!(library.find_titles(" —¿?", None, 10).unwrap().is_empty());
+    assert!(library
+        .find_titles("forever kingdom", None, 10)
+        .unwrap()
+        .is_empty());
+}
+
+#[test]
+fn find_titles_installed_first_then_the_catalog() {
+    let env = Env::new();
+    let core = env.core();
+    let library = core.library();
+    install_fixture(&library, "ll_E.jwpub", LL_E);
+    install_fixture(&library, "w_E_202608.jwpub", W_E);
+    ingest(&core.catalog(), trimmed()).unwrap();
+
+    // The installed copy comes first, once; the catalog adds the rest of the
+    // browsed language, each a title match.
+    let found = library.find_titles("listen to god", Some(0), 50).unwrap();
+    assert_eq!(title_keys(&found)[0], (LL_E, true));
+    assert_eq!(
+        found
+            .iter()
+            .filter(|m| m.publication.pub_key == LL_E)
+            .count(),
+        1
+    );
+    for m in &found[1..] {
+        assert!(!m.installed);
+        assert_eq!(m.publication.meps_language, 0);
+        let title = m.publication.title.to_lowercase();
+        assert!(
+            ["listen", "to", "god"].iter().all(|w| title.contains(w)),
+            "{title}"
+        );
+    }
+
+    // An issue title matches: the August 2026 Watchtower, installed, comes
+    // first even though the query names the issue rather than the title.
+    let found = library
+        .find_titles("the watchtower august 2026", Some(0), 20)
+        .unwrap();
+    assert_eq!(title_keys(&found)[0], (W_E, true));
+    assert_eq!(
+        found[0].publication.issue_title.as_deref(),
+        Some(W_E_ISSUE_TITLE)
+    );
+    assert!(found[1..]
+        .iter()
+        .all(|m| !m.installed && m.publication.pub_key != W_E));
+
+    // Case and diacritics are ignored; the language filter holds only for
+    // the catalog.
+    let found = library
+        .find_titles("REINO JEHOVA estudio", Some(1), 50)
+        .unwrap();
+    assert!(found
+        .iter()
+        .any(|m| m.publication.pub_key == W_S && !m.installed));
+    assert!(found.iter().all(|m| m.publication.meps_language == 1));
+
+    // The limit counts catalog matches only, and they rank newest first
+    // within a rank: the latest English study edition before older ones.
+    let found = library.find_titles("watchtower study", Some(0), 3).unwrap();
+    let catalog: Vec<_> = found.iter().filter(|m| !m.installed).collect();
+    assert_eq!(catalog.len(), 3);
+    assert!(catalog
+        .windows(2)
+        .all(|w| (w[0].publication.year, w[0].publication.issue_tag)
+            >= (w[1].publication.year, w[1].publication.issue_tag)));
+}
+
+fn new_keys(list: &[NewPublication]) -> Vec<&str> {
+    list.iter()
+        .map(|n| n.publication.pub_key.as_str())
+        .collect()
+}
+
+#[test]
+fn whats_new_is_the_latest_catalogued_first() {
+    let env = Env::new();
+    let catalog = env.core().catalog();
+    assert!(catalog.whats_new(0, 10).unwrap().is_empty());
+    ingest(&catalog, trimmed()).unwrap();
+
+    // Revision 2624030, English: by `CatalogedOn`, newest first. Rows
+    // catalogued the same day keep their time order (es27, rsg, gwt).
+    let english = catalog.whats_new(0, 11).unwrap();
+    assert_eq!(
+        new_keys(&english),
+        [
+            "mwb27:0:20270300",
+            "w27:0:20270100",
+            "mrt:0:0",
+            "sjj:0:0",
+            "es27:0:0",
+            "rsg:0:0",
+            "gwt:0:0",
+            "mwb27:0:20270100",
+            "hdu:0:0",
+            "lfs:0:0",
+            "w26:0:20261200",
+        ]
+    );
+    assert_eq!(english[2].released, "2026-10-08");
+    assert_eq!(english[3].released, "2026-10-04");
+    assert_eq!(
+        english[3].publication.title,
+        "“Sing Out Joyfully” to Jehovah"
+    );
+    assert_eq!(english[3].publication.kind, PubKind::Book);
+    assert_eq!(
+        english[10].publication.issue_title.as_deref(),
+        Some("The Watchtower, December 2026")
+    );
+    assert!(english.windows(2).all(|w| w[0].released >= w[1].released));
+    assert!(english
+        .iter()
+        .all(|n| n.released.len() == 10 && n.publication.meps_language == 0));
+
+    // Each language has its own list; the limit holds.
+    let spanish = catalog.whats_new(1, 3).unwrap();
+    assert_eq!(
+        new_keys(&spanish),
+        ["mwb27:1:20270300", "ijwfq:1:0", "w27:1:20270100"]
+    );
+    assert!(catalog.whats_new(0, 0).unwrap().is_empty());
+    assert!(catalog.whats_new(9999, 10).unwrap().is_empty());
+}
+
+#[test]
+fn whats_new_prefers_the_generally_available_date() {
+    let env = Env::new();
+    let catalog = env.core().catalog();
+    let edited = env.edited_trimmed(
+        "available.db",
+        "UPDATE PublicationAsset SET GenerallyAvailableDate = '2026-10-27T09:00:00+00:00'
+         WHERE PublicationId IN (SELECT Id FROM Publication
+             WHERE Symbol = 'll' AND MepsLanguageId = 0);",
+    );
+    ingest(&catalog, &edited).unwrap();
+    let english = catalog.whats_new(0, 2).unwrap();
+    assert_eq!(new_keys(&english), [LL_E, "mwb27:0:20270300"]);
+    assert_eq!(english[0].released, "2026-10-27");
+}
+
+#[test]
+fn whats_new_without_release_dates_is_empty() {
+    let env = Env::new();
+    let catalog = env.core().catalog();
+    let path = env.scratch("small.db");
+    small_catalog(&path);
+    ingest(&catalog, &path).unwrap();
+    assert!(catalog.whats_new(0, 10).unwrap().is_empty());
 }

@@ -173,6 +173,16 @@ pub struct CatalogAsset {
     pub last_modified: String,
 }
 
+/// A recently released publication, for What's New.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewPublication {
+    pub publication: PublicationSummary,
+    /// The UTC day it was released, `YYYY-MM-DD`: its
+    /// `PublicationAsset.GenerallyAvailableDate` when set, else its
+    /// `CatalogedOn`.
+    pub released: String,
+}
+
 /// A newer catalog to download and pass to [`Catalog::install_update`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CatalogUpdate {
@@ -440,6 +450,68 @@ impl Catalog {
             }
         }
         Ok(out)
+    }
+
+    /// What's New: the publications in `meps_language` released most
+    /// recently, newest first, at most `limit`. A publication's release is
+    /// its `PublicationAsset.GenerallyAvailableDate` when set (it is NULL on
+    /// every row of revision 2624030), else its `CatalogedOn`, the moment the
+    /// catalog first listed it. Ties go to the later issue, then by title.
+    /// Empty without a catalog, or with one that lacks `CatalogedOn`.
+    pub fn whats_new(
+        &self,
+        meps_language: u32,
+        limit: u32,
+    ) -> Result<Vec<NewPublication>, CoreError> {
+        let Some(conn) = self.open()? else {
+            return Ok(Vec::new());
+        };
+        // Not columns `validate` requires: a catalog without them has no
+        // release dates to go by.
+        let has = |column: &str| -> Result<bool, CoreError> {
+            Ok(conn.query_row(
+                "SELECT EXISTS (SELECT 1 FROM pragma_table_info('PublicationAsset') \
+                 WHERE name = ?1)",
+                [column],
+                |r| r.get(0),
+            )?)
+        };
+        if !has("CatalogedOn")? {
+            return Ok(Vec::new());
+        }
+        let released = if has("GenerallyAvailableDate")? {
+            "COALESCE(NULLIF(a.GenerallyAvailableDate, ''), a.CatalogedOn)"
+        } else {
+            "a.CatalogedOn"
+        };
+        let mut stmt = conn.prepare(&format!(
+            "SELECT p.Symbol, p.MepsLanguageId, p.IssueTagNumber, p.Year, p.Title, \
+                    p.PublicationTypeId, p.IssueTitle, {released} AS released \
+             FROM Publication p JOIN PublicationAsset a ON a.PublicationId = p.Id \
+             WHERE p.MepsLanguageId = ?1 AND {RESOLVED} \
+             ORDER BY released DESC, p.IssueTagNumber DESC, p.Title, p.Symbol \
+             LIMIT ?2"
+        ))?;
+        let rows = stmt.query_map(rusqlite::params![meps_language, limit], |r| {
+            let symbol: String = r.get(0)?;
+            let meps_language: u32 = r.get(1)?;
+            let issue_tag: u32 = r.get(2)?;
+            let released: String = r.get(7)?;
+            Ok(NewPublication {
+                publication: PublicationSummary {
+                    pub_key: format_pub_key(&symbol, meps_language, issue_tag),
+                    symbol,
+                    meps_language,
+                    issue_tag,
+                    year: r.get(3)?,
+                    title: r.get(4)?,
+                    issue_title: r.get::<_, Option<String>>(6)?.filter(|t| !t.is_empty()),
+                    kind: kind_of(r.get(5)?),
+                },
+                released: released.chars().take(10).collect(),
+            })
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
     }
 
     /// The catalog publication of `class` (a catalog `DatedText.Class`: 4 the
