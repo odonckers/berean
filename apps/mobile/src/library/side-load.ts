@@ -192,7 +192,10 @@ export type ImportOptions = {
  * outcome is in the import's job (and, once in, the library).
  */
 export async function importFile(uri: string, options: ImportOptions = {}): Promise<void> {
-  const { owned = false, open = true } = options;
+  const { open = true } = options;
+  // iOS copies a file opened in Berean into Documents/Inbox; that copy is
+  // the app's to delete.
+  const owned = options.owned ?? uri.startsWith(new Directory(Paths.document, 'Inbox').uri);
   let { name } = options;
   const id = nextId++;
   const ctl: Controls = { cancel: new CancelToken(), cancelled: false, open };
