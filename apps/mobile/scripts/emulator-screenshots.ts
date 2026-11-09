@@ -133,17 +133,35 @@ function demoMode() {
   demo('notifications -e visible false');
 }
 
+/** Prints what went wrong on the device: the screen's text and the app's log. */
+function diagnose() {
+  console.log('On screen:');
+  for (const line of texts(dump())) console.log(`  ${line}`);
+  console.log('App log (last lines):');
+  const log = adb('logcat', '-d', '-v', 'brief', 'ReactNativeJS:V', 'ReactNative:W', 'AndroidRuntime:E', '*:F').toString();
+  for (const line of log.trim().split('\n').slice(-60)) console.log(`  ${line}`);
+}
+
 /** Runs the in-app setup and returns the installed Bible's key. */
 async function setup(): Promise<string> {
   console.log('Setting up: catalog, publications and sample notes…');
+  const started = Date.now();
   open('berean:///dev-screenshots');
-  for (let waited = 0; waited < 15 * 60_000; waited += 5000) {
+  const printed = new Set<string>();
+  for (let waited = 0; waited < 25 * 60_000; waited += 5000) {
     const lines = texts(dump());
+    for (const line of lines.filter((t) => t.startsWith('Screenshot setup') || t.includes(': '))) {
+      if (printed.has(line)) continue;
+      printed.add(line);
+      console.log(`  [${Math.round((Date.now() - started) / 1000)}s] ${line}`);
+    }
     const end = lines.find((t) => t.startsWith('Screenshot setup: done') || t.startsWith('Screenshot setup: failed'));
     if (end) {
-      for (const line of lines.filter((t) => !t.startsWith('Screenshot setup: running'))) console.log(`  ${line}`);
       writeFileSync(join(out, 'setup.png'), screencap());
-      if (end.includes('failed')) throw new Error(end);
+      if (end.includes('failed')) {
+        diagnose();
+        throw new Error(end);
+      }
       const bible = lines.find((t) => t.startsWith('Bible: '))?.slice('Bible: '.length);
       if (bible === undefined) throw new Error('The setup did not report its Bible.');
       return bible;
@@ -151,7 +169,8 @@ async function setup(): Promise<string> {
     await sleep(5000);
   }
   writeFileSync(join(out, 'setup.png'), screencap());
-  throw new Error('The screenshot setup did not finish within 15 minutes.');
+  diagnose();
+  throw new Error('The screenshot setup did not finish within 25 minutes.');
 }
 
 async function main() {

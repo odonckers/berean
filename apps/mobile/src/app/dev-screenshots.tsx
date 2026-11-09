@@ -35,7 +35,8 @@ function SetupReport() {
   return (
     <ScrollView contentContainerStyle={styles.content}>
       <Stack.Screen options={{ title: 'Screenshot setup' }} />
-      {lines.map((line, i) => (
+      {/* Newest first, so the latest line is on screen for the workflow to read. */}
+      {[...lines].reverse().map((line, i) => (
         <Text key={i} selectable>
           {line}
         </Text>

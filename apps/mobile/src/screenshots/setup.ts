@@ -34,11 +34,28 @@ function until(subscribe: (listener: () => void) => () => void, done: () => bool
 
 async function updateCatalog(log: (line: string) => void) {
   const state = () => getCatalogUpdate().status;
+  log('Catalog: checking');
   checkForUpdate();
   await until(subscribeCatalog, () => state().state !== 'checking' && state().state !== 'idle');
   if (state().state === 'available') {
+    log('Catalog: downloading');
     downloadUpdate();
-    await until(subscribeCatalog, () => ['upToDate', 'failed'].includes(state().state));
+    let reported = '';
+    await until(subscribeCatalog, () => {
+      const now = state();
+      // A line per tenth, so a stall shows where it stopped.
+      const step =
+        now.state === 'downloading' && now.totalBytes > 0
+          ? `downloading ${Math.floor((now.bytesWritten / now.totalBytes) * 10) * 10}%`
+          : now.state === 'installing' && now.total > 0
+            ? `installing ${Math.floor((now.done / now.total) * 10) * 10}%`
+            : now.state;
+      if (step !== reported) {
+        reported = step;
+        log(`Catalog: ${step}`);
+      }
+      return ['upToDate', 'failed'].includes(now.state);
+    });
   }
   const final = state();
   if (final.state === 'failed') throw new Error(`catalog: ${final.message}`);
@@ -49,6 +66,7 @@ const installed = (pubKey: string) => library().installed().some((p) => p.pubKey
 
 async function install(pub: PublicationSummary, log: (line: string) => void) {
   if (installed(pub.pubKey)) return;
+  log(`Downloading: ${pub.pubKey}`);
   startInstall(pub);
   await until(subscribeInstalls, () => {
     const job = getSnapshot().jobs.get(pub.pubKey);
