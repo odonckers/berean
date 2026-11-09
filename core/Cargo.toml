@@ -6,6 +6,8 @@ members = ["berean-core", "berean-ffi", "uniffi-bindgen"]
 edition = "2021"
 rust-version = "1.95"
 publish = false
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/odonckers/berean"
 
 [workspace.dependencies]
 # Pinned together: rusqlite_migration 2.6 depends on rusqlite ^0.40, so both

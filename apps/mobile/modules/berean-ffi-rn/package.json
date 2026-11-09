@@ -6,7 +6,7 @@
   "main": "src/index.tsx",
   "react-native": "src/index.tsx",
   "types": "src/index.tsx",
-  "license": "UNLICENSED",
+  "license": "MIT OR Apache-2.0",
   "homepage": "https://github.com/odonckers/berean/tree/main/apps/mobile/modules/berean-ffi-rn",
   "repository": {
     "type": "git",
