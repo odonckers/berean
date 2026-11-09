@@ -1031,11 +1031,11 @@ impl Reader {
             .collect())
     }
 
-    fn library(&self) -> Library {
+    pub(crate) fn library(&self) -> Library {
         Library::new(self.inner.clone())
     }
 
-    fn catalog(&self) -> Catalog {
+    pub(crate) fn catalog(&self) -> Catalog {
         Catalog::new(self.inner.clone())
     }
 }
@@ -1813,7 +1813,7 @@ fn chapter_name(book: &jwpub::BibleBook) -> Option<&str> {
 }
 
 /// The document with MEPS id `doc_id`, if the publication has it.
-fn find_document(
+pub(crate) fn find_document(
     publication: &Publication,
     doc_id: i64,
 ) -> Result<Option<DocumentSummary>, CoreError> {

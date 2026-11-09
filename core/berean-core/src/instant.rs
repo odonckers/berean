@@ -82,6 +82,37 @@ fn days_in_month(year: i64, month: i64) -> i64 {
     }
 }
 
+/// The Monday and Sunday of the week (Monday to Sunday) holding the valid
+/// day `yyyymmdd`, both as `YYYYMMDD`.
+pub(crate) fn week_of(yyyymmdd: i32) -> (i32, i32) {
+    let n = i64::from(yyyymmdd);
+    let days = days_from_civil(n / 10_000, n / 100 % 100, n % 100);
+    // 1970-01-01 was a Thursday: day 0 is weekday 3 counting Monday as 0.
+    let monday = days - (days + 3).rem_euclid(7);
+    (yyyymmdd_of(monday), yyyymmdd_of(monday + 6))
+}
+
+/// `YYYY-MM-DD` (a catalog `DatedText` date) for the valid day `yyyymmdd`.
+pub(crate) fn iso_date(yyyymmdd: i32) -> String {
+    let n = yyyymmdd;
+    format!("{:04}-{:02}-{:02}", n / 10_000, n / 100 % 100, n % 100)
+}
+
+/// The `YYYYMMDD` of the day `days` after 1970-01-01 (Howard Hinnant's
+/// `civil_from_days`).
+fn yyyymmdd_of(days: i64) -> i32 {
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    (year * 10_000 + month * 100 + day) as i32
+}
+
 /// Days from 1970-01-01 to the given proleptic Gregorian date (Howard
 /// Hinnant's `days_from_civil`).
 fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
@@ -144,6 +175,28 @@ mod tests {
             parse("2024-03-01T00:00:00Z").unwrap() - parse("2024-02-29T00:00:00Z").unwrap(),
             86_400
         );
+    }
+
+    #[test]
+    fn weeks_run_monday_to_sunday() {
+        // Monday, mid-week, Sunday; across a month, a year and a leap day.
+        assert_eq!(week_of(20261109), (20261109, 20261115));
+        assert_eq!(week_of(20261112), (20261109, 20261115));
+        assert_eq!(week_of(20261115), (20261109, 20261115));
+        assert_eq!(week_of(20261029), (20261026, 20261101));
+        assert_eq!(week_of(20270101), (20261228, 20270103));
+        assert_eq!(week_of(20280301), (20280228, 20280305));
+        assert_eq!(week_of(19700101), (19691229, 19700104));
+        for d in [20261007, 20240229, 10101, 99991231] {
+            let days = days_from_civil(
+                i64::from(d) / 10_000,
+                i64::from(d) / 100 % 100,
+                i64::from(d) % 100,
+            );
+            assert_eq!(yyyymmdd_of(days), d);
+        }
+        assert_eq!(iso_date(20261109), "2026-11-09");
+        assert_eq!(iso_date(10101), "0001-01-01");
     }
 
     #[test]

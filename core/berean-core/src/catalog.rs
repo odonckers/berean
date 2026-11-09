@@ -442,6 +442,65 @@ impl Catalog {
         Ok(out)
     }
 
+    /// The catalog publication of `class` (a catalog `DatedText.Class`: 4 the
+    /// daily text, 68 the Watchtower study edition, 106 the Meeting
+    /// Workbook) in `meps_language` whose dated range holds the valid day
+    /// `yyyymmdd`; with `key_symbol`, only that undated symbol. The latest
+    /// issue wins if several do. `None` without a catalog or a match.
+    pub(crate) fn dated(
+        &self,
+        class: i64,
+        meps_language: u32,
+        key_symbol: Option<&str>,
+        yyyymmdd: i32,
+    ) -> Result<Option<PublicationSummary>, CoreError> {
+        let Some(conn) = self.open()? else {
+            return Ok(None);
+        };
+        // Not a column `validate` requires: a catalog without the table has
+        // no dated publications.
+        let has_table: bool = conn.query_row(
+            "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'DatedText')",
+            [],
+            |r| r.get(0),
+        )?;
+        if !has_table {
+            return Ok(None);
+        }
+        let day = crate::instant::iso_date(yyyymmdd);
+        let row = conn
+            .query_row(
+                &format!(
+                    "SELECT p.Symbol, p.MepsLanguageId, p.IssueTagNumber, p.Year, p.Title, \
+                            p.PublicationTypeId, p.IssueTitle \
+                     FROM DatedText d JOIN Publication p ON p.Id = d.PublicationId \
+                     JOIN PublicationAsset a ON a.PublicationId = p.Id \
+                     WHERE d.Class = ?1 AND p.MepsLanguageId = ?2 \
+                       AND (?3 IS NULL OR p.KeySymbol = ?3) \
+                       AND d.Start <= ?4 AND d.End >= ?4 AND {RESOLVED} \
+                     ORDER BY p.IssueTagNumber DESC, p.Year DESC, p.Id LIMIT 1"
+                ),
+                rusqlite::params![class, meps_language, key_symbol, day],
+                |r| {
+                    let symbol: String = r.get(0)?;
+                    let meps_language: u32 = r.get(1)?;
+                    let issue_tag: u32 = r.get(2)?;
+                    Ok(PublicationSummary {
+                        pub_key: format_pub_key(&symbol, meps_language, issue_tag),
+                        symbol,
+                        meps_language,
+                        issue_tag,
+                        year: r.get(3)?,
+                        title: r.get(4)?,
+                        issue_title: r.get::<_, Option<String>>(6)?.filter(|t| !t.is_empty()),
+                        kind: kind_of(r.get(5)?),
+                    })
+                },
+            )
+            .optional()?;
+        Ok(row)
+    }
+
     /// The languages with at least one publication, by MEPS id. A language
     /// the language table does not map has no code or name, so it is left
     /// out (its publications still list, by `meps_language`).

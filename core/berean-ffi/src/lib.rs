@@ -1167,6 +1167,106 @@ impl From<berean_core::reader::Located> for Located {
     }
 }
 
+/// The FFI mirror of [`berean_core::meetings::DailyText`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct DailyText {
+    pub pub_key: String,
+    pub doc_id: i64,
+    pub day: i32,
+    pub first_paragraph: u32,
+    pub last_paragraph: u32,
+    pub blocks: Vec<DocBlock>,
+}
+
+impl From<berean_core::meetings::DailyText> for DailyText {
+    fn from(t: berean_core::meetings::DailyText) -> Self {
+        DailyText {
+            pub_key: t.pub_key,
+            doc_id: t.doc_id,
+            day: t.day,
+            first_paragraph: t.first_paragraph,
+            last_paragraph: t.last_paragraph,
+            blocks: mirror(t.blocks),
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::meetings::DailyTextDay`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum DailyTextDay {
+    Ready { text: DailyText },
+    NotInstalled { publication: PublicationSummary },
+    Unavailable,
+}
+
+impl From<berean_core::meetings::DailyTextDay> for DailyTextDay {
+    fn from(d: berean_core::meetings::DailyTextDay) -> Self {
+        use berean_core::meetings::DailyTextDay as D;
+        match d {
+            D::Ready { text } => DailyTextDay::Ready { text: text.into() },
+            D::NotInstalled { publication } => DailyTextDay::NotInstalled {
+                publication: publication.into(),
+            },
+            D::Unavailable => DailyTextDay::Unavailable,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::meetings::MeetingWeek`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct MeetingWeek {
+    pub first_day: i32,
+    pub last_day: i32,
+    pub midweek: MeetingPart,
+    pub weekend: MeetingPart,
+}
+
+impl From<berean_core::meetings::MeetingWeek> for MeetingWeek {
+    fn from(w: berean_core::meetings::MeetingWeek) -> Self {
+        MeetingWeek {
+            first_day: w.first_day,
+            last_day: w.last_day,
+            midweek: w.midweek.into(),
+            weekend: w.weekend.into(),
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::meetings::MeetingPart`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum MeetingPart {
+    Ready {
+        publication: PublicationSummary,
+        doc_id: i64,
+        title: String,
+    },
+    NotInstalled {
+        publication: PublicationSummary,
+    },
+    Unavailable,
+}
+
+impl From<berean_core::meetings::MeetingPart> for MeetingPart {
+    fn from(p: berean_core::meetings::MeetingPart) -> Self {
+        use berean_core::meetings::MeetingPart as P;
+        match p {
+            P::Ready {
+                publication,
+                doc_id,
+                title,
+            } => MeetingPart::Ready {
+                publication: publication.into(),
+                doc_id,
+                title,
+            },
+            P::NotInstalled { publication } => MeetingPart::NotInstalled {
+                publication: publication.into(),
+            },
+            P::Unavailable => MeetingPart::Unavailable,
+        }
+    }
+}
+
 /// The FFI mirror of [`berean_core::reader::LocationSpan`].
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct LocationSpan {
@@ -1384,6 +1484,18 @@ impl Reader {
     /// alone uses it to pick the week.
     pub fn locate(&self, location: Location, today: Option<i32>) -> Result<Located, CoreError> {
         Ok(self.inner.locate(&location.into(), today)?.into())
+    }
+
+    /// The daily text for `day` (the device's local calendar date as
+    /// `YYYYMMDD`) in `meps_language`; see the core's `Reader::daily_text`.
+    pub fn daily_text(&self, meps_language: u32, day: i32) -> Result<DailyTextDay, CoreError> {
+        Ok(self.inner.daily_text(meps_language, day)?.into())
+    }
+
+    /// The meeting publications for the week (Monday to Sunday) holding
+    /// `day`; see the core's `Reader::meeting_week`.
+    pub fn meeting_week(&self, meps_language: u32, day: i32) -> Result<MeetingWeek, CoreError> {
+        Ok(self.inner.meeting_week(meps_language, day)?.into())
     }
 
     /// Chapter `chapter` of book `book` (1-66) of the installed Bible `bible`.
@@ -2774,6 +2886,34 @@ mod tests {
             dir.path().join("cache").display().to_string(),
         )
         .unwrap()
+    }
+
+    #[test]
+    fn meetings_and_daily_text_through_ffi() {
+        let dir = tempfile::tempdir().unwrap();
+        let reader = open_core(&dir).reader();
+        // Nothing installed and no catalog: nothing for the day.
+        assert_eq!(
+            reader.meeting_week(0, 20261112).unwrap(),
+            MeetingWeek {
+                first_day: 20261109,
+                last_day: 20261115,
+                midweek: MeetingPart::Unavailable,
+                weekend: MeetingPart::Unavailable,
+            }
+        );
+        assert_eq!(
+            reader.daily_text(0, 20261112).unwrap(),
+            DailyTextDay::Unavailable
+        );
+        assert!(matches!(
+            reader.daily_text(0, 20261131),
+            Err(CoreError::Invalid { .. })
+        ));
+        assert!(matches!(
+            reader.meeting_week(0, 2026),
+            Err(CoreError::Invalid { .. })
+        ));
     }
 
     #[test]
