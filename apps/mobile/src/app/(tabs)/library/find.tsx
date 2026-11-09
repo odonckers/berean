@@ -13,7 +13,7 @@ import { library } from '@/ffi/core';
 import { CatalogRow } from '@/library/catalog-row';
 import { useCatalogUpdate } from '@/library/catalog-update';
 import { onLibraryChanged, useInstalls } from '@/library/installs';
-import { displayTitle } from '@/library/labels';
+import { displayTitle, KIND_LABELS } from '@/library/labels';
 import { languageNames, load, publicationDetail } from '@/library/load';
 import { openPublication } from '@/library/open';
 import { useSelectedLanguage } from '@/library/selected-language';
@@ -136,12 +136,18 @@ export default function FindScreen() {
           section.key === 'installed' ? (
             <InstalledRow pub={item} names={names} />
           ) : (
-            <CatalogRow pub={item} installed={false} job={jobs.get(item.pubKey)} />
+            <CatalogRow pub={item} installed={false} job={jobs.get(item.pubKey)} detail={catalogDetail(item)} />
           )
         }
       />
     </>
   );
+}
+
+/** Kind and year, like the rows above it; the language is in the section heading. */
+function catalogDetail(pub: PublicationSummary): string {
+  const kind = KIND_LABELS[pub.kind];
+  return pub.year > 0 ? `${kind} · ${pub.year}` : kind;
 }
 
 function InstalledRow({ pub, names }: { pub: PublicationSummary; names: ReadonlyMap<number, string> }) {

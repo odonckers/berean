@@ -7,12 +7,12 @@ describe("What's New release days", () => {
   const today = new Date(2026, 10, 9);
 
   test('this year drops the year', () => {
-    assert.equal(releaseLabel('2026-10-08', today), 'Oct 8');
+    assert.equal(releaseLabel('2026-10-08', today), 'Oct\u00a08');
   });
 
   test('another year keeps it', () => {
-    assert.equal(releaseLabel('2025-12-31', today), 'Dec 31, 2025');
-    assert.equal(releaseLabel('2027-01-01', today), 'Jan 1, 2027');
+    assert.equal(releaseLabel('2025-12-31', today), 'Dec\u00a031, 2025');
+    assert.equal(releaseLabel('2027-01-01', today), 'Jan\u00a01, 2027');
   });
 
   test('a screen reader hears the whole date', () => {

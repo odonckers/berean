@@ -32,7 +32,8 @@ function parse(released: string): { year: number; month: number; day: number } |
 export function releaseLabel(released: string, today: Date = new Date()): string {
   const date = parse(released);
   if (!date) return released;
-  const short = `${MONTHS[date.month - 1]} ${date.day}`;
+  // A no-break space keeps "Oct 8" on one line at large text sizes.
+  const short = `${MONTHS[date.month - 1]}\u00a0${date.day}`;
   return date.year === today.getFullYear() ? short : `${short}, ${date.year}`;
 }
 
