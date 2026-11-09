@@ -12,6 +12,7 @@ import {
   type LayoutChangeEvent,
   Modal,
   type NativeSyntheticEvent,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -42,9 +43,10 @@ import {
   DELETE_LABEL,
   MEDIUM_DETENT_MIN_ROWS,
   NOT_FOUND_NOTE,
+  PICKER_SCRIM_FOCUS,
   type SaveTarget,
-  type SlotPlace,
   allSlotsFull,
+  bookmarkButtonLabel,
   bookmarkPickerPlacement,
   bookmarkSheetFit,
   bookmarkSwipeActions,
@@ -57,6 +59,7 @@ import {
   rowLabel,
   rowMenuLabel,
   rowMenuPresentation,
+  rowTrailing,
   saveLine,
   savedAnnouncement,
 } from '@/reader/bookmarks';
@@ -141,8 +144,7 @@ export function BookmarkButton({
     <Pressable
       ref={buttonRef}
       accessibilityRole="button"
-      accessibilityLabel="Bookmarks"
-      accessibilityValue={value === undefined ? undefined : { text: value }}
+      {...bookmarkButtonLabel(value, Platform.OS)}
       onPress={onPress}
       style={({ pressed }) => [styles.button, { minWidth: target, minHeight: target, opacity: pressed ? 0.6 : 1 }]}
     >
@@ -176,8 +178,8 @@ type PickerProps = {
   onSave: (slot: number) => string | undefined;
   /** Go to a filled slot's place; the picker closes and focus goes with the jump. */
   onJump: (row: FilledRow) => void;
-  /** Where each filled slot opens (by slot), from the core's locate: a missing one is noted. */
-  places: ReadonlyMap<number, SlotPlace>;
+  /** Where each filled slot is now (by slot), from the core's locate: a missing one is noted. */
+  places: ReadonlyMap<number, { missing: boolean }>;
   /** Replace a filled slot with the target, or empty it, at once. A core error's message, or none. */
   onReplace: (row: FilledRow) => string | undefined;
   onDelete: (row: FilledRow) => string | undefined;
@@ -408,8 +410,8 @@ export function BookmarkPicker({
     const right = Math.min(anchor?.right ?? 0, window.width - width - spacing.sm);
     content = (
       <>
-        {/* A tap outside the card closes it. */}
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessible={false} />
+        {/* A tap outside the card closes it; it is no focus stop either. */}
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} {...PICKER_SCRIM_FOCUS} />
         {anchor !== undefined && (
         <PopoverCard
           top={top}
@@ -435,7 +437,6 @@ export function BookmarkPicker({
     const corner = material ? radii.sheet : radii.iosSheet;
     content = (
       <SheetWithScrim
-        firstRowTag={tags[0]}
         open={open}
         onClose={onClose}
         onHidden={hide}
@@ -491,7 +492,8 @@ export function BookmarkPicker({
       onRequestClose={onClose}
     >
       <ModalNavigationBarStyle barStyle={systemBarStyle(scheme)} />
-      <View style={styles.root}>
+      {/* VoiceOver's escape (two-finger Z) closes it from anywhere, as Back does on Android (#85 Q1). */}
+      <View style={styles.root} onAccessibilityEscape={onClose}>
         {content}
         {bar !== undefined && (
           <UndoBar label={bar.label} onUndo={bar.onUndo} bottom={insets.bottom + spacing.lg} />
@@ -524,27 +526,25 @@ export function BookmarkPicker({
   );
 }
 
-/** A sliding sheet over a scrim that fades with it; tapping the scrim closes it. */
+/**
+ * A sliding sheet over a scrim that fades with it; tapping the scrim closes
+ * it. The scrim is no focus stop (PICKER_SCRIM_FOCUS), so a hardware
+ * keyboard's first ↑/↓ lands in the sheet.
+ */
 function SheetWithScrim({
   scrim,
-  firstRowTag,
   ...sheet
 }: Omit<Parameters<typeof SlidingSheet>[0], 'visibility' | 'fadeUnderReducedMotion'> & {
   scrim: string;
-  /** Hardware ↓ from the scrim (where Android's first arrow press can land) goes to slot 1. */
-  firstRowTag: number | undefined;
 }) {
   const visibility = useSharedValue(0);
   const fade = useAnimatedStyle(() => ({ opacity: visibility.get() }));
   return (
     <>
-      <Animated.View style={[StyleSheet.absoluteFill, fade]}>
+      <Animated.View style={[StyleSheet.absoluteFill, fade]} {...PICKER_SCRIM_FOCUS}>
         <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Close"
+          {...PICKER_SCRIM_FOCUS}
           onPress={sheet.onClose}
-          onFocus={followRing}
-          nextFocusDown={firstRowTag}
           style={[StyleSheet.absoluteFill, { backgroundColor: scrim }]}
         />
       </Animated.View>
@@ -638,6 +638,7 @@ function SlotRow({
   const { fontScale } = useWindowDimensions();
   const accent = material ? m3.primary : colors.accent;
   const filled = row.kind === 'filled';
+  const trailing = rowTrailing(row);
   const target = material ? 48 : 44;
   const rowRef = useRef<ComponentRef<typeof View>>(null);
   const menuRef = useRef<ComponentRef<typeof View>>(null);
@@ -681,70 +682,82 @@ function SlotRow({
           filled && styles.rowBeforeMenu,
         ]}
       >
-        {/* Keyed by what it shows, so a save, Replace, Delete or Undo cross-fades it. */}
-        <Animated.View key={rowContentKey(row)} entering={fadeIn} exiting={fadeOut} style={styles.rowContent}>
-          {row.kind === 'empty' ? (
-            <>
-              <UIText secondary style={styles.rowText}>
-                {`Slot ${row.number}`}
-              </UIText>
-              <View style={styles.saveHere}>
-                <ScaledSymbol
-                  name={{ ios: 'plus', android: 'add' }}
-                  size={material ? 18 : 15}
-                  tintColor={accent}
-                  accessible={false}
-                  importantForAccessibility="no-hide-descendants"
-                  accessibilityElementsHidden
-                />
-                <UIText style={{ color: accent }}>Save here</UIText>
-              </View>
-            </>
-          ) : (
-            <>
-              <Text style={[type.ui.body, styles.number, { minWidth: NUMBER_EMS * (type.ui.body.fontSize ?? 17) * fontScale, color: colors.textSecondary }]}>
-                {row.number}
-              </Text>
-              <View style={styles.rowText}>
-                <UIText>{row.title}</UIText>
-                {row.snippet !== undefined && (
-                  <UIText variant="caption" secondary numberOfLines={fontScale >= LARGE_TEXT_SCALE ? 2 : 1}>
-                    {row.snippet}
-                  </UIText>
-                )}
-                {missing && (
-                  <UIText variant="caption" secondary>
-                    {NOT_FOUND_NOTE}
-                  </UIText>
-                )}
-              </View>
-              {row.current && <BookmarkGlyph filled size={material ? 20 : 17} tintColor={accent} />}
-            </>
-          )}
-        </Animated.View>
+        <View style={styles.rowInner}>
+          {/* Keyed by what it shows, so a save, Replace, Delete or Undo cross-fades it. */}
+          <Animated.View key={rowContentKey(row)} entering={fadeIn} exiting={fadeOut} style={[styles.rowContent, styles.rowFade]}>
+            {row.kind === 'empty' ? (
+              <>
+                <UIText secondary style={styles.rowText}>
+                  {`Slot ${row.number}`}
+                </UIText>
+                <View style={styles.saveHere}>
+                  <ScaledSymbol
+                    name={{ ios: 'plus', android: 'add' }}
+                    size={material ? 18 : 15}
+                    tintColor={accent}
+                    accessible={false}
+                    importantForAccessibility="no-hide-descendants"
+                    accessibilityElementsHidden
+                  />
+                  <UIText style={{ color: accent }}>Save here</UIText>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={[type.ui.body, styles.number, { minWidth: NUMBER_EMS * (type.ui.body.fontSize ?? 17) * fontScale, color: colors.textSecondary }]}>
+                  {row.number}
+                </Text>
+                <View style={styles.rowText}>
+                  <UIText>{row.title}</UIText>
+                  {row.snippet !== undefined && (
+                    <UIText variant="caption" secondary numberOfLines={fontScale >= LARGE_TEXT_SCALE ? 2 : 1}>
+                      {row.snippet}
+                    </UIText>
+                  )}
+                  {missing && (
+                    <UIText variant="caption" secondary>
+                      {NOT_FOUND_NOTE}
+                    </UIText>
+                  )}
+                </View>
+              </>
+            )}
+          </Animated.View>
+          {/* The glyph and the ⋯ / ⋮ stay mounted, collapsed while the row
+              hasn't them: mounted with a cross-fade running, Android's
+              SymbolView (which draws its glyph a render later) kept its box
+              but drew nothing, so a save or an Undo lost both. */}
+          <View style={trailing.glyph ? styles.glyph : styles.collapsed}>
+            <BookmarkGlyph filled size={material ? 20 : 17} tintColor={accent} />
+          </View>
+        </View>
       </Pressable>
-      {row.kind === 'filled' && (
-        <Pressable
-          ref={menuRef}
-          accessibilityRole="button"
-          accessibilityLabel={rowMenuLabel(row)}
-          importantForAccessibility="no"
-          accessibilityElementsHidden
-          onPress={openMenu}
-          onFocus={followRing}
-          nextFocusUp={focus.up}
-          nextFocusDown={focus.down}
-          style={({ pressed }) => [styles.menuButton, { minWidth: target, minHeight: target, opacity: pressed ? 0.6 : 1 }]}
-        >
-          <ScaledSymbol
-            // ⋮ in Material, ⋯ in the iOS look.
-            name={material ? { ios: 'ellipsis', android: 'more_vert' } : { ios: 'ellipsis', android: 'more_horiz' }}
-            size={material ? 24 : 20}
-            tintColor={material ? m3.onSurfaceVariant : colors.textSecondary}
-            accessible={false}
-          />
-        </Pressable>
-      )}
+      <Pressable
+        ref={menuRef}
+        accessibilityRole="button"
+        accessibilityLabel={filled ? rowMenuLabel(row) : undefined}
+        importantForAccessibility="no"
+        accessibilityElementsHidden
+        disabled={!trailing.menu}
+        focusable={trailing.menu}
+        onPress={openMenu}
+        onFocus={followRing}
+        nextFocusUp={focus.up}
+        nextFocusDown={focus.down}
+        style={({ pressed }) =>
+          trailing.menu
+            ? [styles.menuButton, { minWidth: target, minHeight: target, opacity: pressed ? 0.6 : 1 }]
+            : styles.collapsed
+        }
+      >
+        <ScaledSymbol
+          // ⋮ in Material, ⋯ in the iOS look.
+          name={material ? { ios: 'ellipsis', android: 'more_vert' } : { ios: 'ellipsis', android: 'more_horiz' }}
+          size={material ? 24 : 20}
+          tintColor={material ? m3.onSurfaceVariant : colors.textSecondary}
+          accessible={false}
+        />
+      </Pressable>
     </View>
   );
   if (material) return line;
@@ -780,6 +793,12 @@ const styles = StyleSheet.create({
   rowBeforeMenu: { paddingEnd: 0 },
   menuButton: { alignItems: 'center', justifyContent: 'center', marginEnd: spacing.xs },
   rowContent: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  // No gap: the glyph brings its own space, and none while collapsed.
+  rowInner: { flexDirection: 'row', alignItems: 'center' },
+  rowFade: { flex: 1 },
+  glyph: { marginStart: spacing.md },
+  // Laid out at no size, drawn at none: there, but not shown.
+  collapsed: { width: 0, height: 0, opacity: 0, overflow: 'hidden' },
   number: { fontVariant: ['tabular-nums'], textAlign: 'right' },
   rowText: { flex: 1 },
   saveHere: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },

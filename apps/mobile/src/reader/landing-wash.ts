@@ -14,6 +14,12 @@ export const WASH_FADE_MS = 400;
 export const WASH_TINT = 0.2;
 /** Under Increase Contrast, the verse text keeps at least this against the washed fill. */
 export const IC_TEXT_CONTRAST = 7;
+/**
+ * Under Increase Contrast, a capped tint below this is no wash at all
+ * (Lumen's ruling on #83): too faint to read as a wash, it would only
+ * smudge the page. The number's accent pill still marks the landing.
+ */
+export const IC_TINT_FLOOR = 0.05;
 /** The clamped tint is found in steps this fine. */
 const TINT_STEP = 0.001;
 
@@ -97,16 +103,12 @@ export function washFill(base: string, accent: string, strength: number, tint: n
 }
 
 /**
- * How much of the accent the wash mixes into `base` at full strength.
- * Normally `WASH_TINT`. Under Increase Contrast, the most (up to
- * `WASH_TINT`) that keeps `text` at `IC_TEXT_CONTRAST` against the fill at
- * every tint up to it, so the fade never dips below the floor either. Over
- * a highlight, which already sits near 7:1, that is next to none, and the
- * number's accent pill marks the landing. A base the text already fails,
- * or colours it can't read, get none.
+ * The most tint (up to `WASH_TINT`) that keeps `text` at
+ * `IC_TEXT_CONTRAST` against the fill at every tint up to it, so the fade
+ * never dips below the floor either. A base the text already fails, or
+ * colours it can't read, get none.
  */
-export function washTint(base: string, accent: string, text: string, increaseContrast: boolean): number {
-  if (!increaseContrast) return WASH_TINT;
+export function contrastCappedTint(base: string, accent: string, text: string): number {
   if (channels(base) === undefined || channels(accent) === undefined || channels(text) === undefined) return 0;
   let tint = 0;
   for (let step = 1; step <= Math.round(WASH_TINT / TINT_STEP); step++) {
@@ -116,4 +118,34 @@ export function washTint(base: string, accent: string, text: string, increaseCon
   }
   // The base itself must pass too, or the text fails before any wash.
   return contrast(text, base) < IC_TEXT_CONTRAST ? 0 : tint;
+}
+
+/**
+ * How much of the accent the wash mixes into `base` at full strength.
+ * Normally `WASH_TINT`. Under Increase Contrast, the contrast-capped tint
+ * (7:1 kept through the fade), or none where that is under
+ * `IC_TINT_FLOOR`: over a highlight, which already sits near 7:1, the cap
+ * leaves next to nothing, so there is no wash and the number's accent pill
+ * marks the landing.
+ */
+export function washTint(base: string, accent: string, text: string, increaseContrast: boolean): number {
+  if (!increaseContrast) return WASH_TINT;
+  const tint = contrastCappedTint(base, accent, text);
+  return tint < IC_TINT_FLOOR ? 0 : tint;
+}
+
+/**
+ * The wash a search arrival starts (spec §3.3: the landing marker is "the
+ * same as Search"): a search hit (or a passage link) that opens a chapter
+ * at a verse washes it as a bookmark jump does. Arrivals are told apart
+ * from jumps by their sign: a search arrival's id is negative.
+ */
+export function searchArrivalWash(
+  chapterKey: string,
+  verse: number | undefined,
+  count: number,
+  reducedMotion: boolean,
+): WashEvent | undefined {
+  if (verse === undefined) return undefined;
+  return { kind: 'land', chapterKey, verse, arrival: -count, reducedMotion };
 }

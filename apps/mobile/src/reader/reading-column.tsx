@@ -27,6 +27,7 @@ export function ReadingColumn({
   tabRoot = false,
   onScrollGesture,
   leadingGutter = 0,
+  extraBottom = 0,
   ...scrollProps
 }: {
   children: ReactNode;
@@ -34,6 +35,8 @@ export function ReadingColumn({
   onScrollGesture?: (gesture: NativeGesture) => void;
   /** A leading margin for note markers: the padding is at least this wide. */
   leadingGutter?: number;
+  /** More bottom padding, for a bar over the text (barContentInset). */
+  extraBottom?: number;
 } & Pick<
   ComponentProps<typeof ScrollView>,
   | 'ref'
@@ -59,7 +62,7 @@ export function ReadingColumn({
       contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={{
         paddingTop,
-        paddingBottom: insets.bottom + spacing.lg,
+        paddingBottom: insets.bottom + spacing.lg + extraBottom,
         paddingLeft: insets.left + Math.max(padding, leadingGutter),
         paddingRight: insets.right + padding,
       }}

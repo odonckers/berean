@@ -1,3 +1,4 @@
+import type { ComponentRef, Ref } from 'react';
 import { Text, type TextProps } from 'react-native';
 
 import { useBerean } from '@/design/theme';
@@ -22,6 +23,8 @@ export function UIText({ variant = 'body', secondary = false, style, ...props }:
 
 type ScriptureTextProps = TextProps & {
   variant?: ReadingVariant;
+  /** For moving screen reader focus to it (a heading a jump lands on). */
+  ref?: Ref<ComponentRef<typeof Text>>;
 };
 
 export function ScriptureText({ variant = 'scripture', style, ...props }: ScriptureTextProps) {

@@ -12,10 +12,11 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import { ScaledSymbol } from '@/components/scaled-symbol';
 import { schemeOf } from '@/design/appearance';
+import { cardEdge } from '@/design/chrome';
 import { quickPickerSheetSurface } from '@/design/quick-picker';
 import { sheetDragEnd } from '@/design/sheet-drag';
 import { useBerean, useSolidChrome } from '@/design/theme';
-import { radii, spacing } from '@/design/tokens';
+import { hairline, radii, spacing } from '@/design/tokens';
 
 // The reader's sheets and popover cards, shared by the Aa quick picker and
 // the bookmark picker: the surface and edge, the drag handle, the close
@@ -29,15 +30,19 @@ const FADE_MS = 200;
 /**
  * The sheet's and popover's chrome: never accent-tinted, and solid with a
  * 1px outline under Reduce Transparency or Increase Contrast (rule 5,
- * solidChrome). Its surface is already opaque.
+ * solidChrome). Its surface is already opaque. A card anchored over the
+ * reader also takes a hairline edge in the iOS look's dark schemes
+ * (cardEdge), where neither its fill nor its shadow parts it from the page.
  */
 export function useSheetChrome() {
   const { look, colors, m3, mode } = useBerean();
   const solid = useSolidChrome();
+  const scheme = schemeOf(mode);
   return {
     material: look === 'material',
-    background: quickPickerSheetSurface(look, schemeOf(mode), m3, colors),
+    background: quickPickerSheetSurface(look, scheme, m3, colors),
     edge: solid ? { borderWidth: 1, borderColor: colors.outline } : undefined,
+    cardEdge: cardEdge({ look, dark: scheme === 'dark', solid }, colors, hairline),
   };
 }
 
@@ -268,7 +273,7 @@ export function PopoverCard({
   onClose: () => void;
   children: ReactNode;
 }) {
-  const { background, edge } = useSheetChrome();
+  const { background, cardEdge: edge } = useSheetChrome();
   return (
     <View
       onAccessibilityEscape={onClose}

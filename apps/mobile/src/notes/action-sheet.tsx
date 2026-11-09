@@ -1,4 +1,4 @@
-import { type ComponentRef, useEffect, useRef } from 'react';
+import { type ComponentRef, useEffect, useRef, useState } from 'react';
 import {
   I18nManager,
   Modal,
@@ -82,6 +82,7 @@ export function ActionSheet({ visible, title, items, anchor, anchorEdge = 'end',
   const insets = useSafeAreaInsets();
   const window = useWindowDimensions();
   const chrome = useSheetChrome();
+  const [menuHeight, setMenuHeight] = useState<number>();
 
   const titleRef = useRef<ComponentRef<typeof Text>>(null);
   const firstRef = useRef<ComponentRef<typeof Pressable>>(null);
@@ -142,9 +143,9 @@ export function ActionSheet({ visible, title, items, anchor, anchorEdge = 'end',
         {material && item.icon !== undefined && (
           <ScaledSymbol name={item.icon} size={24} tintColor={iconInk} {...hidden} />
         )}
-        <UIText numberOfLines={2} style={[styles.label, { color: ink }]}>
-          {item.label}
-        </UIText>
+        {/* Wraps at any length and text size (a long "Replace with …"),
+            never truncating; the row grows. */}
+        <UIText style={[styles.label, { color: ink }]}>{item.label}</UIText>
         {check(item)}
       </Pressable>
     );
@@ -152,12 +153,15 @@ export function ActionSheet({ visible, title, items, anchor, anchorEdge = 'end',
 
   if (anchor) {
     // Under the anchor, lined up with its `anchorEdge`; above it when
-    // there's no room below. The card's rows grow with Dynamic Type.
+    // there's no room below. The rows grow with Dynamic Type and wrap long
+    // labels, so once laid out the menu is placed by its own height; until
+    // then, by its rows' one-line height.
     const itemHeight = material ? MENU_ITEM : CARD_ITEM * Math.max(1, window.fontScale);
+    const estimate = items.length * itemHeight + (material ? spacing.sm * 2 : 0);
     const { top, left } = menuPlacement({
       anchor,
       edge: anchorEdge,
-      menu: { width: MENU_WIDTH, height: items.length * itemHeight + (material ? spacing.sm * 2 : 0) },
+      menu: { width: MENU_WIDTH, height: menuHeight ?? estimate },
       window,
       insets,
       margin: spacing.sm,
@@ -180,10 +184,14 @@ export function ActionSheet({ visible, title, items, anchor, anchorEdge = 'end',
           accessibilityRole="menu"
           accessibilityLabel={title}
           onAccessibilityEscape={onClose}
+          onLayout={(e) => {
+            const { height } = e.nativeEvent.layout;
+            setMenuHeight((was) => (was === height ? was : height));
+          }}
           style={
             material
               ? [styles.menu, { top, ...across, backgroundColor: sheetSurface(look, colors, m3) }]
-              : [styles.card, { top, ...across, backgroundColor: chrome.background }, chrome.edge]
+              : [styles.card, { top, ...across, backgroundColor: chrome.background }, chrome.cardEdge]
           }
         >
           {items.map((item, i) => row(item, i, true))}
@@ -218,10 +226,10 @@ export function ActionSheet({ visible, title, items, anchor, anchorEdge = 'end',
         >
           {material && <View style={[styles.handle, { backgroundColor: m3.onSurfaceVariant }]} />}
           <View style={styles.header}>
+            {/* Wraps rather than truncating the reference it names. */}
             <Text
               ref={titleRef}
               accessibilityRole="header"
-              numberOfLines={1}
               style={[
                 material ? type.ui.title : styles.iosTitle,
                 styles.title,
@@ -253,8 +261,9 @@ const styles = StyleSheet.create({
   title: { flex: 1 },
   iosTitle: { fontSize: 17, lineHeight: 22, fontWeight: '600' },
   label: { flex: 1 },
-  iosRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  materialItem: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
+  // Wrapped labels keep a margin above and below; one line keeps the row's height.
+  iosRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm },
+  materialItem: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: spacing.lg, paddingVertical: spacing.sm },
   // M3 menu: extra-small corners, 48dp items, elevation 2.
   menu: {
     position: 'absolute',
@@ -270,6 +279,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
     paddingEnd: spacing.md,
+    paddingVertical: spacing.sm,
   },
   // The iOS look's anchored card: the picker card's corners and shadow.
   card: {

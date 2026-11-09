@@ -18,7 +18,6 @@ import { coreErrorMessage } from '@/ffi/errors';
 import { displayTitle } from '@/library/labels';
 import { load, type Loaded } from '@/library/load';
 import { spanReference } from '@/reader/bible-nav';
-import { chapterBlocks } from '@/reader/chapter-blocks';
 import { verseText } from '@/reader/copy-verse';
 import { notesChanged, onNotesChanged } from '@/notes/changes';
 import { openVerseEditor } from '@/notes/routes';
@@ -116,15 +115,15 @@ export function firstInstalledBible(): PublicationSummary | undefined {
 }
 
 /**
- * A passage card's verse text, from the reader's own chapter, as Copy verse
- * takes it. Empty when the Bible can't be read or the span runs over
+ * A passage card's verse text, each verse's VerseAnchor.text from the
+ * core's chapter, as Copy verse takes it. Empty when the Bible can't be read or the span runs over
  * chapters; the card then shows its reference alone.
  */
 export function passageText(span: NoteSpan): string {
   const verses = spanVerses(span);
   const { pubKey, book, chapter } = span.start;
   if (verses === undefined || book === undefined || chapter === undefined) return '';
-  const read = load(() => chapterBlocks(reader().bibleChapter(pubKey, book, chapter).blocks));
+  const read = load(() => reader().bibleChapter(pubKey, book, chapter).verses);
   if (!read.ok) return '';
   return verses
     .map((v) => verseText(read.value, v))

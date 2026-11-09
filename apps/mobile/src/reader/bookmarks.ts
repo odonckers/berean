@@ -1,9 +1,11 @@
-// The Bible reader's bookmarks (bookmarks spec §3, §4, §6): what the
-// picker shows and says, kept free of React Native so Node can test it.
+// The readers' bookmarks (bookmarks spec §3, §4, §6, §7), the Bible's and
+// a publication's documents': what the picker shows and says, kept free of
+// React Native so Node can test it.
 // The core stores and returns a publication's bookmarks; this only decides
 // how its list reads as the picker's 10 slots, what the toolbar button and
 // screen readers say, and where a jump lands.
 
+import type { CoreDocBlock } from '../studyspace/reader-state.ts';
 import { verseReference } from './bible-nav.ts';
 
 type Look = 'ios' | 'material';
@@ -29,11 +31,26 @@ export type BookmarkLike = { slot: number; location: BookmarkLocation; title: st
 export type BiblePlace = { book: number; chapter: number; verse?: number };
 
 /**
+ * A document of the open publication, as a whole (spec §3.1: an article
+ * bookmark; paragraph bookmarks wait for the core's structured blocks).
+ * Its key is the publication's whole key, issue tag included, so each
+ * Watchtower issue is its own publication with its own 10 slots (spec §7).
+ */
+export type DocumentPlace = { pubKey: string; docId: bigint };
+
+/** What a bookmark saves: a Bible place, or a publication's document. */
+export type BookmarkPlace = BiblePlace | DocumentPlace;
+
+function isDocumentPlace(place: BookmarkPlace): place is DocumentPlace {
+  return 'docId' in place;
+}
+
+/**
  * What the toolbar button saves (spec §3.1, Decision 2): the selected verse
  * while the study pane is open, else the chapter. Its reference is the
  * study pane's and the heading's own: "John 3:16" or "John 3".
  */
-export type SaveTarget = { place: BiblePlace; reference: string };
+export type SaveTarget = { place: BookmarkPlace; reference: string };
 
 export function saveTarget(
   heading: string,
@@ -45,8 +62,21 @@ export function saveTarget(
     : { place: { book: at.book, chapter: at.chapter, verse: selectedVerse }, reference: verseReference(heading, selectedVerse) };
 }
 
-/** The Location set_bookmark stores for a place. A chapter has no verse. */
-export function bookmarkLocation(pubKey: string, place: BiblePlace): BookmarkLocation {
+/**
+ * What a publication's toolbar button saves (spec §3.1): its open document
+ * as a whole, under the document's title, so the header reads "Save
+ * <document title>".
+ */
+export function documentSaveTarget(pubKey: string, docId: bigint, title: string): SaveTarget {
+  return { place: { pubKey, docId }, reference: title };
+}
+
+/**
+ * The Location set_bookmark stores for a place. A chapter has no verse; a
+ * document has no paragraph.
+ */
+export function bookmarkLocation(pubKey: string, place: BookmarkPlace): BookmarkLocation {
+  if (isDocumentPlace(place)) return { pubKey, docId: place.docId };
   const { book, chapter, verse } = place;
   return verse === undefined ? { pubKey, book, chapter } : { pubKey, book, chapter, verse };
 }
@@ -55,9 +85,19 @@ export function bookmarkLocation(pubKey: string, place: BiblePlace): BookmarkLoc
  * Whether a bookmark is at a place: the same book and chapter, and the same
  * verse, or none for both (a chapter bookmark is not its first verse's).
  * A Bible place is its book, chapter and verse; a document id the core or
- * an import puts beside them doesn't make it another place.
+ * an import puts beside them doesn't make it another place. A document is
+ * its publication (issue included) and document id, as a whole: a
+ * paragraph's bookmark (from an import) is not the document's.
  */
-export function isAtPlace(location: BookmarkLocation, place: BiblePlace): boolean {
+export function isAtPlace(location: BookmarkLocation, place: BookmarkPlace): boolean {
+  if (isDocumentPlace(place)) {
+    return (
+      location.pubKey === place.pubKey &&
+      location.docId === place.docId &&
+      location.book === undefined &&
+      location.paragraph === undefined
+    );
+  }
   return location.book === place.book && location.chapter === place.chapter && location.verse === place.verse;
 }
 
@@ -78,7 +118,7 @@ export type BookmarkRow =
  * The picker's list (spec §3.2): always exactly 10 rows, slot 1 first, each
  * the core's bookmark in that slot or empty. A slot outside 0–9 has no row.
  */
-export function bookmarkRows(bookmarks: readonly BookmarkLike[], target: BiblePlace): BookmarkRow[] {
+export function bookmarkRows(bookmarks: readonly BookmarkLike[], target: BookmarkPlace): BookmarkRow[] {
   const bySlot = new Map(bookmarks.map((b) => [b.slot, b]));
   return Array.from({ length: BOOKMARK_SLOTS }, (_, slot): BookmarkRow => {
     const number = slot + 1;
@@ -128,6 +168,24 @@ export function toolbarBookmark(
   const numbers = rows.flatMap((row) => (row.kind === 'filled' && row.current ? [row.number] : []));
   if (numbers.length === 0) return { filled: false, value: undefined };
   return { filled: true, value: `${reference} is in slot${numbers.length > 1 ? 's' : ''} ${slotList(numbers)}` };
+}
+
+/**
+ * The toolbar button's label and value. Pressable always hands View an
+ * accessibilityValue object, so on Android a value going back to undefined
+ * reaches BaseViewManager.setAccessibilityValue as a map without "text",
+ * which leaves the old content description ("Bookmarks, John 3 is in slot
+ * 2") in place; an empty text would leave "Bookmarks, ". There the value goes
+ * in the label, whose every change rebuilds the content description.
+ */
+export function bookmarkButtonLabel(
+  value: string | undefined,
+  os: string,
+): { accessibilityLabel: string; accessibilityValue?: { text: string } } {
+  const label = 'Bookmarks';
+  if (value === undefined) return { accessibilityLabel: label };
+  if (os === 'android') return { accessibilityLabel: `${label}, ${value}` };
+  return { accessibilityLabel: label, accessibilityValue: { text: value } };
 }
 
 /**
@@ -182,6 +240,16 @@ export function rowContentKey(row: BookmarkRow): string {
   return row.kind === 'empty' ? 'empty' : `filled|${row.title}|${row.snippet ?? ''}|${locationKey(row.location)}`;
 }
 
+/**
+ * What a row shows at its trailing edge, outside the cross-fading content:
+ * the filled glyph at the current place, and the ⋯ / ⋮ on any filled slot.
+ * It follows the row as it is now, so a slot that empties and fills again
+ * (a Delete and its Undo, or a save) shows them again.
+ */
+export function rowTrailing(row: BookmarkRow): { glyph: boolean; menu: boolean } {
+  return row.kind === 'filled' ? { glyph: row.current, menu: true } : { glyph: false, menu: false };
+}
+
 /** The row note for a place the installed edition no longer has (spec §7). */
 export const NOT_FOUND_NOTE = 'Not found in this edition';
 
@@ -209,6 +277,82 @@ export function slotPlace(result: LocateResult): SlotPlace {
   return { missing: !exact, opens: verse === undefined ? { book, chapter } : { book, chapter, verse } };
 }
 
+/**
+ * Where a publication's filled slot opens (spec §7), from Reader.locate:
+ * missing unless the core found the saved place exactly; it opens the
+ * document the core located (its nearest place, or the publication's start
+ * document, which the core picks: a periodical issue's first study
+ * article). Where the core gave no document, or couldn't locate it at all,
+ * it opens the publication's contents.
+ */
+export type DocumentSlotPlace = { missing: boolean; opens: { docId: bigint } | 'contents' };
+
+export function documentSlotPlace(result: LocateResult): DocumentSlotPlace {
+  if (!result.ok) return { missing: true, opens: 'contents' };
+  const { location, exact } = result.value;
+  return { missing: !exact, opens: location.docId === undefined ? 'contents' : { docId: location.docId } };
+}
+
+/**
+ * Where a publication bookmark's jump goes (spec §3.3: an article lands at
+ * its top, no marker): the open document again (back to its top), another
+ * document of the same publication, or its contents.
+ */
+export type DocumentJump = { kind: 'top' } | { kind: 'document'; docId: bigint } | { kind: 'contents' };
+
+export function documentJump(opens: DocumentSlotPlace['opens'], here: bigint): DocumentJump {
+  if (opens === 'contents') return { kind: 'contents' };
+  return opens.docId === here ? { kind: 'top' } : { kind: 'document', docId: opens.docId };
+}
+
+/** A document's body paragraphs (not headings), in the core's reading order. */
+function bodyParagraphs(blocks: readonly CoreDocBlock[]): number[] {
+  return blocks.flatMap((block): number[] => {
+    switch (block.tag) {
+      case 'Paragraph':
+      case 'Question':
+        return [block.inner.paragraph];
+      case 'Aside':
+        return bodyParagraphs(block.inner.blocks);
+      case 'List':
+        return block.inner.items.flatMap((item) => bodyParagraphs(item.blocks));
+      default:
+        return [];
+    }
+  });
+}
+
+/**
+ * A document bookmark's snippet (spec §3.1: the first line of the block):
+ * the plain text the core gives (ParagraphAnchor.text) of its first body
+ * paragraph in reading order (the core's blocks; headings are not body,
+ * since the row's title already names the document), as bookmarkSnippet
+ * cuts it. None when the core has no such text.
+ *
+ * A snippet is there so you know the place again, and a cover's legal
+ * block isn't a place (#85 design question 4): when the first body text is
+ * a copyright line, everything after it on such a page is boilerplate too,
+ * so the row shows its title alone.
+ */
+export function documentSnippet(
+  blocks: readonly CoreDocBlock[],
+  paragraphs: readonly { paragraph: number; text: string }[],
+): string | undefined {
+  const texts = new Map(paragraphs.map((p) => [p.paragraph, p.text]));
+  for (const paragraph of bodyParagraphs(blocks)) {
+    const text = texts.get(paragraph) ?? '';
+    if (isCopyrightLine(text)) return undefined;
+    const snippet = bookmarkSnippet(text);
+    if (snippet !== undefined) return snippet;
+  }
+  return undefined;
+}
+
+/** A publication's copyright line ("© 2026 …"): never a snippet. */
+export function isCopyrightLine(text: string): boolean {
+  return /^\s*(©|\(c\)\s*\d{4}|copyright\s+©?\s*\d{4})/iu.test(text);
+}
+
 /** The Bible's start: the first chapter of its first book, in the core's order. */
 export function startPlace(books: readonly { book: number }[] | undefined): BiblePlace | undefined {
   const first = books?.[0];
@@ -234,7 +378,8 @@ export function rowFocusNeighbours(
 
 /**
  * Ctrl+D (or Meta+D) on a hardware keyboard opens the picker in save mode
- * (spec §4), only in the focused Bible reader with its chapter read.
+ * (spec §4), only in the focused reader (the Bible's, or a publication's
+ * document) with its chapter or document read.
  */
 export function shortcutOpensBookmarks(key: string, reader: { focused: boolean; chapterRead: boolean }): boolean {
   return key === 'd' && reader.focused && reader.chapterRead;
@@ -390,3 +535,20 @@ export function bookmarkSheetFit({
   const height = Math.ceil(contentHeight);
   return height <= maxHeight ? { height, scrolls: false } : { height: maxHeight, scrolls: true };
 }
+
+/**
+ * The picker's scrim, and the area outside its tablet card (spec §4, Lumen
+ * ruling 6 on #83): a tap there closes the picker, but it is never a focus
+ * stop. On Android a view a screen reader can reach is one a hardware
+ * arrow can land on (`accessible` makes a view focusable), and the scrim
+ * fills the window from its top, so with nothing focused yet the first ↑/↓
+ * took it. Out of both, that press lands in the sheet: its handle or first
+ * slot. Keyboards close it with Esc (Back), screen readers with the
+ * sheet's handle or close button, or their own escape gesture.
+ */
+export const PICKER_SCRIM_FOCUS = {
+  accessible: false,
+  focusable: false,
+  importantForAccessibility: 'no-hide-descendants',
+  accessibilityElementsHidden: true,
+} as const;

@@ -16,6 +16,7 @@ import {
 
 import { library, reader, userdata } from '@/ffi/core';
 import { coreErrorMessage } from '@/ffi/errors';
+import { localDay } from '@/ffi/local-day';
 import { displayTitle } from '@/library/labels';
 import { load } from '@/library/load';
 import { notesChanged } from '@/notes/changes';
@@ -26,11 +27,15 @@ import { blockSegments } from '@/reader/chapter-blocks';
 import type { Rect } from '@/studyspace/camera';
 import { cardAccessibilityLabel, type CardKind } from '@/studyspace/cards';
 import {
+  anchorTexts,
   bibleRows,
   documentRows,
   type Position,
   readerAt,
+  type ReaderCardPlace,
+  readerLocation,
   type ReaderScope,
+  readerTarget,
   type Row,
 } from '@/studyspace/reader-state';
 import { placeOrDiscard, quietWrite, type Remembered, rememberOutcome } from '@/studyspace/writes';
@@ -166,56 +171,64 @@ function savedAt(item: CanvasItem): CardReader['saved'] {
   return undefined;
 }
 
+/** A card's own place, for readerLocation. */
+function cardPlace(card: CardReader['card']): ReaderCardPlace {
+  return card.kind === 'passage' ? { kind: 'passage', start: card.span.start } : { kind: 'publication', location: card.location };
+}
+
 function readerOf(card: CardReader['card'], item: CanvasItem): CardReader {
   const saved = savedAt(item);
-  // The text is the saved anchor's chapter or document when there is one,
-  // so a reader left in another one (by another device) still restores.
+  // The text is read where the core locates the saved anchor (else the
+  // card's own place), so a reader left in another chapter or document (by
+  // another device) still restores; the key names that place.
+  const at = readerLocation(cardPlace(card), saved);
   const textKey =
     card.kind === 'passage'
-      ? `${card.span.start.pubKey}:${saved?.at.book ?? card.span.start.book}:${saved?.at.chapter ?? card.span.start.chapter}`
-      : `${card.location.pubKey}:${saved?.at.docId ?? card.location.docId ?? 'toc'}`;
+      ? `${at.pubKey}:${at.book ?? ''}:${at.chapter ?? ''}`
+      : `${at.pubKey}:${at.docId ?? 'start'}`;
   const place = saved === undefined ? '' : `${saved.at.verse ?? ''}:${saved.at.paragraph ?? ''}:${saved.charOffset}`;
   return { card, saved, textKey, readKey: `${textKey}|${place}` };
 }
 
-/** A reader card's live text: its rows, what they are (for saving), and the anchor to start at. */
-export type ReaderTextRead = { rows: Row[]; scope: ReaderScope; wanted: Position | undefined };
+/**
+ * A reader card's live text: its rows, what they are (for saving), the
+ * anchor to start at, and whether the core had to fall back from the saved
+ * place (`moved`).
+ */
+export type ReaderTextRead = { rows: Row[]; scope: ReaderScope; wanted: Position | undefined; moved: boolean };
 
 /**
- * A reader card's text (§5 L3 and L4), read synchronously: a passage's
- * chapter (the saved verse's, else its span start's), or a publication's
- * document (the saved paragraph's, else its location's, else the first
- * TOC entry with a document, in the core's order). Throws as the core
- * does; wrap it in load().
+ * A reader card's text (§5 L3 and L4), read synchronously where the core's
+ * Reader.locate puts the saved place (else the card's own): a passage's
+ * chapter, or a publication's document (a whole-publication card's is the
+ * start document the core picks). Throws as the core does (a publication
+ * not installed); wrap it in load().
  */
 export function readReaderText({ card, saved }: CardReader): ReaderTextRead {
-  if (card.kind === 'passage') {
-    const start = card.span.start;
-    const book = saved?.at.book ?? start.book;
-    const chapter = saved?.at.chapter ?? start.chapter;
-    if (book === undefined || chapter === undefined) throw new Error('This passage has no chapter to read.');
-    const read = reader().bibleChapter(start.pubKey, book, chapter);
-    // No reader state: the span's first verse (none for a whole chapter: its first block).
-    const verse = saved?.at.verse ?? start.verse;
+  const place = cardPlace(card);
+  const location = readerLocation(place, saved);
+  const target = readerTarget(place.kind, reader().locate(location, localDay()), saved);
+  if (target?.kind === 'passage') {
+    const { book, chapter, wanted, moved } = target;
+    const read = reader().bibleChapter(location.pubKey, book, chapter);
     return {
-      rows: bibleRows(read.blocks, blockSegments),
-      scope: { kind: 'passage', verse: start, book, chapter },
-      wanted: verse === undefined ? undefined : { key: verse, charOffset: saved?.charOffset ?? 0 },
+      rows: bibleRows(read.blocks, blockSegments, anchorTexts(read.verses)),
+      scope: { kind: 'passage', verse: place.kind === 'passage' ? place.start : location, book, chapter },
+      wanted,
+      moved,
     };
   }
-  const { pubKey } = card.location;
-  // Core ask (Echo): a publication card's starting document (a location
-  // with no docId) is picked app-side, as the first TOC entry with one.
-  const docId =
-    saved?.at.docId ?? card.location.docId ?? reader().toc(pubKey).find((e) => e.docId !== undefined)?.docId;
-  if (docId === undefined) throw new Error('This publication has no text to read.');
-  const read = reader().document(pubKey, docId);
-  const paragraph = saved?.at.paragraph ?? (card.location.docId === docId ? card.location.paragraph : undefined);
-  return {
-    rows: documentRows(read.blocks),
-    scope: { kind: 'publication', pubKey, docId },
-    wanted: paragraph === undefined ? undefined : { key: paragraph, charOffset: saved?.charOffset ?? 0 },
-  };
+  if (target?.kind === 'publication') {
+    const { docId, wanted, moved } = target;
+    const read = reader().document(location.pubKey, docId);
+    return {
+      rows: documentRows(read.blocks, anchorTexts(read.paragraphs)),
+      scope: { kind: 'publication', pubKey: location.pubKey, docId },
+      wanted,
+      moved,
+    };
+  }
+  throw new Error(card.kind === 'passage' ? 'This passage has no chapter to read.' : 'This publication has no text to read.');
 }
 
 function logWriteError(what: string) {

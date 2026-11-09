@@ -33,6 +33,7 @@ import {
   bookmarkSwipeActions,
   isAtPlace,
   rowMenuPresentation,
+  rowTrailing,
   TABLET_MIN_WIDTH,
   jumpAnnouncement,
   rowAction,
@@ -41,7 +42,15 @@ import {
   saveTarget,
   savedAnnouncement,
   toolbarBookmark,
+  bookmarkButtonLabel,
+  PICKER_SCRIM_FOCUS,
+  documentJump,
+  documentSaveTarget,
+  documentSlotPlace,
+  documentSnippet,
+  isCopyrightLine,
 } from './bookmarks.ts';
+import type { CoreDocBlock } from '../studyspace/reader-state.ts';
 
 const pubKey = 'nwtsty_E';
 const john3 = { book: 43, chapter: 3 };
@@ -193,6 +202,36 @@ describe('the toolbar button (spec §3.2, §6)', () => {
     assert.equal(toolbarBookmark(two, 'John 3').value, 'John 3 is in slots 2 and 5');
     const three = bookmarkRows([bookmark(1, john3, 'John 3'), bookmark(4, john3, 'John 3'), bookmark(9, john3, 'John 3')], john3);
     assert.equal(toolbarBookmark(three, 'John 3').value, 'John 3 is in slots 2, 5 and 10');
+  });
+});
+
+describe("the toolbar button's label and value on each platform", () => {
+  test('iOS keeps the value apart from the label', () => {
+    assert.deepEqual(bookmarkButtonLabel('John 3 is in slot 2', 'ios'), {
+      accessibilityLabel: 'Bookmarks',
+      accessibilityValue: { text: 'John 3 is in slot 2' },
+    });
+  });
+
+  test('Android folds the value into the label', () => {
+    const props = bookmarkButtonLabel('John 3 is in slot 2', 'android');
+    assert.deepEqual(props, { accessibilityLabel: 'Bookmarks, John 3 is in slot 2' });
+    assert.equal('accessibilityValue' in props, false);
+  });
+
+  test('with nothing saved, only the label, and no value to go stale', () => {
+    for (const os of ['ios', 'android']) {
+      const props = bookmarkButtonLabel(undefined, os);
+      assert.deepEqual(props, { accessibilityLabel: 'Bookmarks' });
+      assert.equal('accessibilityValue' in props, false);
+    }
+  });
+
+  test('on Android the label changes when the value is cleared, so the description is rebuilt', () => {
+    assert.notEqual(
+      bookmarkButtonLabel('Genesis 1 is in slot 1', 'android').accessibilityLabel,
+      bookmarkButtonLabel(undefined, 'android').accessibilityLabel,
+    );
   });
 });
 
@@ -419,6 +458,19 @@ describe('managing a filled slot (spec §3.2, §6)', () => {
     assert.equal(rowContentKey(again), rowContentKey(john));
   });
 
+  test('a slot that empties and fills again (Delete, then Undo) gets its glyph and ⋮ back', () => {
+    const saved = [bookmark(0, john316, 'John 3:16', 'For God'), bookmark(1, john3, 'John 3')];
+    const [, before] = bookmarkRows(saved, john3);
+    const [, deleted] = bookmarkRows(saved.slice(0, 1), john3);
+    const [, restored] = bookmarkRows(saved, john3);
+    assert.deepEqual(rowTrailing(before), { glyph: true, menu: true });
+    assert.deepEqual(rowTrailing(deleted), { glyph: false, menu: false });
+    assert.deepEqual(rowTrailing(restored), rowTrailing(before));
+    // Away from the save target: the ⋮ still, no glyph.
+    const [elsewhere] = bookmarkRows(saved, john3);
+    assert.deepEqual(rowTrailing(elsewhere), { glyph: false, menu: true });
+  });
+
   test('the iOS-look swipe: a short Replace inner, the red Delete on the outer edge', () => {
     const calls: string[] = [];
     const actions = bookmarkSwipeActions(
@@ -529,5 +581,187 @@ describe('the header when all 10 are full (spec §3.2)', () => {
     const rows = bookmarkRows(ten, john316);
     assert.equal(saveLine('John 3:16', allSlotsFull(rows)), 'All 10 slots are in use. Replace one to save John 3:16.');
     assert.equal(saveLine('John 3', allSlotsFull(bookmarkRows(ten.slice(0, 9), john3))), 'Save John 3');
+  });
+});
+
+// A publication's documents (slice 3): document-level bookmarks, each
+// periodical issue its own publication key.
+const issue = 'w:0:20260800';
+const nextIssue = 'w:0:20260900';
+const article = 1102026201n;
+const docBookmark = (key: string, slot: number, docId: bigint, title: string, paragraph?: number): BookmarkLike => ({
+  slot,
+  location: paragraph === undefined ? { pubKey: key, docId } : { pubKey: key, docId, paragraph },
+  title,
+});
+
+describe('a publication bookmark’s save target (spec §3.1)', () => {
+  test('the open document as a whole, titled as the document', () => {
+    const target = documentSaveTarget(issue, article, 'Keep Your Love Alive');
+    assert.deepEqual(target, { place: { pubKey: issue, docId: article }, reference: 'Keep Your Love Alive' });
+  });
+
+  test('stored as the publication key and document, no paragraph', () => {
+    const { place } = documentSaveTarget(issue, article, 'Keep Your Love Alive');
+    assert.deepEqual(bookmarkLocation(issue, place), { pubKey: issue, docId: article });
+  });
+
+  test('the header says “Save <document title>”, or that every slot is in use', () => {
+    const { reference } = documentSaveTarget(issue, article, 'Keep Your Love Alive');
+    assert.equal(saveLine(reference, false), 'Save Keep Your Love Alive');
+    assert.equal(saveLine(reference, true), 'All 10 slots are in use. Replace one to save Keep Your Love Alive.');
+  });
+
+  test('the toolbar button’s value names the document', () => {
+    const target = documentSaveTarget(issue, article, 'Keep Your Love Alive');
+    const rows = bookmarkRows([docBookmark(issue, 1, article, 'Keep Your Love Alive')], target.place);
+    assert.deepEqual(toolbarBookmark(rows, target.reference), {
+      filled: true,
+      value: 'Keep Your Love Alive is in slot 2',
+    });
+  });
+});
+
+describe('a publication bookmark’s place', () => {
+  const here = { pubKey: issue, docId: article };
+
+  test('the same document is the current place', () => {
+    assert.equal(isAtPlace({ pubKey: issue, docId: article }, here), true);
+  });
+
+  test('another document, or a paragraph in this one (an import), is not', () => {
+    assert.equal(isAtPlace({ pubKey: issue, docId: article + 1n }, here), false);
+    assert.equal(isAtPlace({ pubKey: issue, docId: article, paragraph: 4 }, here), false);
+  });
+});
+
+describe('each periodical issue is its own publication (spec §7)', () => {
+  const here = { pubKey: issue, docId: article };
+
+  test('the issue tag stays in the stored key', () => {
+    assert.equal(bookmarkLocation(issue, here).pubKey, 'w:0:20260800');
+    assert.equal(bookmarkLocation(nextIssue, { pubKey: nextIssue, docId: article }).pubKey, 'w:0:20260900');
+  });
+
+  test('the same document id in two issues is two places', () => {
+    assert.notEqual(locationKey({ pubKey: issue, docId: article }), locationKey({ pubKey: nextIssue, docId: article }));
+    assert.equal(isAtPlace({ pubKey: nextIssue, docId: article }, here), false);
+  });
+
+  test('another issue’s bookmark never marks this one’s current place', () => {
+    const rows = bookmarkRows([docBookmark(nextIssue, 0, article, 'Keep Your Love Alive')], here);
+    assert.equal(rows[0].kind === 'filled' && rows[0].current, false);
+  });
+});
+
+describe('where a publication bookmark opens (spec §7)', () => {
+  const located = (docId: bigint | undefined, exact: boolean) =>
+    ({ ok: true, value: { location: docId === undefined ? { pubKey: issue } : { pubKey: issue, docId }, exact } }) as const;
+
+  test('found exactly: its document, not missing', () => {
+    assert.deepEqual(documentSlotPlace(located(article, true)), { missing: false, opens: { docId: article } });
+  });
+
+  test('gone from this edition: the document the core located instead (its start document), missing', () => {
+    assert.deepEqual(documentSlotPlace(located(1102026202n, false)), { missing: true, opens: { docId: 1102026202n } });
+  });
+
+  test('a location the core gives no document for opens the contents, never a document picked here', () => {
+    assert.deepEqual(documentSlotPlace(located(undefined, false)), { missing: true, opens: 'contents' });
+    assert.deepEqual(documentSlotPlace(located(undefined, true)), { missing: false, opens: 'contents' });
+  });
+
+  test('locate threw: the contents, missing', () => {
+    assert.deepEqual(documentSlotPlace({ ok: false }), { missing: true, opens: 'contents' });
+  });
+
+  test('the not-found toast names what opened', () => {
+    assert.equal(notFoundMessage('Keep Your Love Alive'), "Couldn't find the exact place. Opened Keep Your Love Alive.");
+  });
+});
+
+describe('a publication bookmark’s jump (spec §3.3: an article lands at its top, no marker)', () => {
+  test('the open document: back to its top', () => {
+    assert.deepEqual(documentJump({ docId: article }, article), { kind: 'top' });
+  });
+
+  test('another document: opens it', () => {
+    assert.deepEqual(documentJump({ docId: 1102026202n }, article), { kind: 'document', docId: 1102026202n });
+  });
+
+  test('no document located (or locate threw): the contents', () => {
+    assert.deepEqual(documentJump('contents', article), { kind: 'contents' });
+    assert.deepEqual(documentJump(documentSlotPlace({ ok: false }).opens, article), { kind: 'contents' });
+  });
+});
+
+describe('a publication bookmark’s snippet: the core’s text of its first body paragraph', () => {
+  const t = (text: string) => ({ tag: 'Common' as const, inner: { inline: { tag: 'Text' as const, inner: { text } } } });
+  const blocks: CoreDocBlock[] = [
+    { tag: 'Heading', inner: { paragraph: 1, inlines: [t('Keep Your Love Alive')] } },
+    { tag: 'Paragraph', inner: { paragraph: 3, number: '1', inlines: [t('inlines are not read')] } },
+    { tag: 'Paragraph', inner: { paragraph: 2, inlines: [t('later')] } },
+  ];
+  const paragraphs = [
+    { paragraph: 1, text: 'Keep Your Love Alive' },
+    { paragraph: 2, text: 'Later.' },
+    { paragraph: 3, text: 'WHAT   moves us to love Jehovah?' },
+  ];
+
+  test('in reading order, headings left out, as the core gives its text', () => {
+    assert.equal(documentSnippet(blocks, paragraphs), 'WHAT moves us to love Jehovah?');
+  });
+
+  test('a paragraph inside an aside or a list counts', () => {
+    const boxed: CoreDocBlock[] = [
+      { tag: 'Aside', inner: { blocks: [{ tag: 'List', inner: { items: [{ blocks: [{ tag: 'Paragraph', inner: { paragraph: 2, inlines: [] } }] }] } }] } },
+    ];
+    assert.equal(documentSnippet(boxed, paragraphs), 'Later.');
+  });
+
+  test('an empty paragraph is passed over; with no text at all, none', () => {
+    assert.equal(documentSnippet(blocks, [{ paragraph: 3, text: '' }, { paragraph: 2, text: 'Later.' }]), 'Later.');
+    assert.equal(documentSnippet(blocks, []), undefined);
+    assert.equal(documentSnippet([], paragraphs), undefined);
+  });
+
+  test('cut to a line, as any snippet', () => {
+    const long = `${'word '.repeat(40)}end`;
+    assert.equal(documentSnippet(blocks, [{ paragraph: 3, text: long }]), bookmarkSnippet(long));
+  });
+  test('a cover whose first body text is its copyright line shows the title alone (#85 Q4)', () => {
+    const cover = [
+      { paragraph: 3, text: '© 2026 Watch Tower Bible and Tract Society of Pennsylvania' },
+      { paragraph: 2, text: 'This publication is not for sale.' },
+    ];
+    assert.equal(documentSnippet(blocks, cover), undefined);
+  });
+
+  test('body text before a copyright line is still the snippet', () => {
+    assert.equal(documentSnippet(blocks, [{ paragraph: 3, text: 'Weekly schedule.' }, { paragraph: 2, text: '© 2026' }]), 'Weekly schedule.');
+  });
+
+  test('a copyright line starts with ©, (c) and a year, or Copyright and a year', () => {
+    assert.equal(isCopyrightLine('© 2026 Watch Tower'), true);
+    assert.equal(isCopyrightLine('  (c) 2026 Watch Tower'), true);
+    assert.equal(isCopyrightLine('Copyright © 2026 Watch Tower'), true);
+    assert.equal(isCopyrightLine('Copyright laws in Bible times'), false);
+    assert.equal(isCopyrightLine('WHAT moves us to love Jehovah?'), false);
+  });
+});
+
+describe('the picker’s scrim (Lumen ruling 6 on #83)', () => {
+  test('is no focus stop, for a hardware keyboard or a screen reader', () => {
+    assert.equal(PICKER_SCRIM_FOCUS.accessible, false);
+    assert.equal(PICKER_SCRIM_FOCUS.focusable, false);
+    assert.equal(PICKER_SCRIM_FOCUS.importantForAccessibility, 'no-hide-descendants');
+    assert.equal(PICKER_SCRIM_FOCUS.accessibilityElementsHidden, true);
+  });
+});
+
+describe('the Ctrl+D shortcut in a publication', () => {
+  test('opens in the focused reader once its document is read', () => {
+    assert.equal(shortcutOpensBookmarks('d', { focused: true, chapterRead: true }), true);
+    assert.equal(shortcutOpensBookmarks('d', { focused: false, chapterRead: true }), false);
   });
 });

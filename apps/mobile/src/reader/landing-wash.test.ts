@@ -6,10 +6,13 @@ import { contrast } from '../design/contrast.ts';
 import { THEME_IDS, THEME_MODES, type ThemeMode } from '../design/theme-tokens.generated.ts';
 import {
   IC_TEXT_CONTRAST,
+  IC_TINT_FLOOR,
   WASH_FADE_MS,
   WASH_HOLD_MS,
   WASH_TINT,
+  contrastCappedTint,
   landingWash,
+  searchArrivalWash,
   washAccent,
   washFill,
   washStrength,
@@ -147,9 +150,11 @@ describe('the wash under Increase Contrast', () => {
     }
   });
 
-  test('it is the most tint that holds 7:1', () => {
+  // The cap alone (Lumen's ruling on #83 then floors it): washTint no longer
+  // is the most tint that holds 7:1 where that is under IC_TINT_FLOOR.
+  test('the cap is the most tint that holds 7:1', () => {
     for (const { name, base, accent, text } of washCases(icModes)) {
-      const tint = washTint(base, accent, text, true);
+      const tint = contrastCappedTint(base, accent, text);
       if (tint >= WASH_TINT) continue;
       assert.ok(contrast(text, washFill(base, accent, 1, tint + 0.001)) < IC_TEXT_CONTRAST, name);
     }
@@ -171,6 +176,74 @@ describe('the wash under Increase Contrast', () => {
   test('a base the text already fails, or colours it can’t read, get no tint', () => {
     assert.equal(washTint('#777777', '#000000', '#FFFFFF', true), 0);
     assert.equal(washTint('transparent', '#9B3F2A', '#000000', true), 0);
+  });
+});
+
+describe('the IC wash floor (Lumen’s ruling on #83)', () => {
+  const icModes = THEME_MODES.filter((mode) => mode === 'lightIC' || mode === 'darkIC');
+
+  test('a capped tint under 5% is no wash; at or over it, the capped tint', () => {
+    assert.equal(IC_TINT_FLOOR, 0.05);
+    let floored = 0;
+    let kept = 0;
+    for (const { name, base, accent, text } of washCases(icModes)) {
+      const capped = contrastCappedTint(base, accent, text);
+      const tint = washTint(base, accent, text, true);
+      if (capped < IC_TINT_FLOOR) {
+        assert.equal(tint, 0, name);
+        floored += 1;
+      } else {
+        assert.equal(tint, capped, name);
+        kept += 1;
+      }
+    }
+    // Both happen across the sets: the page keeps a wash, some highlights lose it.
+    assert.ok(floored > 0 && kept > 0);
+  });
+
+  test('Lumen’s measured cases: the cap left 0.7% and 2%, so no wash over those highlights', () => {
+    const sepia = resolvePalette({ ...DEFAULT_CHOICE, theme: 'sepia' }, 'lightIC');
+    assert.equal(contrastCappedTint(sepia.highlights.orange, '#005748', sepia.colors.text), 0.007);
+    assert.equal(washTint(sepia.highlights.orange, '#005748', sepia.colors.text, true), 0);
+    const paper = resolvePalette({ ...DEFAULT_CHOICE, theme: 'paper' }, 'darkIC');
+    assert.equal(contrastCappedTint(paper.highlights.green, '#9AD6A1', paper.colors.text), 0.02);
+    assert.equal(washTint(paper.highlights.green, '#9AD6A1', paper.colors.text, true), 0);
+    // With no tint the fill is the highlight itself.
+    assert.equal(washFill(paper.highlights.green, '#9AD6A1', 1, 0), paper.highlights.green);
+  });
+
+  test('the page itself keeps the full wash under IC', () => {
+    const sepia = resolvePalette({ ...DEFAULT_CHOICE, theme: 'sepia' }, 'lightIC');
+    assert.equal(washTint(sepia.colors.surface, '#005748', sepia.colors.text, true), WASH_TINT);
+  });
+
+  test('without Increase Contrast there is no floor: the full tint', () => {
+    assert.equal(washTint('#FFFCF5', '#9B3F2A', '#000000', false), WASH_TINT);
+  });
+});
+
+describe('a search arrival’s wash (spec §3.3, “same as Search”)', () => {
+  test('a search hit at a verse washes it, as a jump does', () => {
+    const event = searchArrivalWash('a', 16, 1, false);
+    assert.deepEqual(event, { kind: 'land', chapterKey: 'a', verse: 16, arrival: -1, reducedMotion: false });
+    assert.deepEqual(landingWash(undefined, event!), { chapterKey: 'a', verse: 16, arrival: -1, fades: true });
+  });
+
+  test('under Reduce Motion it is static', () => {
+    assert.equal(landingWash(undefined, searchArrivalWash('a', 16, 1, true)!)?.fades, false);
+  });
+
+  test('an arrival at a chapter, with no verse, washes nothing', () => {
+    assert.equal(searchArrivalWash('a', undefined, 1, false), undefined);
+  });
+
+  test('each search arrival is its own, and never a bookmark jump’s', () => {
+    const first = landingWash(undefined, searchArrivalWash('a', 16, 1, false)!);
+    const second = landingWash(first, searchArrivalWash('a', 16, 2, false)!);
+    assert.notEqual(first?.arrival, second?.arrival);
+    // A jump's arrivals count up from 1; a search's down from -1.
+    assert.equal(landingWash(second, { kind: 'faded', arrival: 2 }), second);
+    assert.equal(landingWash(second, { kind: 'faded', arrival: -2 }), undefined);
   });
 });
 

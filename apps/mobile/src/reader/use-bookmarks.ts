@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react';
 import { userdata } from '@/ffi/core';
 import { coreErrorMessage } from '@/ffi/errors';
 import { type Loaded, load } from '@/library/load';
-import type { BiblePlace } from '@/reader/bookmarks';
+import type { BookmarkPlace } from '@/reader/bookmarks';
 import { bookmarkLocation } from '@/reader/bookmarks';
 import { type HeldBookmark, restoreArgs } from '@/reader/bookmark-undo';
 
@@ -14,7 +14,7 @@ type PublicationBookmarks = {
   /** Read them again (the picker opening). */
   refresh: () => void;
   /** Save `place` into `slot` (0–9), replacing it. A core error's message, or none. */
-  save: (slot: number, place: BiblePlace, title: string, snippet: string | undefined) => string | undefined;
+  save: (slot: number, place: BookmarkPlace, title: string, snippet: string | undefined) => string | undefined;
   /** Empty `slot`. A core error's message, or none. */
   remove: (slot: number) => string | undefined;
   /** Put a held bookmark back as it was (Undo). A core error's message, or none. */
@@ -50,7 +50,7 @@ export function useBookmarks(pubKey: string): PublicationBookmarks {
     refresh();
     return message;
   };
-  const save = (slot: number, place: BiblePlace, title: string, snippet: string | undefined) =>
+  const save = (slot: number, place: BookmarkPlace, title: string, snippet: string | undefined) =>
     write(() => userdata().setBookmark(pubKey, slot, bookmarkLocation(pubKey, place), title, snippet));
   const remove = (slot: number) => write(() => userdata().removeBookmark(pubKey, slot));
   const restore = (held: HeldBookmark) =>

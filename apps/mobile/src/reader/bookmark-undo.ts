@@ -116,3 +116,20 @@ export function barDuration(bar: NonNullable<BookmarkBar>, screenReaderOn: boole
   if (screenReaderOn) return UNDO_SCREEN_READER_MS;
   return bar.kind === 'undo' ? BOOKMARK_UNDO_MS : BOOKMARK_NOTICE_MS;
 }
+
+/**
+ * Before the bar over the reader has laid out, its height is taken to be
+ * one line's: the iOS toast's 44pt and the M3 snackbar's 48dp alike.
+ */
+export const BAR_HEIGHT_ESTIMATE = 48;
+
+/**
+ * How much more the reader pads the bottom of its text while a bar shows
+ * over it (Lumen, #83): the bar's height (as laid out, else the estimate)
+ * and the gap above it, so a jump's landing verse at a chapter's end
+ * scrolls clear of the not-found toast or the Undo bar. None without a bar.
+ */
+export function barContentInset(shown: boolean, height: number | undefined, gap: number): number {
+  if (!shown) return 0;
+  return (height ?? BAR_HEIGHT_ESTIMATE) + gap;
+}

@@ -12,6 +12,7 @@ import { backAccessibilityLabel } from '@/notes/back-label';
 import { readCards, touchCard } from '@/studyspace/data';
 import { parseReaderParams } from '@/studyspace/open';
 import { LiveReader, useReaderPlace } from '@/studyspace/reader-card';
+import { MOVED_NOTE } from '@/studyspace/reader-state';
 
 const BACK_TITLE = 'Studyspace';
 
@@ -82,15 +83,23 @@ export default function StudyspaceReadScreen() {
         ) : (
           place.shown !== undefined &&
           place.at !== undefined && (
-            <LiveReader
-              key={place.key}
-              rows={place.shown.rows}
-              start={place.at}
-              scale={1}
-              contentStyle={styles.content}
-              onMoving={saver.cancel}
-              onSettle={place.settled}
-            />
+            <>
+              {/* The core couldn't find the exact place: the text opens at the nearest one. */}
+              {place.shown.moved && (
+                <UIText secondary style={styles.note}>
+                  {MOVED_NOTE}
+                </UIText>
+              )}
+              <LiveReader
+                key={place.key}
+                rows={place.shown.rows}
+                start={place.at}
+                scale={1}
+                contentStyle={styles.content}
+                onMoving={saver.cancel}
+                onSettle={place.settled}
+              />
+            </>
           )
         )}
       </View>
@@ -123,5 +132,6 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   content: { width: '100%', alignSelf: 'center', padding: spacing.lg },
   message: { padding: spacing.lg },
+  note: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
   icon: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
 });

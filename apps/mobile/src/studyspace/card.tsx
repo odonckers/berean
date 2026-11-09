@@ -1,5 +1,5 @@
 import { type ComponentRef, type Ref, useEffect } from 'react';
-import { Platform, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Platform, StyleSheet, Text, View } from 'react-native';
 import {
   GestureDetector,
   type PanGesture,
@@ -45,6 +45,7 @@ import { type CardAction, dragFrame, type Guide, lineChanged, SNAP_DISTANCE, sna
 import { focusedLabel } from '@/studyspace/focus';
 import { liftHaptic, snapHaptic } from '@/studyspace/haptics';
 import { LiveReader, ReaderSnippet, useReaderPlace } from '@/studyspace/reader-card';
+import { MOVED_CAPTION, MOVED_NOTE, showsMovedCaption } from '@/studyspace/reader-state';
 
 const GLYPHS: Record<CardKind, SymbolName> = {
   note: { ios: 'note.text', android: 'sticky_note_2' },
@@ -213,6 +214,15 @@ export function StudyCard(props: StudyCardProps) {
   useEffect(() => {
     if (!scrolls || !focused) saver.flush();
   }, [scrolls, focused, saver]);
+
+  // Where the core couldn't find the card's exact place (its edition no
+  // longer has it), the focused card says it opened the nearest one, and
+  // its live text carries a caption line saying so (showsMovedCaption); the
+  // full-screen reader shows the whole note.
+  const moved = text?.moved === true;
+  useEffect(() => {
+    if (focused && moved) AccessibilityInfo.announceForAccessibilityWithOptions(MOVED_NOTE, { queue: true });
+  }, [focused, moved, textKey]);
 
   // The verse a focus announces (§9): where a passage card's reader is, else the span's first.
   const verse =
@@ -472,6 +482,12 @@ export function StudyCard(props: StudyCardProps) {
           )}
           {shown !== undefined && at !== undefined && body === 'snippet' && (
             <ReaderSnippet rows={shown.rows} at={at} lines={bodyLines} scale={bodyScale} />
+          )}
+          {showsMovedCaption(moved, body) && (
+            // Said once on focus (above); here it is only seen.
+            <Text {...hidden} numberOfLines={1} style={[type.ui.caption, { color: secondary }]}>
+              {MOVED_CAPTION}
+            </Text>
           )}
           {shown !== undefined && at !== undefined && body === 'live' && (
             <LiveReader
