@@ -277,6 +277,31 @@ impl From<berean_core::library::PublicationSummary> for PublicationSummary {
     }
 }
 
+/// The FFI mirror of [`berean_core::library::SideLoad`]: what
+/// `Library::side_load` did with a file.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum SideLoad {
+    /// The file is installed as `publication`, replacing any copy of it.
+    Installed { publication: PublicationSummary },
+    /// A copy of `publication` is already installed and the call didn't ask
+    /// to replace it: nothing changed.
+    AlreadyInstalled { publication: PublicationSummary },
+}
+
+impl From<berean_core::library::SideLoad> for SideLoad {
+    fn from(s: berean_core::library::SideLoad) -> Self {
+        use berean_core::library::SideLoad as S;
+        match s {
+            S::Installed { publication } => SideLoad::Installed {
+                publication: publication.into(),
+            },
+            S::AlreadyInstalled { publication } => SideLoad::AlreadyInstalled {
+                publication: publication.into(),
+            },
+        }
+    }
+}
+
 /// The FFI mirror of [`berean_core::catalog::NewPublication`].
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct NewPublication {
@@ -533,6 +558,29 @@ impl Library {
         let inner = self.inner.clone();
         run_on_thread(move || {
             Ok(inner.install(&pub_key, file_path, &Progress(progress), &cancel.inner)?)
+        })
+        .await
+    }
+
+    /// Install a `.jwpub` the user opened from their device, as the
+    /// publication the file itself says it is, without holding it to the
+    /// catalog's size and checksum (its own manifest hash is still checked).
+    /// When that publication is already installed and `replace` is false,
+    /// nothing changes and the result is `AlreadyInstalled`, so the app can
+    /// ask before replacing it. Not an intact JWPUB => `Corrupt`. The work
+    /// runs on its own thread; the call resolves when it is done.
+    pub async fn side_load(
+        &self,
+        file_path: String,
+        replace: bool,
+        progress: Arc<dyn ProgressSink>,
+        cancel: Arc<CancelToken>,
+    ) -> Result<SideLoad, CoreError> {
+        let inner = self.inner.clone();
+        run_on_thread(move || {
+            Ok(inner
+                .side_load(file_path, replace, &Progress(progress), &cancel.inner)?
+                .into())
         })
         .await
     }
@@ -3040,6 +3088,47 @@ mod tests {
         ));
         library.remove("ll:0:0".into()).unwrap();
         assert!(library.installed().unwrap().is_empty());
+    }
+
+    #[test]
+    fn side_load_round_trips_through_ffi() {
+        let path = fixture("ll_E.jwpub").display().to_string();
+        let dir = tempfile::tempdir().unwrap();
+        let core = open_core(&dir);
+        let library = core.library();
+        let recorder = Arc::new(Recorder {
+            calls: Mutex::new(Vec::new()),
+        });
+        let side_load = |replace: bool| {
+            block_on(library.side_load(path.clone(), replace, recorder.clone(), CancelToken::new()))
+                .unwrap()
+        };
+
+        let SideLoad::Installed { publication } = side_load(false) else {
+            panic!("expected an install");
+        };
+        assert_eq!(publication.pub_key, "ll:0:0");
+        assert_eq!(publication.kind, PubKind::Brochure);
+        assert_eq!(library.installed().unwrap(), vec![publication.clone()]);
+        let (done, total) = *recorder.calls.lock().unwrap().last().unwrap();
+        assert_eq!(done, total);
+
+        assert_eq!(
+            side_load(false),
+            SideLoad::AlreadyInstalled {
+                publication: publication.clone()
+            }
+        );
+        assert_eq!(side_load(true), SideLoad::Installed { publication });
+
+        let err = block_on(library.side_load(
+            dir.path().join("absent.jwpub").display().to_string(),
+            false,
+            recorder,
+            CancelToken::new(),
+        ))
+        .unwrap_err();
+        assert!(matches!(err, CoreError::Io { .. }), "{err:?}");
     }
 
     #[test]

@@ -66,11 +66,31 @@ function shell(command: string): string {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** The on-screen accessibility tree, as uiautomator dumps it. */
+/**
+ * Taps Wait on a system "isn't responding" dialog, if one is up. A slow
+ * emulator can show one for its own launcher, and it covers the app until
+ * answered. Returns whether it tapped.
+ */
+function waitOnSystemDialog(xml: string): boolean {
+  const node = xml.match(/<node [^>]*resource-id="android:id\/aerr_wait"[^>]*>/);
+  const bounds = node?.[0].match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/);
+  if (!bounds) return false;
+  const [x1, y1, x2, y2] = bounds.slice(1).map(Number);
+  console.log('  (a system app wasn’t responding; tapped Wait)');
+  shell(`input tap ${Math.round((x1 + x2) / 2)} ${Math.round((y1 + y2) / 2)}`);
+  return true;
+}
+
+/** The on-screen accessibility tree, as uiautomator dumps it, once any system "isn't responding" dialog is answered. */
 function dump(): string {
   for (let attempt = 0; attempt < 3; attempt++) {
     const xml = adb('exec-out', 'uiautomator', 'dump', '/dev/tty').toString();
-    if (xml.includes('<hierarchy')) return xml;
+    if (!xml.includes('<hierarchy')) continue;
+    if (waitOnSystemDialog(xml)) {
+      execFileSync('sleep', ['1']);
+      continue;
+    }
+    return xml;
   }
   return '';
 }
@@ -110,6 +130,7 @@ const screencap = () => adb('exec-out', 'screencap', '-p');
 /** Waits until two screencaps a beat apart match, then returns the last one. */
 async function settled(): Promise<Buffer> {
   await sleep(2500);
+  dump(); // answers a system dialog that would cover the screen
   let last = screencap();
   for (let attempt = 0; attempt < 8; attempt++) {
     await sleep(800);

@@ -17,7 +17,7 @@ use berean_core::catalog::{
 };
 use berean_core::jwpub::Publication;
 use berean_core::languages::{self, Language};
-use berean_core::library::{DownloadPlan, Library, PubKind, PublicationSummary};
+use berean_core::library::{DownloadPlan, Library, PubKind, PublicationSummary, SideLoad};
 use berean_core::titles::TitleMatch;
 use berean_core::{CancelToken, Core, CoreError};
 use common::fixture;
@@ -429,6 +429,70 @@ fn installed_issue_title_comes_from_the_catalog() {
         Some(W_E_ISSUE_TITLE)
     );
     assert_eq!(find(&installed, LL_E).unwrap().issue_title, None);
+}
+
+/// The `.jwpub` fixture `file` with its outer zip rewritten uncompressed:
+/// the same publication, intact, but not the file the catalog lists (a
+/// different size and SHA-1), like an older or re-shared copy.
+fn rezipped(env: &Env, file: &str) -> PathBuf {
+    use std::io::Read;
+    let mut outer = zip::ZipArchive::new(std::fs::File::open(fixture(file)).unwrap()).unwrap();
+    let path = env.scratch(file);
+    let mut w = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+    let stored =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    for i in 0..outer.len() {
+        let mut entry = outer.by_index(i).unwrap();
+        let mut bytes = Vec::new();
+        entry.read_to_end(&mut bytes).unwrap();
+        w.start_file(entry.name(), stored).unwrap();
+        w.write_all(&bytes).unwrap();
+    }
+    // Different bytes even if the fixture's entries were stored already.
+    w.set_comment("re-shared");
+    w.finish().unwrap();
+    path
+}
+
+#[test]
+fn a_side_loaded_copy_need_not_be_the_catalogs_file() {
+    let env = Env::new();
+    let core = env.core();
+    let library = core.library();
+    ingest(&core.catalog(), trimmed()).unwrap();
+    let path = rezipped(&env, "w_E_202608.jwpub");
+
+    // A catalog install holds the file to the catalog's size and SHA-1 ...
+    let err = library
+        .install(W_E, &path, &|_, _| {}, &CancelToken::new())
+        .unwrap_err();
+    assert!(matches!(err, CoreError::Corrupt), "{err:?}");
+    assert!(library.installed().unwrap().is_empty());
+
+    // ... a side-load takes it by its own key, with the catalog's issue title.
+    let done = library
+        .side_load(&path, false, &|_, _| {}, &CancelToken::new())
+        .unwrap();
+    let SideLoad::Installed { publication } = done else {
+        panic!("expected an install, got {done:?}");
+    };
+    assert_eq!(publication.pub_key, W_E);
+    assert_eq!(publication.title, W_E_TITLE);
+    assert_eq!(publication.issue_title.as_deref(), Some(W_E_ISSUE_TITLE));
+    assert_eq!(publication.kind, PubKind::Watchtower);
+    assert_eq!(library.installed().unwrap(), vec![publication.clone()]);
+
+    // The catalog's own file then counts as the same publication.
+    let again = library
+        .side_load(
+            fixture("w_E_202608.jwpub"),
+            false,
+            &|_, _| {},
+            &CancelToken::new(),
+        )
+        .unwrap();
+    assert_eq!(again, SideLoad::AlreadyInstalled { publication });
+    env.assert_no_leftovers();
 }
 
 #[test]
