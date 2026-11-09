@@ -19,7 +19,8 @@ import { join } from 'node:path';
 const PACKAGE = 'com.odonckers.berean.mobile';
 const out = process.argv[2] ?? 'screenshots';
 
-type Screen = { name: string; url: string; taps?: string[] };
+/** `type` is typed into whatever has focus once the screen is open. */
+type Screen = { name: string; url: string; taps?: string[]; type?: string };
 
 // John 1 in the Bible the setup installed; it reports the key as a
 // "Bible: <pubKey>" line (src/screenshots/setup.ts).
@@ -31,7 +32,8 @@ export const SCREENS: Screen[] = [
   { name: 'library', url: 'berean:///library' },
   { name: 'notes', url: 'berean:///notes' },
   { name: 'studyspace', url: 'berean:///studyspace' },
-  { name: 'search', url: 'berean:///search' },
+  // /search is the iOS tab; Android opens search as its own screen.
+  { name: 'search', url: 'berean:///search-view', type: 'shepherd' },
   { name: 'appearance', url: 'berean:///appearance' },
 ];
 
@@ -129,7 +131,7 @@ function demoMode() {
   demo('enter');
   demo('clock -e hhmm 0941');
   demo('battery -e level 100 -e plugged false');
-  demo('network -e wifi show -e level 4 -e mobile show -e datatype none -e level 4');
+  demo('network -e wifi show -e level 4 -e mobile hide');
   demo('notifications -e visible false');
 }
 
@@ -180,6 +182,9 @@ async function main() {
   const bible = await setup();
   for (const variant of VARIANTS) {
     applyVariant(variant);
+    // Size, density and night mode restart the status bar, which drops demo mode.
+    await sleep(3000);
+    demoMode();
     for (const screen of SCREENS) {
       shell(`am force-stop ${PACKAGE}`);
       open(screen.url.replace(encodeURIComponent('{bible}'), encodeURIComponent(bible)));
@@ -188,11 +193,18 @@ async function main() {
           await sleep(2000);
           await tap(label);
         }
+        if (screen.type) {
+          await sleep(2000);
+          shell(`input text '${screen.type}'`);
+        }
       } catch (error) {
         console.log(`  ${screen.name}/${variant.name}: ${error instanceof Error ? error.message : error}`);
       }
       mkdirSync(join(out, screen.name), { recursive: true });
       writeFileSync(join(out, screen.name, `${variant.name}.png`), await settled());
+      // Typing puts the device in keyboard mode, which draws focus rings on
+      // the screens after it. A touch on the status bar ends that.
+      if (screen.type) shell('input tap 1 1');
       console.log(`  ${screen.name}/${variant.name}`);
     }
   }

@@ -80,7 +80,7 @@ Run the checks for what you changed. CI runs the same ones.
 
 - Branch from `main` and keep one change per pull request. Small pull requests get reviewed sooner.
 - Fill in the pull request template. Say what a user sees before and after the change.
-- **UI changes need screenshots.** Show phone and tablet, light and dark. When the change touches text or layout, also show a large text size. Show the iOS look and the Material look where both apply.
+- **UI changes need screenshots.** For changes to the mobile app, CI posts a comment with the key screens on an Android phone and tablet, light and dark, and at the largest text size ([how it works](docs/screenshots.md)). Check them before asking for review. For screens it doesn't cover, and for the iOS look, add your own.
 - **Accessibility is part of done.** Labels and roles for screen readers, touch targets of at least 44 pt (48 dp on Android), and layouts that hold up at large text sizes and on tablets and large screens.
 - Add or update tests for behaviour changes in `core/`, and for logic in `apps/mobile/src`.
 - Don't commit generated code (`berean-ffi-rn` bindings, `android/`, `ios/`, the XCFramework) or publication files.
