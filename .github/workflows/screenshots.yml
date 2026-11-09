@@ -1,0 +1,210 @@
+name: screenshots
+
+# Builds the Android app with the Rust core, runs it on an emulator and
+# captures the key screens at phone and tablet sizes, light and dark, and
+# at the largest font size (docs/screenshots.md). The images go up as an
+# artifact. This workflow never writes to the repo or the PR: it runs fork
+# code with a read-only token. screenshots-comment.yml, which runs from main
+# with a write token, checks the artifact and posts it on the PR.
+
+on:
+  pull_request:
+    paths:
+      - "apps/mobile/**"
+      - "core/berean-core/**"
+      - "core/berean-ffi/**"
+      - "core/Cargo.lock"
+      - ".github/workflows/screenshots.yml"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag or commit to capture (default: the branch you run it on)"
+        required: false
+        default: ""
+      pr:
+        description: Pull request number to post the screenshots on (optional)
+        required: false
+        default: ""
+
+concurrency:
+  group: screenshots-${{ github.event.pull_request.number || github.event.inputs.ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # NDK r30, as in mobile.yml.
+  NDK_VERSION: 30.0.16248370
+  API_LEVEL: 35
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || '' }}
+          persist-credentials: false
+
+      # What the comment workflow needs to find the PR. Written first so a
+      # failed run can still say so on the PR.
+      - name: Describe the run
+        working-directory: .
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.inputs.pr }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          mkdir -p shots
+          jq -n --arg event "$EVENT" --arg pr "$PR_NUMBER" --arg sha "$HEAD_SHA" --arg captured "$(git rev-parse HEAD)" \
+            '{event: $event, pr: $pr, head_sha: $sha, captured_sha: $captured}' > shots/pr.json
+          cat shots/pr.json
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /opt/ghc \
+            /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost \
+            /usr/share/swift \
+            /usr/local/share/powershell \
+            /usr/share/miniconda \
+            /usr/local/julia* \
+            /opt/microsoft \
+            /opt/google/chrome \
+            /usr/local/share/chromium \
+            /opt/az \
+            /usr/lib/google-cloud-sdk
+          docker image prune --all --force || true
+          df -h /
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - run: npm ci
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android, x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: screenshots-android
+          workspaces: |
+            core
+            apps/mobile/node_modules/uniffi-bindgen-react-native
+      - run: cargo install --locked cargo-ndk@4.1.2
+
+      - name: Cache the NDK
+        id: ndk-cache
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/lib/android/sdk/ndk/${{ env.NDK_VERSION }}
+          key: ndk-${{ env.NDK_VERSION }}
+      - name: Install the pinned NDK
+        run: |
+          if [ ! -d "$ANDROID_HOME/ndk/$NDK_VERSION" ]; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null
+          fi
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+
+      - name: Build berean-ffi for Android and generate bindings
+        run: npm run ubrn:android
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+
+      - run: npx expo prebuild --platform android --no-install
+
+      # A release build: no dev menu or overlays, and the JS bundle inside the
+      # APK. EXPO_PUBLIC_SCREENSHOTS=1 keeps the setup screen
+      # (src/app/dev-screenshots.tsx) in it. The template signs release with
+      # the debug key, which is all the emulator needs.
+      - name: Build the APK (release, x86_64)
+        working-directory: apps/mobile/android
+        env:
+          EXPO_PUBLIC_SCREENSHOTS: "1"
+        run: ./gradlew assembleRelease -PreactNativeArchitectures=x86_64 --stacktrace
+
+      - name: Enable KVM
+        working-directory: .
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Cache the emulator image
+        id: avd-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-${{ env.API_LEVEL }}-pixel_6-v1
+
+      - name: Create the emulator snapshot
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ env.API_LEVEL }}
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: echo "Snapshot saved."
+
+      - name: Capture
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ env.API_LEVEL }}
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          working-directory: apps/mobile
+          script: |
+            adb install -r android/app/build/outputs/apk/release/app-release.apk
+            node scripts/emulator-screenshots.ts ../../shots
+
+      # Half size keeps the comment light; the full-size set is in the
+      # screenshots-full artifact.
+      - name: Shrink for the comment
+        if: always()
+        working-directory: .
+        run: |
+          mkdir -p full
+          cp -r shots/. full/
+          rm -f shots/setup.png full/pr.json
+          command -v mogrify > /dev/null || (sudo apt-get update -q && sudo apt-get install -y -q imagemagick > /dev/null)
+          find shots -name '*.png' -exec mogrify -resize 50% -strip {} +
+          du -sh shots full
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: shots
+          retention-days: 14
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots-full
+          path: full
+          retention-days: 14
+          if-no-files-found: ignore
