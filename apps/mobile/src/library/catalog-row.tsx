@@ -13,12 +13,18 @@ type CatalogRowProps = {
   pub: PublicationSummary;
   installed: boolean;
   job: InstallJob | undefined;
+  /** The line under the title; default "symbol · year". */
+  detail?: string;
+  /** Words a screen reader hears for the detail, when they differ from it. */
+  detailSpoken?: string;
+  /** Offers Open on an installed row instead of saying it is installed. */
+  onOpen?: () => void;
 };
 
-export function CatalogRow({ pub, installed, job }: CatalogRowProps) {
+export function CatalogRow({ pub, installed, job, detail: given, detailSpoken, onOpen }: CatalogRowProps) {
   const { colors } = useBerean();
   const title = displayTitle(pub);
-  const detail = pub.year > 0 ? `${pub.symbol} · ${pub.year}` : pub.symbol;
+  const detail = given ?? (pub.year > 0 ? `${pub.symbol} · ${pub.year}` : pub.symbol);
   return (
     <View style={[styles.row, { borderColor: colors.separator }]}>
       <View style={styles.main}>
@@ -26,14 +32,18 @@ export function CatalogRow({ pub, installed, job }: CatalogRowProps) {
           <UIText numberOfLines={2} style={styles.title}>
             {title}
           </UIText>
-          <UIText secondary style={styles.detail}>
+          <UIText secondary style={styles.detail} accessibilityLabel={detailSpoken}>
             {detail}
           </UIText>
         </View>
         {installed ? (
-          <UIText secondary style={styles.detail}>
-            Installed
-          </UIText>
+          onOpen !== undefined ? (
+            <TextButton title="Open" accessibilityLabel={`Open ${title}`} onPress={onOpen} />
+          ) : (
+            <UIText secondary style={styles.detail}>
+              Installed
+            </UIText>
+          )
         ) : (
           job === undefined && (
             <TextButton

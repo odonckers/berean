@@ -1,4 +1,4 @@
-import { PubKind, type PublicationSummary } from 'berean-ffi-rn';
+import type { PublicationSummary } from 'berean-ffi-rn';
 import { router, Stack, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, FlatList, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
@@ -24,6 +24,9 @@ import { libraryChanged, onLibraryChanged, useInstalls } from '@/library/install
 import { JobStatus } from '@/library/job-status';
 import { displayTitle } from '@/library/labels';
 import { languageNames, load, type Loaded, publicationDetail } from '@/library/load';
+import { openPublication } from '@/library/open';
+import { useSelectedLanguage } from '@/library/selected-language';
+import { WhatsNewShelf } from '@/library/whats-new-shelf';
 
 type LibraryData = { installed: PublicationSummary[]; names: ReadonlyMap<number, string> };
 
@@ -39,15 +42,8 @@ function openAppearance() {
   router.push('/appearance');
 }
 
-// Publications read in the Read tab: navigate selects it, and its stack
-// either takes the new params in place (same screen on top) or pushes.
-function openReader(pub: PublicationSummary) {
-  const params = { pubKey: pub.pubKey, title: displayTitle(pub) };
-  if (pub.kind === PubKind.Bible) {
-    router.navigate({ pathname: '/', params });
-  } else {
-    router.navigate({ pathname: '/publication', params });
-  }
+function openFind() {
+  router.push('/library/find');
 }
 
 function confirmRemove(pub: PublicationSummary) {
@@ -77,12 +73,14 @@ export default function LibraryScreen() {
   const insets = useContentInsets();
   const safeArea = useSafeAreaInsets();
   const { jobs } = useInstalls();
+  const { mepsLanguage } = useSelectedLanguage();
   const [data, setData] = useState<Loaded<LibraryData>>(loadLibrary);
 
   useFocusEffect(useCallback(() => setData(loadLibrary()), []));
   useEffect(() => onLibraryChanged(() => setData(loadLibrary())), []);
 
   const jobList = [...jobs.values()];
+  const installedKeys = new Set(data.ok ? data.value.installed.map((pub) => pub.pubKey) : []);
 
   // Search as Screen shows it (a FlatList can't sit in Screen's ScrollView):
   // material look only, docked on phones, in the top app bar on tablets.
@@ -90,10 +88,13 @@ export default function LibraryScreen() {
   const docked = material && windowClass === 'compact';
   const appBarSearch = material && windowClass !== 'compact';
 
+  // Find is the Library's title search (JW Library's Library search); the
+  // search bar is Search Berean, the full-text search.
   // Settings › Appearance has no Settings screen to live in yet, so the
   // Library header carries it beside Catalog.
   const headerButtons = (
     <>
+      <TextButton title="Find" accessibilityLabel="Find publications by title" onPress={openFind} />
       <TextButton title="Appearance" accessibilityLabel="Appearance settings" onPress={openAppearance} />
       <TextButton title="Catalog" accessibilityLabel="Open catalog" onPress={openCatalog} />
     </>
@@ -112,7 +113,7 @@ export default function LibraryScreen() {
     search: appBarSearch ? { width: APP_BAR_SEARCH_WIDTH, minWidth: APP_BAR_SEARCH_MIN_WIDTH } : undefined,
     title: 'Library',
     titleFontSize: type.ui.title.fontSize ?? 0,
-    actions: ['Appearance', 'Catalog'],
+    actions: ['Find', 'Appearance', 'Catalog'],
     labelFontSize: type.ui.body.fontSize ?? 0,
     labelInset: TEXT_BUTTON_LABEL_INSET,
     minTarget: MATERIAL_TARGET,
@@ -155,31 +156,44 @@ export default function LibraryScreen() {
           data={data.value.installed}
           keyExtractor={(pub) => pub.pubKey}
           ListHeaderComponent={
-            headerHidden || buttonsBelowHeader || jobList.length > 0 ? (
-              <View>
-                {/* With the native header hidden, its title and button are drawn here. */}
-                {headerHidden && (
-                  <View style={styles.inlineHeader}>
-                    <UIText variant="largeTitle" style={styles.inlineTitle}>
-                      Library
-                    </UIText>
-                    {headerButtons}
-                  </View>
-                )}
-                {buttonsBelowHeader && <View style={styles.buttonsRow}>{headerButtons}</View>}
-                {jobList.map((job) => (
-                  <View
-                    key={job.pub.pubKey}
-                    style={[styles.row, { borderColor: colors.separator }]}
-                  >
-                    <UIText numberOfLines={2} style={styles.title}>
-                      {displayTitle(job.pub)}
-                    </UIText>
-                    <JobStatus job={job} />
-                  </View>
-                ))}
+            <View>
+              {/* With the native header hidden, its title and button are drawn here. */}
+              {headerHidden && (
+                <View style={styles.inlineHeader}>
+                  <UIText variant="largeTitle" style={styles.inlineTitle}>
+                    Library
+                  </UIText>
+                  {headerButtons}
+                </View>
+              )}
+              {buttonsBelowHeader && <View style={styles.buttonsRow}>{headerButtons}</View>}
+              {/* The list's side insets are on the rows' container, so the
+                  shelf pulls back over them to scroll edge to edge. */}
+              <View style={{ marginLeft: -insets.left, marginRight: -insets.right }}>
+                <WhatsNewShelf
+                  mepsLanguage={mepsLanguage}
+                  installed={installedKeys}
+                  insetLeft={insets.left}
+                  insetRight={insets.right}
+                />
               </View>
-            ) : undefined
+              {(data.value.installed.length > 0 || jobList.length > 0) && (
+                <UIText variant="title" style={styles.sectionTitle}>
+                  Downloaded
+                </UIText>
+              )}
+              {jobList.map((job) => (
+                <View
+                  key={job.pub.pubKey}
+                  style={[styles.row, { borderColor: colors.separator }]}
+                >
+                  <UIText numberOfLines={2} style={styles.title}>
+                    {displayTitle(job.pub)}
+                  </UIText>
+                  <JobStatus job={job} />
+                </View>
+              ))}
+            </View>
           }
           ListEmptyComponent={
             jobList.length === 0 ? (
@@ -196,7 +210,7 @@ export default function LibraryScreen() {
               accessibilityHint="Opens the publication. Long press to remove"
               accessibilityActions={[{ name: 'remove', label: 'Remove' }]}
               onAccessibilityAction={() => confirmRemove(item)}
-              onPress={() => openReader(item)}
+              onPress={() => openPublication(item)}
               onLongPress={() => confirmRemove(item)}
               style={[styles.row, { borderColor: colors.separator }]}
             >
@@ -241,6 +255,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
   },
   inlineTitle: { flexGrow: 1 },
+  sectionTitle: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.sm },
   // Wraps when one row can't hold both; the labels, not the hit areas, line
   // up with the rows' text.
   buttonsRow: {
