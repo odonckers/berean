@@ -48,6 +48,7 @@ import {
   documentSaveTarget,
   documentSlotPlace,
   documentSnippet,
+  isCopyrightLine,
 } from './bookmarks.ts';
 import type { CoreDocBlock } from '../studyspace/reader-state.ts';
 
@@ -727,6 +728,25 @@ describe('a publication bookmark’s snippet: the core’s text of its first bod
   test('cut to a line, as any snippet', () => {
     const long = `${'word '.repeat(40)}end`;
     assert.equal(documentSnippet(blocks, [{ paragraph: 3, text: long }]), bookmarkSnippet(long));
+  });
+  test('a cover whose first body text is its copyright line shows the title alone (#85 Q4)', () => {
+    const cover = [
+      { paragraph: 3, text: '© 2026 Watch Tower Bible and Tract Society of Pennsylvania' },
+      { paragraph: 2, text: 'This publication is not for sale.' },
+    ];
+    assert.equal(documentSnippet(blocks, cover), undefined);
+  });
+
+  test('body text before a copyright line is still the snippet', () => {
+    assert.equal(documentSnippet(blocks, [{ paragraph: 3, text: 'Weekly schedule.' }, { paragraph: 2, text: '© 2026' }]), 'Weekly schedule.');
+  });
+
+  test('a copyright line starts with ©, (c) and a year, or Copyright and a year', () => {
+    assert.equal(isCopyrightLine('© 2026 Watch Tower'), true);
+    assert.equal(isCopyrightLine('  (c) 2026 Watch Tower'), true);
+    assert.equal(isCopyrightLine('Copyright © 2026 Watch Tower'), true);
+    assert.equal(isCopyrightLine('Copyright laws in Bible times'), false);
+    assert.equal(isCopyrightLine('WHAT moves us to love Jehovah?'), false);
   });
 });
 

@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 
 import { blockSegments, type CoreBlock } from '../reader/chapter-blocks.ts';
 import {
+  MOVED_CAPTION,
   MOVED_NOTE,
   anchorTexts,
   bibleRows,
@@ -17,6 +18,7 @@ import {
   type Row,
   rowPositionAt,
   scrollYFor,
+  showsMovedCaption,
   snippetParts,
 } from './reader-state.ts';
 
@@ -375,5 +377,13 @@ describe('what a reader card reads (Reader.locate, #81)', () => {
 
   test('the moved note says so plainly', () => {
     assert.match(MOVED_NOTE, /exact place/);
+  });
+
+  test('a card shows the moved caption over its live text only (#85 Q3)', () => {
+    assert.equal(showsMovedCaption(true, 'live'), true);
+    assert.equal(showsMovedCaption(true, 'snippet'), false);
+    assert.equal(showsMovedCaption(true, 'none'), false);
+    assert.equal(showsMovedCaption(false, 'live'), false);
+    assert.ok(MOVED_CAPTION.length <= 24);
   });
 });

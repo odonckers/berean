@@ -492,7 +492,8 @@ export function BookmarkPicker({
       onRequestClose={onClose}
     >
       <ModalNavigationBarStyle barStyle={systemBarStyle(scheme)} />
-      <View style={styles.root}>
+      {/* VoiceOver's escape (two-finger Z) closes it from anywhere, as Back does on Android (#85 Q1). */}
+      <View style={styles.root} onAccessibilityEscape={onClose}>
         {content}
         {bar !== undefined && (
           <UndoBar label={bar.label} onUndo={bar.onUndo} bottom={insets.bottom + spacing.lg} />

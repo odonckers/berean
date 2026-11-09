@@ -419,3 +419,19 @@ export function readerTarget(
 
 /** What the reader says where the core couldn't find a card's exact place. */
 export const MOVED_NOTE = 'Couldn’t find the exact place. Showing the nearest one.';
+
+/**
+ * The card's own line for the same (#85 design question 3): a card on the
+ * canvas shows it too, so its text is never silently somewhere else. Short
+ * enough for one caption line in a narrow card.
+ */
+export const MOVED_CAPTION = 'Nearest place shown';
+
+/**
+ * Whether a reader card shows MOVED_CAPTION: only over its live text (L4,
+ * or focused), which flexes to give the line room. An L3 snippet's lines
+ * are measured to fill the card, and at L1–L2 there is no text to qualify.
+ */
+export function showsMovedCaption(moved: boolean, body: 'live' | 'snippet' | 'none'): boolean {
+  return moved && body === 'live';
+}

@@ -325,8 +325,14 @@ function bodyParagraphs(blocks: readonly CoreDocBlock[]): number[] {
 /**
  * A document bookmark's snippet (spec §3.1: the first line of the block):
  * the plain text the core gives (ParagraphAnchor.text) of its first body
- * paragraph in reading order (the core's blocks; headings are not body),
- * as bookmarkSnippet cuts it. None when the core has no such text.
+ * paragraph in reading order (the core's blocks; headings are not body,
+ * since the row's title already names the document), as bookmarkSnippet
+ * cuts it. None when the core has no such text.
+ *
+ * A snippet is there so you know the place again, and a cover's legal
+ * block isn't a place (#85 design question 4): when the first body text is
+ * a copyright line, everything after it on such a page is boilerplate too,
+ * so the row shows its title alone.
  */
 export function documentSnippet(
   blocks: readonly CoreDocBlock[],
@@ -334,10 +340,17 @@ export function documentSnippet(
 ): string | undefined {
   const texts = new Map(paragraphs.map((p) => [p.paragraph, p.text]));
   for (const paragraph of bodyParagraphs(blocks)) {
-    const snippet = bookmarkSnippet(texts.get(paragraph) ?? '');
+    const text = texts.get(paragraph) ?? '';
+    if (isCopyrightLine(text)) return undefined;
+    const snippet = bookmarkSnippet(text);
     if (snippet !== undefined) return snippet;
   }
   return undefined;
+}
+
+/** A publication's copyright line ("© 2026 …"): never a snippet. */
+export function isCopyrightLine(text: string): boolean {
+  return /^\s*(©|\(c\)\s*\d{4}|copyright\s+©?\s*\d{4})/iu.test(text);
 }
 
 /** The Bible's start: the first chapter of its first book, in the core's order. */
