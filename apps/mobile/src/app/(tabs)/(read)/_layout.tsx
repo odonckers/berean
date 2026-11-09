@@ -20,6 +20,10 @@ export default function ReadLayout() {
         options={{ title: '', headerShown: true }}
         dangerouslySingular={(_name, params) => `${params.pubKey ?? ''}/${params.docId ?? ''}`}
       />
+      {/* The day's text and the week's meetings (JW Library's Daily Text and
+          Meetings tabs), pushed from the reader's toolbar. Like a
+          publication, it keeps the native header for back and the title. */}
+      <Stack.Screen name="today" options={{ title: 'Today', headerShown: true }} />
     </Stack>
   );
 }

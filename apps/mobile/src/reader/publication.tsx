@@ -18,6 +18,8 @@ import {
   documentSnippet,
   notFoundMessage,
 } from '@/reader/bookmarks';
+import { DocBlocksView } from '@/reader/doc-blocks-view';
+import { withoutTitle } from '@/reader/doc-title';
 import { AaButton, ReadingAppearanceHost, useReadingAppearance } from '@/reader/reading-appearance';
 import { ReadingColumn } from '@/reader/reading-column';
 import { moveAccessibilityFocus } from '@/reader/study-pane';
@@ -221,7 +223,7 @@ function DocumentReader({
         <ScriptureText ref={headingRef} variant="chapterHeading">
           {document.title}
         </ScriptureText>
-        <UIText secondary>Document text rendering needs structured blocks from the core (pending).</UIText>
+        <DocBlocksView blocks={withoutTitle(document.blocks, document.title)} onNotice={host.bar.notice} />
       </ReadingColumn>
       {host.overlay}
     </>
