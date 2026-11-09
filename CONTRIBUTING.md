@@ -99,6 +99,13 @@ CI: cache the NDK between runs
 
 Use `Core`, `Expo`, `Apple`, `Docs` or `CI`. Explain the why in the body when it isn't obvious.
 
+## CI, dependencies and releases
+
+- Every pull request runs the `repo` check (versions agree, workflows lint) and, for the parts it touches, the `core` and `mobile` checks. They need no secrets, so they run the same for pull requests from forks. A first-time contributor's run waits for a maintainer to approve it.
+- Pull requests are labelled by area automatically. The labels group the release notes, so give your pull request a title that reads well in a changelog.
+- Dependabot opens weekly updates for npm, Cargo and GitHub Actions. Expo SDK, React Native and uniffi upgrades are done by hand, together.
+- Maintainers cut releases by tagging a version; [docs/releasing.md](docs/releasing.md) has the steps.
+
 ## Content and trademarks
 
 Berean is an independent project, not affiliated with or endorsed by the publisher of JW Library. Please keep it that way:

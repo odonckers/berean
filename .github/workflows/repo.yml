@@ -1,0 +1,38 @@
+name: repo
+
+# Fast repository-wide checks that run on every PR, from forks too.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: repo-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Versions agree
+        # The Expo app and the Rust crates share one version
+        # (scripts/release/version.mjs).
+        run: node scripts/release/version.mjs
+
+      - name: Lint workflows
+        # Workflow syntax, expressions and action inputs. Shell scripts
+        # inside steps aren't linted (-shellcheck=).
+        run: >
+          docker run --rm -v "$PWD:/repo" -w /repo
+          rhysd/actionlint:1.7.7 -color -shellcheck=

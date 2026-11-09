@@ -1,0 +1,17 @@
+# Labels for pull requests by the files they change (actions/labeler v5).
+# The release notes group changes by these labels (.github/release.yml).
+"area: core":
+  - changed-files:
+      - any-glob-to-any-file: "core/**"
+"area: mobile":
+  - changed-files:
+      - any-glob-to-any-file: "apps/mobile/**"
+"area: apple":
+  - changed-files:
+      - any-glob-to-any-file: "apple/**"
+docs:
+  - changed-files:
+      - any-glob-to-any-file: ["docs/**", "**/*.md"]
+ci:
+  - changed-files:
+      - any-glob-to-any-file: [".github/**", "scripts/**"]

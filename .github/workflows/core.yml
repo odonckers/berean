@@ -2,6 +2,9 @@ name: core
 
 on:
   push:
+    # Branches only: path filters don't apply to tag pushes, and the release
+    # workflow calls this one for tags.
+    branches: ["**"]
     paths:
       - "core/**"
       - ".github/workflows/core.yml"
@@ -9,6 +12,16 @@ on:
     paths:
       - "core/**"
       - ".github/workflows/core.yml"
+  # The release workflow runs these checks on the tagged commit.
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to check out (defaults to the triggering commit)
+        type: string
+        required: false
+
+permissions:
+  contents: read
 
 jobs:
   check:
@@ -18,6 +31,9 @@ jobs:
         working-directory: core
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@stable
         with:
