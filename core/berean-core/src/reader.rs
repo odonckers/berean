@@ -2371,7 +2371,7 @@ fn fold(name: &str) -> String {
 }
 
 /// The base letter of a lowercase Latin letter with a diacritic.
-fn strip_diacritic(c: char) -> char {
+pub(crate) fn strip_diacritic(c: char) -> char {
     match c {
         'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' | 'ā' | 'ă' | 'ą' => 'a',
         'ç' | 'ć' | 'č' => 'c',

@@ -589,7 +589,7 @@ impl Library {
         self.inner.data_dir.join(STORE)
     }
 
-    fn catalog(&self) -> Catalog {
+    pub(crate) fn catalog(&self) -> Catalog {
         Catalog::new(self.inner.clone())
     }
 }

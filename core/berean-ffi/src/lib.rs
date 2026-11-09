@@ -277,6 +277,38 @@ impl From<berean_core::library::PublicationSummary> for PublicationSummary {
     }
 }
 
+/// The FFI mirror of [`berean_core::catalog::NewPublication`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct NewPublication {
+    pub publication: PublicationSummary,
+    pub released: String,
+}
+
+impl From<berean_core::catalog::NewPublication> for NewPublication {
+    fn from(n: berean_core::catalog::NewPublication) -> Self {
+        NewPublication {
+            publication: n.publication.into(),
+            released: n.released,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::titles::TitleMatch`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct TitleMatch {
+    pub publication: PublicationSummary,
+    pub installed: bool,
+}
+
+impl From<berean_core::titles::TitleMatch> for TitleMatch {
+    fn from(m: berean_core::titles::TitleMatch) -> Self {
+        TitleMatch {
+            publication: m.publication.into(),
+            installed: m.installed,
+        }
+    }
+}
+
 /// The FFI mirror of [`berean_core::library::DownloadPlan`].
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct DownloadPlan {
@@ -445,6 +477,22 @@ impl Catalog {
             .collect())
     }
 
+    /// What's New: the publications in `meps_language` released most
+    /// recently, newest first, at most `limit`, each with its release day
+    /// (`YYYY-MM-DD`, UTC).
+    pub fn whats_new(
+        &self,
+        meps_language: u32,
+        limit: u32,
+    ) -> Result<Vec<NewPublication>, CoreError> {
+        Ok(self
+            .inner
+            .whats_new(meps_language, limit)?
+            .into_iter()
+            .map(Into::into)
+            .collect())
+    }
+
     /// The catalog's languages the language table maps, by MEPS id.
     pub fn languages(&self) -> Result<Vec<Language>, CoreError> {
         Ok(self
@@ -494,6 +542,24 @@ impl Library {
         Ok(self
             .inner
             .installed()?
+            .into_iter()
+            .map(Into::into)
+            .collect())
+    }
+
+    /// The publications whose title, issue title or symbol matches `query`:
+    /// every installed match (any language), then at most `limit` catalog
+    /// matches in `meps_language` (every language when `None`) that are not
+    /// installed, each group best match first.
+    pub fn find_titles(
+        &self,
+        query: String,
+        meps_language: Option<u32>,
+        limit: u32,
+    ) -> Result<Vec<TitleMatch>, CoreError> {
+        Ok(self
+            .inner
+            .find_titles(&query, meps_language, limit)?
             .into_iter()
             .map(Into::into)
             .collect())
