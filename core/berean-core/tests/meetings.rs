@@ -86,7 +86,8 @@ fn not_installed(part: &MeetingPart) -> (&str, PubKind, Option<&str>) {
     }
 }
 
-/// The plain text of a block's inlines.
+/// The plain text of a block's inlines, no-break spaces as plain ones (the
+/// yearbook writes "January\u{a0}1").
 fn text(inlines: &[DocInline]) -> String {
     fn common(inline: &Inline, out: &mut String) {
         match inline {
@@ -111,7 +112,7 @@ fn text(inlines: &[DocInline]) -> String {
     }
     let mut out = String::new();
     walk(inlines, &mut out);
-    out
+    out.replace('\u{a0}', " ")
 }
 
 #[test]
