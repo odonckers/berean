@@ -2,6 +2,10 @@ import { Stack } from 'expo-router';
 
 import { useStackOptions } from '@/design/use-stack-options';
 
+// A deep link to a pushed screen (What's New, Find) keeps the Library under
+// it, so the header has a way back.
+export const unstable_settings = { initialRouteName: 'index' };
+
 export default function LibraryLayout() {
   const screenOptions = useStackOptions();
   return (
@@ -11,6 +15,8 @@ export default function LibraryLayout() {
           even where the stack options hide it (iOS look on Android). */}
       <Stack.Screen name="catalog" options={{ title: 'Catalog', headerShown: true }} />
       <Stack.Screen name="languages" options={{ title: 'Language', headerShown: true }} />
+      <Stack.Screen name="whats-new" options={{ title: "What's New", headerShown: true }} />
+      <Stack.Screen name="find" options={{ title: 'Find', headerShown: true }} />
     </Stack>
   );
 }
