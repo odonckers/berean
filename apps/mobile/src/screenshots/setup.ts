@@ -68,13 +68,11 @@ async function install(pub: PublicationSummary, log: (line: string) => void) {
   if (installed(pub.pubKey)) return;
   log(`Downloading: ${pub.pubKey}`);
   startInstall(pub);
-  await until(subscribeInstalls, () => {
-    const job = getSnapshot().jobs.get(pub.pubKey);
-    return job === undefined || job.state === 'failed';
-  });
+  // The job shows up only once the download starts, so wait for the
+  // outcome itself: installed, or a failed job.
+  await until(subscribeInstalls, () => installed(pub.pubKey) || getSnapshot().jobs.get(pub.pubKey)?.state === 'failed');
   const job = getSnapshot().jobs.get(pub.pubKey);
   if (job?.state === 'failed') throw new Error(`${pub.pubKey}: ${job.message}`);
-  if (!installed(pub.pubKey)) throw new Error(`${pub.pubKey}: not installed after download`);
   log(`Installed: ${displayTitle(pub)} (${pub.pubKey})`);
 }
 
