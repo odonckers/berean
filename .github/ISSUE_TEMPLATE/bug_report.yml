@@ -1,0 +1,58 @@
+name: Bug report
+description: Something in Berean doesn't work the way it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. Please don't attach publication files or personal study data; describe the publication instead (for example "Watchtower, August 2026, English").
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you see, and what did you expect to see?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open Library
+        2. Tap ...
+        3. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      multiple: true
+      options:
+        - Android phone
+        - Android tablet or large screen
+        - iPhone
+        - iPad
+        - Mac
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and OS version
+      placeholder: Pixel 9, Android 17
+  - type: input
+    id: version
+    attributes:
+      label: Berean version or commit
+      placeholder: v0.2.0, or a commit SHA for a development build
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or recordings
+      description: Drag images or videos here. They help a lot for anything visual.
+  - type: textarea
+    id: accessibility
+    attributes:
+      label: Accessibility settings in use
+      description: For example TalkBack or VoiceOver, a large text size, high contrast, or reduced motion.

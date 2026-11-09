@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Ask a question
+    url: https://github.com/odonckers/berean/discussions
+    about: Questions, ideas and help with Berean.
+  - name: Report a security problem
+    url: https://github.com/odonckers/berean/security/advisories/new
+    about: Report vulnerabilities privately, not in a public issue.

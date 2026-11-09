@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest something that would make study in Berean better.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: Describe the study task or the problem, not only the feature.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?
+      description: How you imagine it working. Sketches and screenshots of similar ideas are welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What do you do today instead?
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Where would you use it?
+      multiple: true
+      options:
+        - Android
+        - iPhone
+        - iPad or tablet
+        - Mac
+        - Everywhere
