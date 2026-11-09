@@ -31,6 +31,19 @@
 //!
 //! A publication's key is `{symbol}:{meps_language}:{issue_tag}`, e.g.
 //! `w26:0:20260800` or `ll:0:0`, taken from its own `Publication` row.
+//!
+//! # Side-loaded files
+//!
+//! [`Library::side_load`] installs a `.jwpub` the user opened from their
+//! device rather than one the catalog planned: the key is read from the file
+//! itself, and the file is not held to the catalog's size and SHA-1, so an
+//! older edition, or a publication the catalog doesn't list, still opens.
+//! Its integrity comes from the file's own structure instead: the manifest's
+//! SHA-256 of `contents`, the manifest/database identity, and content the
+//! reader can decrypt and index. It is stored exactly like a downloaded
+//! copy, so everything that reads installed publications treats it the
+//! same; if the catalog lists a newer version, [`Library::updates_available`]
+//! offers it.
 
 use std::fs::File;
 use std::io::Read;
@@ -104,6 +117,26 @@ pub struct PublicationSummary {
     /// when present, else `title`.
     pub issue_title: Option<String>,
     pub kind: PubKind,
+}
+
+/// What [`Library::side_load`] did with a file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SideLoad {
+    /// The file is installed as `publication`, replacing any copy of the
+    /// same publication.
+    Installed { publication: PublicationSummary },
+    /// A copy of `publication` (the file's) is already installed and the
+    /// call didn't ask to replace it: nothing changed.
+    AlreadyInstalled { publication: PublicationSummary },
+}
+
+/// Which publication an install expects its file to be.
+enum Expect<'a> {
+    /// The catalog's `pub_key`, held to the catalog's size and SHA-1.
+    Key(&'a str),
+    /// Whatever the file says it is; with `replace` false, a publication
+    /// that is already installed is left as it is.
+    File { replace: bool },
 }
 
 /// An HTTP GET for the caller to make and return the reply body of.
@@ -180,14 +213,59 @@ impl Library {
         progress: &dyn ProgressSink,
         cancel: &CancelToken,
     ) -> Result<(), CoreError> {
+        self.install_file(Expect::Key(pub_key), file_path.as_ref(), progress, cancel)
+            .map(|_| ())
+    }
+
+    /// Install the `.jwpub` at `file_path` that the user opened from their
+    /// device: the publication is whatever the file's own `Publication` row
+    /// says, and the file is not checked against the catalog (see the
+    /// module docs). It is verified, unpacked, indexed and recorded as
+    /// [`install`](Self::install) does, with the same progress steps. When a
+    /// copy of the same publication is already installed and `replace` is
+    /// false, the call stops before indexing and returns
+    /// [`SideLoad::AlreadyInstalled`], changing nothing, so the app can ask
+    /// first; with `replace` true it replaces that copy. Progress reaches
+    /// its total only when the file is installed.
+    ///
+    /// A file that isn't an intact JWPUB (not a zip, no manifest or
+    /// contents, a hash mismatch, a database without a readable
+    /// `Publication` row or with a key that isn't valid, content that can't
+    /// be decrypted) => `Corrupt`; cancelled => `Cancelled`; a missing file
+    /// => `Io`. On any error the store and the search index are unchanged.
+    pub fn side_load(
+        &self,
+        file_path: impl AsRef<Path>,
+        replace: bool,
+        progress: &dyn ProgressSink,
+        cancel: &CancelToken,
+    ) -> Result<SideLoad, CoreError> {
+        self.install_file(
+            Expect::File { replace },
+            file_path.as_ref(),
+            progress,
+            cancel,
+        )
+    }
+
+    /// The work of [`install`](Self::install) and
+    /// [`side_load`](Self::side_load).
+    fn install_file(
+        &self,
+        expect: Expect<'_>,
+        file_path: &Path,
+        progress: &dyn ProgressSink,
+        cancel: &CancelToken,
+    ) -> Result<SideLoad, CoreError> {
         const TOTAL: u64 = 1 + UNPACK_STEPS + 1 + INDEX_STEPS + 1;
         cancel.check()?;
-        let dir_name = dir_name(pub_key)?;
-        let file_path = file_path.as_ref();
-        match self.catalog().entry(pub_key) {
-            Ok(entry) => check_asset(file_path, &entry.asset, cancel)?,
-            Err(CoreError::NotFound) => {}
-            Err(e) => return Err(e),
+        if let Expect::Key(pub_key) = expect {
+            dir_name(pub_key)?;
+            match self.catalog().entry(pub_key) {
+                Ok(entry) => check_asset(file_path, &entry.asset, cancel)?,
+                Err(CoreError::NotFound) => {}
+                Err(e) => return Err(e),
+            }
         }
         let store = self.store();
 
@@ -212,11 +290,25 @@ impl Library {
         let publication = Publication::open_dir(&unpacked)?;
         let meta = publication.meta().clone();
         let key = meta.pub_key();
-        if key != pub_key {
-            return Err(CoreError::Invalid(format!(
-                "file is publication {key}, not {pub_key}"
-            )));
-        }
+        let dir_name = match expect {
+            Expect::Key(pub_key) if key != pub_key => {
+                return Err(CoreError::Invalid(format!(
+                    "file is publication {key}, not {pub_key}"
+                )));
+            }
+            Expect::Key(_) => dir_name(&key)?,
+            // A file whose own key isn't one the store can hold is not an
+            // intact JWPUB.
+            Expect::File { replace } => {
+                let name = dir_name(&key).map_err(|_| CoreError::Corrupt)?;
+                if !replace && self.is_installed(&key)? {
+                    return Ok(SideLoad::AlreadyInstalled {
+                        publication: self.summary(&meta),
+                    });
+                }
+                name
+            }
+        };
         progress.on_progress(UNPACK_STEPS + 2, TOTAL);
 
         let rows = search::index_rows(&publication, progress, UNPACK_STEPS + 2, TOTAL, cancel)?;
@@ -233,7 +325,7 @@ impl Library {
         let installed_dir = store.join(&dir);
         std::fs::rename(&unpacked, &installed_dir)?;
 
-        let replaced = match self.record(pub_key, &meta, &dir, &rows) {
+        let replaced = match self.record(&key, &meta, &dir, &rows) {
             Ok(replaced) => replaced,
             Err(e) => {
                 // Not recorded: the new directory is an orphan; drop it.
@@ -246,7 +338,45 @@ impl Library {
             self.discard(&old);
         }
         progress.on_progress(TOTAL, TOTAL);
-        Ok(())
+        Ok(SideLoad::Installed {
+            publication: self.summary(&meta),
+        })
+    }
+
+    /// Whether a publication with key `pub_key` is installed.
+    fn is_installed(&self, pub_key: &str) -> Result<bool, CoreError> {
+        Ok(self
+            .inner
+            .conn()
+            .query_row(
+                "SELECT 1 FROM installed_publication WHERE pub_key = ?1",
+                [pub_key],
+                |_| Ok(()),
+            )
+            .optional()?
+            .is_some())
+    }
+
+    /// The summary of the publication `meta` describes, as
+    /// [`installed`](Self::installed) would list it: its issue title comes
+    /// from the catalog, `None` without one or on any catalog error.
+    fn summary(&self, meta: &PublicationMeta) -> PublicationSummary {
+        let key = meta.pub_key();
+        let issue_title = self
+            .catalog()
+            .issue_titles(&[key.as_str()])
+            .ok()
+            .and_then(|mut titles| titles.remove(&key));
+        PublicationSummary {
+            pub_key: key,
+            symbol: meta.symbol.clone(),
+            meps_language: meta.meps_language,
+            issue_tag: meta.issue_tag,
+            year: meta.year,
+            title: meta.title.clone(),
+            issue_title,
+            kind: PubKind::from_publication_type(&meta.publication_type),
+        }
     }
 
     /// All installed publications, ordered by key. Each one's `issue_title`
