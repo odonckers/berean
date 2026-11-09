@@ -1,5 +1,5 @@
 import type { PublicationSummary } from 'berean-ffi-rn';
-import { router, Stack, useFocusEffect } from 'expo-router';
+import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, FlatList, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,7 +25,9 @@ import { JobStatus } from '@/library/job-status';
 import { displayTitle } from '@/library/labels';
 import { languageNames, load, type Loaded, publicationDetail } from '@/library/load';
 import { openPublication } from '@/library/open';
+import { ImportStatus } from '@/library/import-status';
 import { useSelectedLanguage } from '@/library/selected-language';
+import { pickAndImport, showImportDemo, useImports } from '@/library/side-load';
 import { WhatsNewShelf } from '@/library/whats-new-shelf';
 
 type LibraryData = { installed: PublicationSummary[]; names: ReadonlyMap<number, string> };
@@ -45,6 +47,13 @@ function openAppearance() {
 function openFind() {
   router.push('/library/find');
 }
+
+function importFile() {
+  void pickAndImport();
+}
+
+/** Sample import rows for the screenshot workflow; only in builds that have its setup. */
+const IMPORT_DEMO = __DEV__ || process.env.EXPO_PUBLIC_SCREENSHOTS === '1';
 
 function confirmRemove(pub: PublicationSummary) {
   const title = displayTitle(pub);
@@ -75,9 +84,17 @@ export default function LibraryScreen() {
   const { jobs } = useInstalls();
   const { mepsLanguage } = useSelectedLanguage();
   const [data, setData] = useState<Loaded<LibraryData>>(loadLibrary);
+  const imports = useImports();
+  const { importDemo } = useLocalSearchParams<{ importDemo?: string }>();
 
   useFocusEffect(useCallback(() => setData(loadLibrary()), []));
   useEffect(() => onLibraryChanged(() => setData(loadLibrary())), []);
+  const demoPub = data.ok ? data.value.installed[0] : undefined;
+  useEffect(() => {
+    if (IMPORT_DEMO && importDemo === '1') {
+      showImportDemo(demoPub);
+    }
+  }, [importDemo, demoPub]);
 
   const jobList = [...jobs.values()];
   const installedKeys = new Set(data.ok ? data.value.installed.map((pub) => pub.pubKey) : []);
@@ -95,6 +112,7 @@ export default function LibraryScreen() {
   const headerButtons = (
     <>
       <TextButton title="Find" accessibilityLabel="Find publications by title" onPress={openFind} />
+      <TextButton title="Import" accessibilityLabel="Import a publication file" onPress={importFile} />
       <TextButton title="Appearance" accessibilityLabel="Appearance settings" onPress={openAppearance} />
       <TextButton title="Catalog" accessibilityLabel="Open catalog" onPress={openCatalog} />
     </>
@@ -113,7 +131,7 @@ export default function LibraryScreen() {
     search: appBarSearch ? { width: APP_BAR_SEARCH_WIDTH, minWidth: APP_BAR_SEARCH_MIN_WIDTH } : undefined,
     title: 'Library',
     titleFontSize: type.ui.title.fontSize ?? 0,
-    actions: ['Find', 'Appearance', 'Catalog'],
+    actions: ['Find', 'Import', 'Appearance', 'Catalog'],
     labelFontSize: type.ui.body.fontSize ?? 0,
     labelInset: TEXT_BUTTON_LABEL_INSET,
     minTarget: MATERIAL_TARGET,
@@ -177,6 +195,9 @@ export default function LibraryScreen() {
                   insetRight={insets.right}
                 />
               </View>
+              {imports.map((job) => (
+                <ImportStatus key={job.id} job={job} />
+              ))}
               {(data.value.installed.length > 0 || jobList.length > 0) && (
                 <UIText variant="title" style={styles.sectionTitle}>
                   Downloaded
@@ -196,10 +217,16 @@ export default function LibraryScreen() {
             </View>
           }
           ListEmptyComponent={
-            jobList.length === 0 ? (
+            jobList.length === 0 && imports.length === 0 ? (
               <View style={styles.empty}>
                 <UIText>No publications yet.</UIText>
                 <TextButton title="Browse catalog" align="leading" onPress={openCatalog} />
+                <TextButton
+                  title="Import a .jwpub file"
+                  align="leading"
+                  accessibilityLabel="Import a publication file from this device"
+                  onPress={importFile}
+                />
               </View>
             ) : undefined
           }

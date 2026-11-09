@@ -10,8 +10,9 @@ someone has looked at them.
 The app is built in release mode with the Rust core, installed on an
 Android emulator (API 35) and filled through its own download paths: the
 catalog, the study Bible and this week's daily text and meeting
-publications come from the real JW CDN, and sample notes and workspaces
-are seeded. Then each screen is opened by deep link and captured in six
+publications come from the real JW CDN, one more publication is
+downloaded as a plain file and opened the way Library › Import opens one,
+and sample notes and workspaces are seeded. Then each screen is opened by deep link and captured in six
 variants:
 
 | Variant | Device |
@@ -21,8 +22,10 @@ variants:
 | `tablet-light`, `tablet-dark` | 1600×2560 at 320 dpi, 800×1280 dp |
 | `tablet-landscape-light` | the tablet turned sideways, an expanded window |
 
-The screens are Read (John 1), Today, Library, What's New, Library ›
-Find (searching “watchtower”), Notes, Studyspace, Search and Appearance. The list lives in `SCREENS` in
+The screens are Read (John 1), Today, Library, Library with sample
+imports of a .jwpub (adding, asking to replace, failed), What's New,
+Library › Find (searching “watchtower”), Notes, Studyspace, Search and
+Appearance. The list lives in `SCREENS` in
 `apps/mobile/scripts/emulator-screenshots.ts`; add a screen there when a
 new one matters.
 
