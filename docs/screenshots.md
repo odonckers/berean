@@ -21,8 +21,8 @@ variants:
 | `tablet-light`, `tablet-dark` | 1600×2560 at 320 dpi, 800×1280 dp |
 | `tablet-landscape-light` | the tablet turned sideways, an expanded window |
 
-The screens are Read (John 1), Today, Library, Notes, Studyspace, Search
-and Appearance. The list lives in `SCREENS` in
+The screens are Read (John 1), Today, Library, What's New, Library ›
+Find (searching “watchtower”), Notes, Studyspace, Search and Appearance. The list lives in `SCREENS` in
 `apps/mobile/scripts/emulator-screenshots.ts`; add a screen there when a
 new one matters.
 

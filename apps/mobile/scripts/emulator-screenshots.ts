@@ -30,6 +30,9 @@ export const SCREENS: Screen[] = [
   { name: 'read', url: read('{bible}') },
   { name: 'today', url: 'berean:///today' },
   { name: 'library', url: 'berean:///library' },
+  { name: 'whats-new', url: 'berean:///library/whats-new' },
+  // Find focuses its search field on open.
+  { name: 'library-find', url: 'berean:///library/find', type: 'watchtower' },
   { name: 'notes', url: 'berean:///notes' },
   { name: 'studyspace', url: 'berean:///studyspace' },
   // /search is the iOS tab; Android opens search as its own screen.
