@@ -21,7 +21,7 @@
     "ubrn:clean": "cd modules/berean-ffi-rn && npm run ubrn:clean"
   },
   "dependencies": {
-    "@expo-google-fonts/material-symbols": "0.4.52",
+    "@expo-google-fonts/material-symbols": "0.4.53",
     "berean-ffi-rn": "file:modules/berean-ffi-rn",
     "expo": "~58.0.21",
     "expo-clipboard": "~58.0.4",
