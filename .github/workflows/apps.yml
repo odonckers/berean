@@ -13,13 +13,22 @@ on:
       - "apple/**"
       - ".github/workflows/apps.yml"
 
+permissions:
+  contents: read
+
 jobs:
   build:
     # Owen's Mac, registered as a self-hosted runner. Never GitHub-hosted macOS.
     # Assumes rustup, xcodegen and Xcode 26 are already installed on it.
+    # The repository is public: never run code from a fork's PR on this
+    # machine. Fork PRs skip this job (a skipped job counts as passing); a
+    # maintainer builds them locally or pushes the branch to this repository.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, macOS]
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Build XCFramework + Swift bindings
         run: ./apple/scripts/build-xcframework.sh

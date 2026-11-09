@@ -1,0 +1,71 @@
+# Dependency updates. Every Dependabot PR runs the same CI as any other PR.
+# SDK-bound packages (Expo, React Native, React, uniffi) are upgraded by hand
+# together, so Dependabot only offers their patch releases.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /apps/mobile
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "area: mobile"]
+    commit-message:
+      prefix: "Expo"
+    ignore:
+      # Expo SDK upgrades go through `npx expo install --fix`.
+      - dependency-name: "expo"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "expo-*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "eslint-config-expo"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "@types/react"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "react-native"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "react-native-*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # Moves in lockstep with the uniffi crate in core/.
+      - dependency-name: "uniffi-bindgen-react-native"
+      - dependency-name: "@ubjs/core"
+    groups:
+      expo-sdk:
+        patterns: ["expo", "expo-*", "eslint-config-expo", "react", "react-dom", "@types/react", "react-native", "react-native-*"]
+      dev-tools:
+        dependency-type: development
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: cargo
+    directory: /core
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "area: core"]
+    commit-message:
+      prefix: "Core"
+    ignore:
+      # 0.x minor releases are breaking; uniffi moves with
+      # uniffi-bindgen-react-native in apps/mobile.
+      - dependency-name: "uniffi"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+    groups:
+      rust-patch:
+        update-types: ["patch"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    labels: ["dependencies", "ci"]
+    commit-message:
+      prefix: "CI"
+    groups:
+      actions:
+        patterns: ["*"]

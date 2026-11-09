@@ -1,0 +1,291 @@
+name: release
+
+# Publishes a GitHub Release for a version tag (vMAJOR.MINOR.PATCH):
+#   1. checks the tag matches the version in the repository,
+#   2. runs the Rust core checks on the tagged commit,
+#   3. builds the Android app (release APK, plus an AAB when signed),
+#   4. creates the GitHub Release with generated notes and the builds,
+#   5. uploads the AAB to Google Play when Play credentials are configured.
+# Signing and Play upload are optional: without their secrets those steps
+# are skipped and the APK is signed with the debug key.
+#
+# A pull request that changes this pipeline runs steps 2 and 3 as a dry run
+# (unsigned, nothing published), so a broken release build shows up before
+# it merges.
+# See docs/releasing.md.
+on:
+  push:
+    tags: ["v*.*.*"]
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - "scripts/release/**"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build and publish again, e.g. v0.2.0
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ inputs.tag || github.event.pull_request.number || github.ref_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      ref: ${{ steps.version.outputs.ref }}
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Tag matches the repository version
+        id: version
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            # Dry run: no tag yet, just the repository's version.
+            version=$(node scripts/release/version.mjs)
+            echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          else
+            version=$(node scripts/release/version.mjs check "$TAG")
+            echo "ref=refs/tags/v$version" >> "$GITHUB_OUTPUT"
+          fi
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # 0.x releases are marked as pre-releases.
+          if [[ "$version" == 0.* ]]; then prerelease=true; else prerelease=false; fi
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+          echo "Releasing v$version (prerelease: $prerelease)"
+
+  core:
+    needs: prepare
+    uses: ./.github/workflows/core.yml
+    with:
+      ref: ${{ needs.prepare.outputs.ref }}
+
+  android:
+    needs: prepare
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          persist-credentials: false
+
+      # Same clean-up as the mobile workflow: Rust, the NDK, node and Gradle
+      # together fill the runner's disk.
+      - name: Free disk space
+        run: |
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /opt/ghc \
+            /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost \
+            /usr/share/swift \
+            /usr/local/share/powershell \
+            /usr/share/miniconda \
+            /usr/local/julia* \
+            /opt/microsoft \
+            /opt/google/chrome \
+            /usr/local/share/chromium \
+            /opt/az \
+            /usr/lib/google-cloud-sdk
+          docker image prune --all --force || true
+          df -h /
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - run: npm ci
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android, x86_64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            core
+            apps/mobile/node_modules/uniffi-bindgen-react-native
+
+      - name: Install cargo-ndk
+        run: cargo install --locked cargo-ndk@4.1.2
+
+      - name: Install the pinned NDK
+        env:
+          NDK_VERSION: 30.0.16248370
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+
+      - name: Build berean-ffi for Android and generate bindings
+        run: npm run ubrn:android
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Prebuild Android
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Release signing
+        # Optional. With all four secrets, the APK and AAB are signed with
+        # the release (upload) key through Gradle's injected signing
+        # properties; without them, the APK keeps the debug signature and
+        # no AAB is published.
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            echo "Dry run on a pull request: building with the debug signature."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "No release signing secrets: building with the debug signature."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          keystore="$RUNNER_TEMP/release.keystore"
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          {
+            echo "android.injected.signing.store.file=$keystore"
+            echo "android.injected.signing.store.password=$KEYSTORE_PASSWORD"
+            echo "android.injected.signing.key.alias=$KEY_ALIAS"
+            echo "android.injected.signing.key.password=$KEY_PASSWORD"
+          } >> android/gradle.properties
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build release APK and AAB
+        working-directory: apps/mobile/android
+        # ubrn builds the Rust core for arm64-v8a (devices) and x86_64
+        # (emulators) only.
+        run: >
+          ./gradlew assembleRelease bundleRelease
+          -PreactNativeArchitectures=arm64-v8a,x86_64
+          --stacktrace
+
+      - name: Collect builds
+        env:
+          SIGNED: ${{ steps.signing.outputs.signed }}
+        run: |
+          out="$RUNNER_TEMP/dist"
+          mkdir -p "$out"
+          if [ "$SIGNED" = "true" ]; then
+            cp android/app/build/outputs/apk/release/app-release.apk "$out/berean-$VERSION-android.apk"
+            cp android/app/build/outputs/bundle/release/app-release.aab "$out/berean-$VERSION-android.aab"
+          else
+            cp android/app/build/outputs/apk/release/app-release.apk "$out/berean-$VERSION-android-debug-signed.apk"
+          fi
+          rm -f "$RUNNER_TEMP/release.keystore"
+          ls -l "$out"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: ${{ runner.temp }}/dist/*
+          if-no-files-found: error
+
+  publish:
+    needs: [prepare, core, android]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: android
+          path: dist
+
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum ./* | sed 's#\./##' > SHA256SUMS.txt && cat SHA256SUMS.txt
+
+      - name: Create or update the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            flags=(--verify-tag --generate-notes --title "Berean $TAG")
+            if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+            gh release create "$TAG" "${flags[@]}" dist/*
+          fi
+
+  play:
+    # Optional: uploads the signed AAB to Google Play's internal testing
+    # track as a draft. Skips when the Play service account isn't configured
+    # or the build wasn't release-signed.
+    needs: [prepare, publish]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      HAS_PLAY: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
+    steps:
+      - name: Play upload configured?
+        run: |
+          if [ "$HAS_PLAY" != "true" ]; then
+            echo "PLAY_SERVICE_ACCOUNT_JSON isn't set: skipping the Google Play upload."
+          fi
+
+      - uses: actions/download-artifact@v4
+        if: env.HAS_PLAY == 'true'
+        with:
+          name: android
+          path: dist
+
+      - name: Signed AAB present?
+        id: aab
+        if: env.HAS_PLAY == 'true'
+        run: |
+          if [ -f "dist/berean-$VERSION-android.aab" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No release-signed AAB (signing secrets missing): skipping the Google Play upload."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: r0adkll/upload-google-play@v1
+        if: env.HAS_PLAY == 'true' && steps.aab.outputs.present == 'true'
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.odonckers.berean.mobile
+          releaseFiles: dist/berean-${{ env.VERSION }}-android.aab
+          track: ${{ vars.PLAY_TRACK || 'internal' }}
+          status: draft
