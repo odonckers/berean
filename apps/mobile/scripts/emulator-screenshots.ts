@@ -202,6 +202,9 @@ async function main() {
       }
       mkdirSync(join(out, screen.name), { recursive: true });
       writeFileSync(join(out, screen.name, `${variant.name}.png`), await settled());
+      // Typing puts the device in keyboard mode, which draws focus rings on
+      // the screens after it. A touch on the status bar ends that.
+      if (screen.type) shell('input tap 1 1');
       console.log(`  ${screen.name}/${variant.name}`);
     }
   }
