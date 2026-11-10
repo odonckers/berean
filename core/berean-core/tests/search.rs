@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use berean_core::library::PubKind;
 use berean_core::reader::Location;
-use berean_core::search::{Hit, SearchScope, MAX_LIMIT};
+use berean_core::search::{Hit, SearchScope, Suggestions, MAX_LIMIT, MAX_SUGGESTIONS};
 use berean_core::{CancelToken, Core, CoreError};
 use common::{fixture, span_of};
 use rusqlite::Connection;
@@ -417,8 +417,16 @@ fn install_remove_and_rebuild() {
             .map(|t| search.query(t, &SearchScope::default(), MAX_LIMIT).unwrap())
             .collect()
     };
+    let suggestions = || -> Vec<Suggestions> {
+        ["jeho", "lo", "God lo"]
+            .iter()
+            .map(|t| search.suggest(t, &SearchScope::default(), 10).unwrap())
+            .collect()
+    };
     let baseline = results();
+    let suggested = suggestions();
     assert!(baseline.iter().all(|hits| !hits.is_empty()));
+    assert!(suggested.iter().all(|s| !s.queries.is_empty()));
     assert_eq!(rows(&db, W_E, ""), W_E_PARAGRAPHS);
 
     // Remove: no hits from it any more.
@@ -438,6 +446,7 @@ fn install_remove_and_rebuild() {
         .unwrap();
         assert_eq!(rows(&db, W_E, ""), W_E_PARAGRAPHS);
         assert_eq!(results(), baseline);
+        assert_eq!(suggestions(), suggested);
     }
 
     // Rebuild, twice: the same hits. Progress is monotonic and completes.
@@ -453,6 +462,7 @@ fn install_remove_and_rebuild() {
         assert!(calls.windows(2).all(|w| w[0].0 <= w[1].0), "{calls:?}");
         assert_eq!(calls.last().unwrap().0, total);
         assert_eq!(results(), baseline);
+        assert_eq!(suggestions(), suggested);
         n = calls.len();
     }
 
@@ -482,6 +492,7 @@ fn install_remove_and_rebuild() {
         .rebuild_index(&|_, _| {}, &CancelToken::new())
         .unwrap();
     assert_eq!(results(), baseline);
+    assert_eq!(suggestions(), suggested);
 }
 
 #[test]
@@ -555,6 +566,74 @@ fn insight() {
         assert!(document.paragraphs.iter().any(|p| p.paragraph == paragraph));
     }
     assert_eq!(hits[0].title, "Melchizedek");
+
+    // Its articles are topic suggestions, opening the article itself.
+    let suggested = core
+        .search()
+        .suggest("melchiz", &SearchScope::default(), 5)
+        .unwrap();
+    let topic = &suggested.topics[0];
+    assert_eq!(topic.title, "Melchizedek");
+    assert_eq!(topic.location.pub_key, IT_E);
+    let document = reader
+        .document(IT_E, topic.location.doc_id.unwrap())
+        .unwrap();
+    assert_eq!(document.title, "Melchizedek");
+    assert_eq!(suggested.queries[0], "Melchizedek");
+    // Typed in full, the article comes first.
+    let topics = core
+        .search()
+        .suggest("melchizedek", &SearchScope::default(), 5)
+        .unwrap()
+        .topics;
+    assert_eq!(topics[0].title, "Melchizedek");
+}
+
+#[test]
+fn suggestions_complete_the_last_word() {
+    let search = core().0.search();
+    let suggest = |text: &str, scope: &SearchScope| {
+        search
+            .suggest(text, scope, 8)
+            .unwrap_or_else(|e| panic!("{text:?}: {e:?}"))
+    };
+    let all = SearchScope::default();
+
+    // Each language's own spelling, most common first.
+    assert_eq!(suggest("jeho", &in_pubs(&[NWT_E])).queries[0], "Jehovah");
+    assert_eq!(suggest("jeho", &in_pubs(&[NWT_S])).queries[0], "Jehová");
+    assert_eq!(suggest("JEHO", &in_pubs(&[NWT_S])).queries[0], "Jehová");
+    // Pronunciation marks don't split a name.
+    assert!(suggest("absa", &in_pubs(&[NWT_E]))
+        .queries
+        .contains(&"Absalom".to_string()));
+
+    let love = suggest("lov", &all).queries;
+    assert_eq!(love.len(), 8);
+    assert_eq!(love[0], "love");
+    // Every completion finds something, alone or with the other words.
+    for text in ["lov", "God lov", "\"loved the wor", "Jehovah sal"] {
+        let queries = suggest(text, &all).queries;
+        assert!(!queries.is_empty(), "{text:?}");
+        for q in &queries {
+            assert!(!query(q, &all, 1).is_empty(), "{text:?} => {q:?}");
+        }
+    }
+    assert_eq!(
+        suggest("\"loved the wor", &in_pubs(&[NWT_E])).queries[0],
+        "\"loved the world\""
+    );
+    // No Insight installed: no topics.
+    assert!(suggest("melch", &all).topics.is_empty());
+    // Nothing to complete.
+    for text in ["", "love ", "John 3:16", "Jehovah’s"] {
+        assert_eq!(suggest(text, &all), Suggestions::default(), "{text:?}");
+    }
+    // The limit is capped.
+    assert_eq!(
+        search.suggest("a", &all, 1000).unwrap().queries.len(),
+        MAX_SUGGESTIONS as usize
+    );
 }
 
 #[test]
@@ -689,6 +768,31 @@ fn query_timings() {
             "query {text:?} pub_keys={:?} offset={} limit={limit}: {hits} hits, \
              min {:.2} ms, median {:.2} ms",
             scope.pub_keys, scope.offset, ms[0], ms[2]
+        );
+    }
+    for (text, scope) in [
+        ("a", at(0)),
+        ("lo", at(0)),
+        ("melch", at(0)),
+        ("God lo", at(0)),
+        ("\"loved the wo", at(0)),
+        ("jeho", in_pubs(&[NWT_S])),
+    ] {
+        let mut ms = Vec::new();
+        let mut found = Suggestions::default();
+        for _ in 0..5 {
+            let start = Instant::now();
+            found = search.suggest(text, &scope, 8).unwrap();
+            ms.push(start.elapsed().as_secs_f64() * 1000.0);
+        }
+        ms.sort_by(f64::total_cmp);
+        eprintln!(
+            "suggest {text:?} pub_keys={:?}: {} topics, {} queries, min {:.2} ms, median {:.2} ms",
+            scope.pub_keys,
+            found.topics.len(),
+            found.queries.len(),
+            ms[0],
+            ms[2]
         );
     }
     let start = Instant::now();

@@ -1704,6 +1704,41 @@ impl From<berean_core::search::Hit> for Hit {
     }
 }
 
+/// The FFI mirror of [`berean_core::search::Suggestions`].
+#[derive(Debug, Clone, Default, PartialEq, Eq, uniffi::Record)]
+pub struct Suggestions {
+    /// Topic articles (Insight) whose title starts with the text, best first.
+    pub topics: Vec<TopicSuggestion>,
+    /// The text with its last word completed, most common first.
+    pub queries: Vec<String>,
+}
+
+impl From<berean_core::search::Suggestions> for Suggestions {
+    fn from(s: berean_core::search::Suggestions) -> Self {
+        Suggestions {
+            topics: mirror(s.topics),
+            queries: s.queries,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::search::TopicSuggestion`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct TopicSuggestion {
+    pub title: String,
+    /// The article: `pub_key` and `doc_id`.
+    pub location: Location,
+}
+
+impl From<berean_core::search::TopicSuggestion> for TopicSuggestion {
+    fn from(t: berean_core::search::TopicSuggestion) -> Self {
+        TopicSuggestion {
+            title: t.title,
+            location: t.location.into(),
+        }
+    }
+}
+
 /// Full-text search, exposed to callers as an object.
 #[derive(uniffi::Object)]
 pub struct Search {
@@ -1735,6 +1770,26 @@ impl Search {
                 .collect())
         })
         .await
+    }
+
+    /// Suggestions for `text` as it is typed, from the publications `scope`
+    /// selects (its offset is ignored): up to `limit` (at most 20,
+    /// [`berean_core::search::MAX_SUGGESTIONS`]) of each kind. Queries are
+    /// the text with its last word completed, most common first (with other
+    /// words, only completions that find something); topics are Insight
+    /// articles whose title starts with the text. Text with nothing to
+    /// complete (empty, or ending in a space) gives none; a `limit` of 0 or
+    /// a malformed key in the scope => `Invalid`.
+    /// The work runs on its own thread; the call resolves when it is done.
+    /// Callers should debounce typing and drop stale results.
+    pub async fn suggest(
+        &self,
+        text: String,
+        scope: SearchScope,
+        limit: u32,
+    ) -> Result<Suggestions, CoreError> {
+        let inner = self.inner.clone();
+        run_on_thread(move || Ok(inner.suggest(&text, &scope.into(), limit)?.into())).await
     }
 
     /// Rebuild every installed publication's index rows from its files. On
@@ -3616,6 +3671,16 @@ mod tests {
                 block_on(search.query(text.into(), SearchScope::default(), limit)).unwrap_err();
             assert!(matches!(err, CoreError::Invalid(_)), "{err:?}");
         }
+
+        let suggested = block_on(search.suggest("jeho".into(), SearchScope::default(), 3)).unwrap();
+        assert_eq!(suggested.queries[0], "Jehovah");
+        assert!(suggested.topics.is_empty());
+        assert_eq!(
+            block_on(search.suggest("love ".into(), SearchScope::default(), 3)).unwrap(),
+            Suggestions::default()
+        );
+        let err = block_on(search.suggest("jeho".into(), SearchScope::default(), 0)).unwrap_err();
+        assert!(matches!(err, CoreError::Invalid(_)), "{err:?}");
 
         // A sink that calls back into the core on every call.
         struct Reentrant {
