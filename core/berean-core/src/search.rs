@@ -37,12 +37,33 @@
 //! location order (key, then book, chapter, verse, document, paragraph), so
 //! the same query over the same publications gives the same order, however
 //! often they were reinstalled or the index rebuilt.
+//!
+//! # Suggestions
+//!
+//! [`Search::suggest`] offers, while the text is being typed:
+//!
+//! - **Queries:** the text with the word being typed completed, from the
+//!   words of the publications in scope, most common first. Where the text
+//!   has other words (or is an open phrase, `"loved the wo`), only
+//!   completions that the search would find are offered.
+//! - **Topics:** the articles of a topic publication (*Insight on the
+//!   Scriptures*) whose title starts with the text, opened directly.
+//!
+//! Both come from two tables kept beside the index and written with it:
+//! `search_term`, each publication's words (folded as the tokenizer folds
+//! them: lowercase, diacritics removed) with their most common spelling and
+//! how often they occur, and `search_topic`, the topic publications' article
+//! titles. Words of one letter, and words with no letter (`3`, `16`), are
+//! left out.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use rusqlite::types::Value;
 use rusqlite::{params, params_from_iter, OptionalExtension, Transaction};
+use rusqlite_migration::HookResult;
+use unicode_normalization::char::is_combining_mark;
+use unicode_normalization::UnicodeNormalization;
 
 use crate::jwpub::Publication;
 use crate::library::{parse_pub_key, Library, PubKind};
@@ -51,6 +72,18 @@ use crate::{CancelToken, CoreError, Inner, ProgressSink, Steps};
 
 /// The most hits one query returns; a larger `limit` is capped to it.
 pub const MAX_LIMIT: u32 = 500;
+
+/// The most suggestions of each kind one call returns; a larger `limit` is
+/// capped to it.
+pub const MAX_SUGGESTIONS: u32 = 20;
+
+/// The symbols of the publications whose articles are topics: *Insight on
+/// the Scriptures*, in every language.
+const TOPIC_SYMBOLS: &[&str] = &["it"];
+
+/// How many completions to try, per suggestion asked for, when each has to
+/// be checked against the index.
+const CANDIDATES_PER_SUGGESTION: u32 = 4;
 
 /// How many progress steps indexing one publication counts as, however many
 /// documents and chapters it has.
@@ -86,6 +119,23 @@ pub struct Hit {
     /// Plain text around the match, as HTML: escaped, with each matched
     /// word in `<mark>…</mark>`, and no other tags.
     pub snippet: String,
+}
+
+/// What [`Search::suggest`] offers for some text.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Suggestions {
+    /// Topic articles whose title starts with the text, best first.
+    pub topics: Vec<TopicSuggestion>,
+    /// The text with its last word completed, most common first.
+    pub queries: Vec<String>,
+}
+
+/// An article of a topic publication, e.g. Insight's "Absalom".
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TopicSuggestion {
+    pub title: String,
+    /// The article: `pub_key` and `doc_id`.
+    pub location: Location,
 }
 
 /// Handle to search. Cheap to clone; shares the core's state.
@@ -129,11 +179,7 @@ impl Search {
             SNIPPET_TOKENS.into(),
             expression.into(),
         ];
-        if let Some(keys) = keys {
-            let marks = vec!["?"; keys.len()].join(", ");
-            sql.push_str(&format!(" AND pub_key IN ({marks})"));
-            values.extend(keys.into_iter().map(Value::from));
-        }
+        push_key_filter(&mut sql, &mut values, keys.as_deref());
         // Ties go in location order, which (unlike rowid) survives a
         // reinstall or rebuild.
         sql.push_str(
@@ -160,6 +206,165 @@ impl Search {
             })
         })?;
         Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// Suggestions for `text` as it is typed, from the publications `scope`
+    /// selects (its offset is ignored): up to `limit` (at most
+    /// [`MAX_SUGGESTIONS`]) of each kind. See the module docs. Text with
+    /// nothing to complete gives none; a `limit` of 0 or a malformed key in
+    /// the scope => `Invalid`.
+    pub fn suggest(
+        &self,
+        text: &str,
+        scope: &SearchScope,
+        limit: u32,
+    ) -> Result<Suggestions, CoreError> {
+        if limit == 0 {
+            return Err(CoreError::Invalid("limit must be at least 1".into()));
+        }
+        let limit = limit.min(MAX_SUGGESTIONS);
+        let keys = self.scope_keys(scope)?;
+        if keys.as_ref().is_some_and(Vec::is_empty) {
+            return Ok(Suggestions::default());
+        }
+        let text = strip_pronunciation(text);
+        Ok(Suggestions {
+            topics: self.topic_suggestions(&text, keys.as_deref(), limit)?,
+            queries: self.query_suggestions(&text, keys.as_deref(), limit)?,
+        })
+    }
+
+    /// Topics whose folded title starts with the folded text (quotes
+    /// dropped, whitespace collapsed): an exact title first, then shorter
+    /// titles, then in title order.
+    fn topic_suggestions(
+        &self,
+        text: &str,
+        keys: Option<&[String]>,
+        limit: u32,
+    ) -> Result<Vec<TopicSuggestion>, CoreError> {
+        let prefix = fold(
+            &text
+                .replace('"', " ")
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" "),
+        );
+        if !prefix.chars().any(word_char) {
+            return Ok(Vec::new());
+        }
+        let mut sql = String::from(
+            "SELECT pub_key, doc_id, title FROM search_topic WHERE folded >= ?1 AND folded < ?2",
+        );
+        let mut values: Vec<Value> = vec![prefix.clone().into(), above(&prefix).into()];
+        push_key_filter(&mut sql, &mut values, keys);
+        sql.push_str(" ORDER BY folded <> ?1, length(folded), folded, pub_key, doc_id LIMIT ?");
+        values.push(i64::from(limit).into());
+
+        let conn = self.inner.conn();
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(params_from_iter(values), |r| {
+            Ok(TopicSuggestion {
+                location: Location {
+                    pub_key: r.get(0)?,
+                    doc_id: Some(r.get(1)?),
+                    book: None,
+                    chapter: None,
+                    verse: None,
+                    paragraph: None,
+                },
+                title: r.get(2)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// The text with the word at its end completed. Nothing when the text
+    /// does not end in a word (it ends in a space, or a closing quote).
+    fn query_suggestions(
+        &self,
+        text: &str,
+        keys: Option<&[String]>,
+        limit: u32,
+    ) -> Result<Vec<String>, CoreError> {
+        let start = text
+            .char_indices()
+            .rev()
+            .take_while(|&(_, c)| word_char(c))
+            .last()
+            .map(|(i, _)| i);
+        let Some(start) = start else {
+            return Ok(Vec::new());
+        };
+        let (head, partial) = text.split_at(start);
+        // A word starts the text, or follows a space or an opening mark;
+        // `s` in `Jehovah’s` is not a word being typed.
+        if !head
+            .chars()
+            .last()
+            .is_none_or(|c| c.is_whitespace() || matches!(c, '"' | '“' | '(' | '[' | '¿' | '¡'))
+        {
+            return Ok(Vec::new());
+        }
+        let prefix = fold(partial);
+        // `"loved the wo` completes to `"loved the world"`.
+        let open_phrase = head
+            .trim_start()
+            .strip_prefix('"')
+            .is_some_and(|rest| !rest.contains('"'));
+        let close = if open_phrase { "\"" } else { "" };
+        // Other words: a completion must still find something with them.
+        let others: Vec<String> = words(head).map(fold).collect();
+        let check = !others.is_empty();
+        let wanted = if check {
+            limit * CANDIDATES_PER_SUGGESTION
+        } else {
+            limit
+        };
+
+        let mut sql = String::from(
+            "SELECT term, form, max(count), sum(count) AS total FROM search_term \
+             WHERE term > ?1 AND term < ?2",
+        );
+        let mut values: Vec<Value> = vec![prefix.clone().into(), above(&prefix).into()];
+        push_key_filter(&mut sql, &mut values, keys);
+        sql.push_str(" GROUP BY term ORDER BY total DESC, term LIMIT ?");
+        values.push(i64::from(wanted).into());
+        let candidates: Vec<(String, String)> = {
+            let conn = self.inner.conn();
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt.query_map(params_from_iter(values), |r| Ok((r.get(0)?, r.get(1)?)))?;
+            rows.collect::<Result<_, _>>()?
+        };
+
+        let mut queries = Vec::new();
+        for (term, form) in candidates {
+            if queries.len() == limit as usize {
+                break;
+            }
+            if others.contains(&term) {
+                continue;
+            }
+            let query = format!("{head}{form}{close}");
+            if check && !self.finds_any(&query, keys)? {
+                continue;
+            }
+            queries.push(query);
+        }
+        Ok(queries)
+    }
+
+    /// Whether `text` has a hit in the publications `keys` selects.
+    fn finds_any(&self, text: &str, keys: Option<&[String]>) -> Result<bool, CoreError> {
+        let mut sql = String::from("SELECT 1 FROM search_index WHERE search_index MATCH ?");
+        let mut values: Vec<Value> = vec![match_expression(text)?.into()];
+        push_key_filter(&mut sql, &mut values, keys);
+        sql.push_str(" LIMIT 1");
+        let conn = self.inner.conn();
+        Ok(conn
+            .query_row(&sql, params_from_iter(values), |_| Ok(()))
+            .optional()?
+            .is_some())
     }
 
     /// Rebuild every installed publication's rows from its files. Progress
@@ -363,6 +568,7 @@ pub(crate) fn replace_rows(
          (text, title, pub_key, doc_id, book, chapter, verse, paragraph) \
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
     )?;
+    let mut derived = Derived::new(pub_key);
     for row in rows {
         let (book, chapter, verse) = match row.verse {
             Some((b, c, v)) => (Some(b), Some(c), Some(v)),
@@ -378,14 +584,160 @@ pub(crate) fn replace_rows(
             verse,
             row.paragraph
         ])?;
+        derived.add(&row.text, &row.title, row.doc_id, row.verse.is_some());
     }
+    derived.write(tx)?;
     Ok(())
 }
 
 /// Drop `pub_key`'s rows from the index.
 pub(crate) fn delete_rows(tx: &Transaction, pub_key: &str) -> Result<(), CoreError> {
     tx.execute("DELETE FROM search_index WHERE pub_key = ?1", [pub_key])?;
+    tx.execute("DELETE FROM search_term WHERE pub_key = ?1", [pub_key])?;
+    tx.execute("DELETE FROM search_topic WHERE pub_key = ?1", [pub_key])?;
     Ok(())
+}
+
+/// The migration hook that adds suggestions: fills `search_term` and
+/// `search_topic` from the rows already in the index, in one pass over it.
+pub(crate) fn backfill_suggestions(tx: &Transaction) -> HookResult {
+    let mut by_pub: HashMap<String, Derived> = HashMap::new();
+    {
+        let mut stmt =
+            tx.prepare("SELECT pub_key, text, title, doc_id, verse IS NOT NULL FROM search_index")?;
+        let mut rows = stmt.query([])?;
+        while let Some(r) = rows.next()? {
+            let pub_key: String = r.get(0)?;
+            let text: String = r.get(1)?;
+            let title: String = r.get(2)?;
+            by_pub
+                .entry(pub_key.clone())
+                .or_insert_with(|| Derived::new(&pub_key))
+                .add(&text, &title, r.get(3)?, r.get(4)?);
+        }
+    }
+    for derived in by_pub.into_values() {
+        derived.write(tx)?;
+    }
+    Ok(())
+}
+
+/// One publication's suggestion rows, gathered from its index rows.
+struct Derived {
+    pub_key: String,
+    /// Folded word => spelling => occurrences.
+    words: HashMap<String, HashMap<String, i64>>,
+    /// Article => title, for a topic publication.
+    topics: Option<HashMap<i64, String>>,
+}
+
+impl Derived {
+    fn new(pub_key: &str) -> Self {
+        let topical =
+            parse_pub_key(pub_key).is_ok_and(|(symbol, _, _)| TOPIC_SYMBOLS.contains(&symbol));
+        Derived {
+            pub_key: pub_key.to_string(),
+            words: HashMap::new(),
+            topics: topical.then(HashMap::new),
+        }
+    }
+
+    fn add(&mut self, text: &str, title: &str, doc_id: i64, is_verse: bool) {
+        for word in words(text) {
+            let term = fold(word);
+            if term.chars().count() < 2 || !term.chars().any(char::is_alphabetic) {
+                continue;
+            }
+            *self
+                .words
+                .entry(term)
+                .or_default()
+                .entry(word.to_string())
+                .or_default() += 1;
+        }
+        if let Some(topics) = &mut self.topics {
+            if !is_verse && !title.trim().is_empty() {
+                topics
+                    .entry(doc_id)
+                    .or_insert_with(|| title.trim().to_string());
+            }
+        }
+    }
+
+    fn write(self, tx: &Transaction) -> rusqlite::Result<()> {
+        let mut stmt = tx.prepare(
+            "INSERT INTO search_term (term, pub_key, form, count) VALUES (?1, ?2, ?3, ?4)",
+        )?;
+        for (term, spellings) in &self.words {
+            // The most common spelling; a tie goes to the lowercase one,
+            // then in text order.
+            let (form, _) = spellings
+                .iter()
+                .max_by(|a, b| {
+                    a.1.cmp(b.1)
+                        .then_with(|| is_lowercase(a.0).cmp(&is_lowercase(b.0)))
+                        .then_with(|| b.0.cmp(a.0))
+                })
+                .expect("a word has a spelling");
+            let count: i64 = spellings.values().sum();
+            stmt.execute(params![term, self.pub_key, form, count])?;
+        }
+        if let Some(topics) = &self.topics {
+            let mut stmt = tx.prepare(
+                "INSERT OR IGNORE INTO search_topic (folded, pub_key, doc_id, title) \
+                 VALUES (?1, ?2, ?3, ?4)",
+            )?;
+            for (doc_id, title) in topics {
+                let folded = fold(
+                    &strip_pronunciation(title)
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                );
+                stmt.execute(params![folded, self.pub_key, doc_id, title])?;
+            }
+        }
+        Ok(())
+    }
+}
+
+fn is_lowercase(s: &str) -> bool {
+    !s.chars().any(char::is_uppercase)
+}
+
+/// Whether `c` is part of a word: a letter, digit or combining mark. Close
+/// to what the index's tokenizer keeps.
+fn word_char(c: char) -> bool {
+    c.is_alphanumeric() || is_combining_mark(c)
+}
+
+/// The words of `text`, as written.
+fn words(text: &str) -> impl Iterator<Item = &str> {
+    text.split(|c: char| !word_char(c))
+        .filter(|w| !w.is_empty())
+}
+
+/// `text` as the tokenizer compares it: diacritics removed, lowercase.
+fn fold(text: &str) -> String {
+    text.nfd()
+        .filter(|&c| !is_combining_mark(c))
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+/// The least string greater than every string starting with `prefix`, for
+/// a range scan.
+fn above(prefix: &str) -> String {
+    format!("{prefix}\u{10ffff}")
+}
+
+/// Narrow a query on a table with a `pub_key` column to `keys`, when given.
+fn push_key_filter(sql: &mut String, values: &mut Vec<Value>, keys: Option<&[String]>) {
+    if let Some(keys) = keys {
+        let marks = vec!["?"; keys.len()].join(", ");
+        sql.push_str(&format!(" AND pub_key IN ({marks})"));
+        values.extend(keys.iter().cloned().map(Value::from));
+    }
 }
 
 /// Text as indexed: whitespace runs collapsed to one space, the snippet
@@ -498,6 +850,243 @@ mod tests {
             snippet_html("a <b> & \"c\" 'd' \u{2}love\u{3}…"),
             "a &lt;b&gt; &amp; &quot;c&quot; &#39;d&#39; <mark>love</mark>…"
         );
+    }
+
+    #[test]
+    fn words_are_folded_like_the_tokenizer() {
+        assert_eq!(fold("JEHOVÁ"), "jehova");
+        assert_eq!(fold("Niño"), "nino");
+        assert_eq!(
+            words("“Jehovah’s (love)”, 3:16 é").collect::<Vec<_>>(),
+            ["Jehovah", "s", "love", "3", "16", "é"]
+        );
+        assert_eq!(above("lo"), "lo\u{10ffff}");
+        assert!("love" > "lo" && "love" < above("lo").as_str());
+        assert!("lp" > above("lo").as_str());
+    }
+
+    #[test]
+    fn spellings_and_topics_are_derived() {
+        let mut d = Derived::new("it:0:0");
+        d.add("Love, love and LOVE. God is love.", "Love", 7, false);
+        d.add("God", "Love", 7, false);
+        d.add("a 3 x", "God", 8, false);
+        let love = &d.words["love"];
+        assert_eq!((love["love"], love["Love"], love["LOVE"]), (2, 1, 1));
+        assert_eq!(d.words["god"]["God"], 2);
+        assert!(!d.words.contains_key("a") && !d.words.contains_key("3"));
+        assert_eq!(d.topics.as_ref().unwrap()[&7], "Love");
+        assert!(Derived::new("nwt:0:0").topics.is_none());
+    }
+
+    /// A core with `rows` indexed for each key, each key recorded as
+    /// installed (so a scope can select it).
+    fn core_with(pubs: &[(&str, Vec<IndexRow>)]) -> (tempfile::TempDir, crate::Core) {
+        let dir = tempfile::tempdir().unwrap();
+        let core = crate::Core::open(dir.path().join("data"), dir.path().join("cache")).unwrap();
+        {
+            let mut conn = core.inner.conn();
+            let tx = conn.transaction().unwrap();
+            for (i, (key, rows)) in pubs.iter().enumerate() {
+                let (symbol, lang, issue) = parse_pub_key(key).unwrap();
+                tx.execute(
+                    "INSERT INTO installed_publication VALUES (?1, ?2, ?3, ?4, 2024, 'T', 'Book', ?5, 0)",
+                    params![key, symbol, lang, issue, format!("d{i}")],
+                )
+                .unwrap();
+                replace_rows(&tx, key, rows).unwrap();
+            }
+            tx.commit().unwrap();
+        }
+        (dir, core)
+    }
+
+    fn verse(text: &str, verse: u32) -> IndexRow {
+        IndexRow {
+            text: text.into(),
+            title: "John 3".into(),
+            doc_id: 1,
+            verse: Some((43, 3, verse)),
+            paragraph: None,
+        }
+    }
+
+    fn paragraph(text: &str, title: &str, doc_id: i64) -> IndexRow {
+        IndexRow {
+            text: text.into(),
+            title: title.into(),
+            doc_id,
+            verse: None,
+            paragraph: Some(1),
+        }
+    }
+
+    fn bible_and_insight() -> (tempfile::TempDir, crate::Core) {
+        core_with(&[
+            (
+                "nwt:0:0",
+                vec![
+                    verse("For God loved the world so much", 16),
+                    verse("God did not send his Son into the world", 17),
+                    verse("Love, LOVE, love; the lowly lord", 18),
+                    verse("Jehovah’s salvation is low", 19),
+                ],
+            ),
+            (
+                "it:0:0",
+                vec![
+                    paragraph("Love is a quality", "Love", 100),
+                    paragraph("Lowliness of mind", "Lowliness", 101),
+                    paragraph("The lot was cast", "Lot", 102),
+                    paragraph("Lotan, a son of Seir", "Lotan", 103),
+                ],
+            ),
+            (
+                "nwt:1:0",
+                vec![verse("Porque Jehová amó tanto al mundo", 16)],
+            ),
+        ])
+    }
+
+    fn queries(core: &crate::Core, text: &str, scope: &SearchScope) -> Vec<String> {
+        core.search().suggest(text, scope, 5).unwrap().queries
+    }
+
+    fn all() -> SearchScope {
+        SearchScope::default()
+    }
+
+    #[test]
+    fn completes_the_last_word_most_common_first() {
+        let (_dir, core) = bible_and_insight();
+        // love 4, then one each in term order, each as it is written.
+        assert_eq!(
+            queries(&core, "lo", &all()),
+            ["love", "lord", "lot", "Lotan", "loved"]
+        );
+        // The typed word itself is not offered; case and diacritics are ignored.
+        assert_eq!(queries(&core, "LOVE", &all()), ["loved"]);
+        assert_eq!(queries(&core, "jeho", &all()), ["Jehová", "Jehovah"]);
+        // Scoped to one publication.
+        assert_eq!(
+            queries(
+                &core,
+                "jeho",
+                &SearchScope {
+                    pub_keys: vec!["nwt:1:0".into()],
+                    ..all()
+                }
+            ),
+            ["Jehová"]
+        );
+        // Nothing to complete.
+        for text in ["", "  ", "love ", "\"love\"", "John 3", "Jehovah’s", "3:1"] {
+            assert_eq!(
+                queries(&core, text, &all()),
+                Vec::<String>::new(),
+                "{text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn completions_with_other_words_must_find_something() {
+        let (_dir, core) = bible_and_insight();
+        // "god lot" finds nothing; "god love" neither (God and love are in
+        // different verses); "god lowly" neither.
+        assert_eq!(queries(&core, "God lo", &all()), ["God loved"]);
+        assert_eq!(queries(&core, "world wo", &all()), Vec::<String>::new());
+        assert_eq!(
+            queries(&core, "\"loved the wo", &all()),
+            ["\"loved the world\""]
+        );
+        assert_eq!(queries(&core, "(lowl", &all()), ["(Lowliness", "(lowly"]);
+    }
+
+    #[test]
+    fn topics_start_with_the_text() {
+        let (_dir, core) = bible_and_insight();
+        let topics = core.search().suggest("lo", &all(), 3).unwrap().topics;
+        let titles: Vec<_> = topics.iter().map(|t| t.title.as_str()).collect();
+        assert_eq!(titles, ["Lot", "Love", "Lotan"]);
+        assert_eq!(topics[0].location.pub_key, "it:0:0");
+        assert_eq!(topics[0].location.doc_id, Some(102));
+        // An exact title first.
+        let topics = core.search().suggest(" LOTAN ", &all(), 3).unwrap().topics;
+        assert_eq!(topics[0].title, "Lotan");
+        let topics = core.search().suggest("lot", &all(), 3).unwrap().topics;
+        assert_eq!(
+            topics.iter().map(|t| t.title.as_str()).collect::<Vec<_>>(),
+            ["Lot", "Lotan"]
+        );
+        // Out of scope, or no letters: none.
+        let bible = SearchScope {
+            kinds: vec![PubKind::Bible],
+            ..all()
+        };
+        assert!(core
+            .search()
+            .suggest("lo", &bible, 3)
+            .unwrap()
+            .topics
+            .is_empty());
+        assert!(core
+            .search()
+            .suggest("\" ", &all(), 3)
+            .unwrap()
+            .topics
+            .is_empty());
+    }
+
+    #[test]
+    fn suggest_checks_its_arguments() {
+        let (_dir, core) = bible_and_insight();
+        let search = core.search();
+        assert!(matches!(
+            search.suggest("lo", &all(), 0),
+            Err(CoreError::Invalid(_))
+        ));
+        let bad = SearchScope {
+            pub_keys: vec!["nope".into()],
+            ..all()
+        };
+        assert!(matches!(
+            search.suggest("lo", &bad, 5),
+            Err(CoreError::Invalid(_))
+        ));
+        let missing = SearchScope {
+            pub_keys: vec!["w:0:0".into()],
+            ..all()
+        };
+        assert_eq!(
+            search.suggest("lo", &missing, 5).unwrap(),
+            Suggestions::default()
+        );
+    }
+
+    #[test]
+    fn removing_rows_removes_suggestions_and_backfill_restores_them() {
+        let (_dir, core) = bible_and_insight();
+        let before = core.search().suggest("lo", &all(), 20).unwrap();
+        {
+            let mut conn = core.inner.conn();
+            let tx = conn.transaction().unwrap();
+            tx.execute_batch("DELETE FROM search_term; DELETE FROM search_topic;")
+                .unwrap();
+            backfill_suggestions(&tx).unwrap();
+            tx.commit().unwrap();
+        }
+        assert_eq!(core.search().suggest("lo", &all(), 20).unwrap(), before);
+        {
+            let mut conn = core.inner.conn();
+            let tx = conn.transaction().unwrap();
+            delete_rows(&tx, "it:0:0").unwrap();
+            tx.commit().unwrap();
+        }
+        let after = core.search().suggest("lo", &all(), 20).unwrap();
+        assert!(after.topics.is_empty());
+        assert!(!after.queries.contains(&"lotan".to_string()));
+        assert!(after.queries.contains(&"love".to_string()));
     }
 
     #[test]

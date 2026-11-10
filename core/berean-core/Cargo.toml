@@ -22,6 +22,7 @@ hex = { workspace = true }
 tempfile = { workspace = true }
 sha1 = { workspace = true }
 pulldown-cmark = { workspace = true }
+unicode-normalization = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

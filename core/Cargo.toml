@@ -31,6 +31,9 @@ hex = "0.4"
 tempfile = "3"
 # Note-body Markdown; no html/getopts features.
 pulldown-cmark = { version = "0.13", default-features = false }
+# Search suggestions fold words the way the index's tokenizer does
+# (lowercase, diacritics removed) to match a typed prefix.
+unicode-normalization = "0.1"
 
 # Optimise dependencies (bundled SQLite, AES, zlib, zip) in dev and test
 # builds; our own crates stay unoptimised for debugging. Indexing the real

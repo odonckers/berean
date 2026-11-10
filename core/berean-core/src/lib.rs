@@ -132,6 +132,29 @@ fn migration_list() -> Vec<M<'static>> {
                 tokenize = 'unicode61 remove_diacritics 2'
             );",
         ),
+        // Search suggestions (see `search`), derived from the index: each
+        // publication's words with how often they occur, and the topics of
+        // the publications that have them (Insight). The hook fills both from
+        // the rows already indexed.
+        M::up_with_hook(
+            "CREATE TABLE search_term (
+                term TEXT NOT NULL,
+                pub_key TEXT NOT NULL,
+                form TEXT NOT NULL,
+                count INTEGER NOT NULL,
+                PRIMARY KEY (term, pub_key)
+            ) WITHOUT ROWID;
+            CREATE INDEX search_term_pub ON search_term (pub_key);
+            CREATE TABLE search_topic (
+                folded TEXT NOT NULL,
+                pub_key TEXT NOT NULL,
+                doc_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                PRIMARY KEY (folded, pub_key, doc_id)
+            ) WITHOUT ROWID;
+            CREATE INDEX search_topic_pub ON search_topic (pub_key);",
+            search::backfill_suggestions,
+        ),
     ]
 }
 
