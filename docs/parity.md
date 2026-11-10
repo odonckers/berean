@@ -92,6 +92,11 @@ Only features that a cited source describes are listed. Rows marked **to verify*
 | UD-7 | Sync across devices | Not supported ("No. At this time…"). [S9] | n/a | — | — | — | Not a parity target. |
 | UD-8 | Note folders | Not in JW Library: a Berean extension (Owen, Oct 28). | Core in progress | both | Kiwi/Moss | Core: Markdown notes with folders and tags (design PR) | Berean-only tables in userData.db; dropped from .jwlibrary export; import clears them (the UI warns first, from `import_preview`). A Berean-native backup that keeps them is a Holding row. |
 
+## Maps and timeline (Berean extension)
+| ID | Feature | JW Library behavior | Status | Layer | UI | Board row / PR | Notes |
+|---|---|---|---|---|---|---|---|
+| ATL-1 | Bible map and timeline | Not in JW Library: a Berean study tool (board row "Study tool: interactive Bible map + timeline"). | UI pending | both | Kiwi/Moss | Core: atlas loader and queries | Data: `core/berean-core/data/atlas/` (pilot: Paul's journeys, Acts 13–28; see `docs/design/map-timeline-data.md`), compiled in and checked once at load. `Core::atlas()`: `periods` (time order), `events(period)` and `all_events` (account order; the three Acts 15 Jerusalem events belong to no period), `events_in_chapters(book, first, last)` (for a reader's map button), `events_at(place)` (a place inside it counts, e.g. St. Paul's Bay in Malta), `place`/`places`, `person`/`people`, `attributions` (Pleiades CC BY 3.0, OpenBible.info CC BY 4.0: shown wherever coordinates are). Each scripture carries a full reference (`Acts 17:22b-31`), and the files' WOL-style strings must format back exactly. Places without agreeing coordinates (Lasea, regions) are listed, never drawn. |
+
 ## .jwlibrary backup / restore
 | ID | Feature | JW Library behavior | Status | Layer | UI | Board row / PR | Notes |
 |---|---|---|---|---|---|---|---|
