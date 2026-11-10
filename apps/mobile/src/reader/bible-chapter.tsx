@@ -30,6 +30,7 @@ import {
 import type { NativeGesture } from 'react-native-gesture-handler';
 import { useReducedMotion, useSharedValue } from 'react-native-reanimated';
 
+import { AtlasButton } from '@/atlas/atlas-button';
 import { ScriptureText, UIText } from '@/components/text';
 import { TextButton } from '@/components/text-button';
 import { useContentInsets, useHeaderHidden } from '@/design/tab-chrome';
@@ -651,6 +652,7 @@ export function BibleChapterView({
   const toolbar = (
     <View style={styles.toolbar}>
       <TodayButton />
+      <AtlasButton pubKey={pubKey} title={title} book={book} chapter={chapter} />
       {aa}
       {bookmarkHost.button}
     </View>
@@ -658,6 +660,7 @@ export function BibleChapterView({
   const unreadToolbar = (
     <View style={styles.toolbar}>
       <TodayButton />
+      <AtlasButton pubKey={pubKey} title={title} book={book} chapter={chapter} />
       {aa}
     </View>
   );

@@ -29,6 +29,11 @@ const read = (pubKey: string) => `berean:///?pubKey=${encodeURIComponent(pubKey)
 export const SCREENS: Screen[] = [
   { name: 'read', url: read('{bible}') },
   { name: 'today', url: 'berean:///today' },
+  // Acts 16, whose toolbar has the map button, then the map and timeline it
+  // opens (the leg to Philippi selected) and a place on the map.
+  { name: 'read-acts', url: 'berean:///?pubKey={bible}&book=44&chapter=16' },
+  { name: 'atlas', url: 'berean:///atlas?event=event%3Aacts-16-11-15&pubKey={bible}' },
+  { name: 'atlas-place', url: 'berean:///atlas-place?id=place%3Aphilippi' },
   // The weekend's study article (its toolbar has the Languages button), and
   // its Languages: English and Spanish on the device, the rest to download.
   // The setup reports which in an "Article: <pubKey> <docId>" line.

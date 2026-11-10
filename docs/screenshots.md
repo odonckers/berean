@@ -22,7 +22,9 @@ variants:
 | `tablet-light`, `tablet-dark` | 1600×2560 at 320 dpi, 800×1280 dp |
 | `tablet-landscape-light` | the tablet turned sideways, an expanded window |
 
-The screens are Read (John 1), Today, Library, Library with sample
+The screens are Read (John 1, and Acts 16 with its map button), Today,
+Map and timeline (the leg to Philippi selected) and a place on it (Philippi),
+a study article and its Languages, Library, Library with sample
 imports of a .jwpub (adding, asking to replace, failed), What's New,
 Library › Find (searching “watchtower”), Notes, Studyspace, Search
 (“shepherd”, and “God lo” with suggestions while typing) and Appearance. The list lives in `SCREENS` in
