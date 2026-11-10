@@ -625,10 +625,18 @@ pub(crate) fn backfill_suggestions(tx: &Transaction) -> HookResult {
 /// One publication's suggestion rows, gathered from its index rows.
 struct Derived {
     pub_key: String,
-    /// Folded word => spelling => occurrences.
-    words: HashMap<String, HashMap<String, i64>>,
+    /// Folded word => spelling => its occurrences.
+    words: HashMap<String, HashMap<String, Spelling>>,
     /// Article => title, for a topic publication.
     topics: Option<HashMap<i64, String>>,
+}
+
+/// How often one spelling of a word occurs.
+#[derive(Default)]
+struct Spelling {
+    count: i64,
+    /// Not counting a capital at the start of a sentence.
+    within: i64,
 }
 
 impl Derived {
@@ -643,17 +651,24 @@ impl Derived {
     }
 
     fn add(&mut self, text: &str, title: &str, doc_id: i64, is_verse: bool) {
-        for word in words(text) {
+        for (word, starts_sentence) in words_in_sentences(text) {
             let term = fold(word);
             if term.chars().count() < 2 || !term.chars().any(char::is_alphabetic) {
                 continue;
             }
-            *self
+            let spelling = self
                 .words
                 .entry(term)
                 .or_default()
                 .entry(word.to_string())
-                .or_default() += 1;
+                .or_default();
+            spelling.count += 1;
+            // A capital at the start of a sentence says nothing about how
+            // the word is spelled ("Look!" is still "look").
+            let capital = word.chars().next().is_some_and(char::is_uppercase);
+            if !(starts_sentence && capital) {
+                spelling.within += 1;
+            }
         }
         if let Some(topics) = &mut self.topics {
             if !is_verse && !title.trim().is_empty() {
@@ -669,17 +684,18 @@ impl Derived {
             "INSERT INTO search_term (term, pub_key, form, count) VALUES (?1, ?2, ?3, ?4)",
         )?;
         for (term, spellings) in &self.words {
-            // The most common spelling; a tie goes to the lowercase one,
-            // then in text order.
+            // The most common spelling inside sentences, then overall; a
+            // tie goes to the lowercase one, then in text order.
             let (form, _) = spellings
                 .iter()
                 .max_by(|a, b| {
-                    a.1.cmp(b.1)
+                    (a.1.within, a.1.count)
+                        .cmp(&(b.1.within, b.1.count))
                         .then_with(|| is_lowercase(a.0).cmp(&is_lowercase(b.0)))
                         .then_with(|| b.0.cmp(a.0))
                 })
                 .expect("a word has a spelling");
-            let count: i64 = spellings.values().sum();
+            let count: i64 = spellings.values().map(|s| s.count).sum();
             stmt.execute(params![term, self.pub_key, form, count])?;
         }
         if let Some(topics) = &self.topics {
@@ -709,6 +725,39 @@ fn is_lowercase(s: &str) -> bool {
 /// to what the index's tokenizer keeps.
 fn word_char(c: char) -> bool {
     c.is_alphanumeric() || is_combining_mark(c)
+}
+
+/// Each word in `text` with whether it starts a sentence: it opens the
+/// text, or only spaces, quotes and brackets stand between it and the end of
+/// the last sentence or clause (`.` `!` `?` `:`).
+fn words_in_sentences(text: &str) -> impl Iterator<Item = (&str, bool)> {
+    let mut starts = true;
+    let mut rest = text;
+    std::iter::from_fn(move || {
+        let start = rest.find(word_char)?;
+        for c in rest[..start].chars() {
+            if matches!(c, '.' | '!' | '?' | ':' | '…') {
+                starts = true;
+            } else if !(c.is_whitespace() || is_opening(c) || is_closing(c)) {
+                starts = false;
+            }
+        }
+        rest = &rest[start..];
+        let end = rest.find(|c: char| !word_char(c)).unwrap_or(rest.len());
+        let (word, after) = rest.split_at(end);
+        rest = after;
+        Some((word, std::mem::replace(&mut starts, false)))
+    })
+}
+
+/// Punctuation that can stand before the first word of a sentence.
+fn is_opening(c: char) -> bool {
+    matches!(c, '"' | '“' | '‘' | '\'' | '(' | '[' | '¿' | '¡' | '«')
+}
+
+/// Punctuation that can close a sentence after its stop.
+fn is_closing(c: char) -> bool {
+    matches!(c, '"' | '”' | '’' | ')' | ']' | '»')
 }
 
 /// The words of `text`, as written.
@@ -866,14 +915,59 @@ mod tests {
     }
 
     #[test]
+    fn sentence_starts_are_found() {
+        let starts = |text| {
+            words_in_sentences(text)
+                .filter(|&(_, s)| s)
+                .map(|(w, _)| w)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            starts("Look! He said: “Look, the Lord.” (See it.) And so-called"),
+            ["Look", "He", "Look", "See", "And"]
+        );
+        assert_eq!(starts("and then Look"), ["and"]);
+        assert_eq!(starts(""), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn a_capital_starting_sentences_is_not_the_spelling() {
+        let mut d = Derived::new("nwt:0:0");
+        d.add(
+            "Look! Look, the Lord. Look there. We look at the Lord.",
+            "",
+            1,
+            true,
+        );
+        d.add("Peter? Peter went.", "", 2, true);
+        let form = |term: &str| {
+            let spellings = &d.words[term];
+            let best = |s: &&String| (spellings[*s].within, spellings[*s].count);
+            spellings.keys().max_by_key(best).unwrap().clone()
+        };
+        assert_eq!(form("look"), "look");
+        assert_eq!(form("lord"), "Lord");
+        // Only ever at a sentence start: still capitalized.
+        assert_eq!(form("peter"), "Peter");
+    }
+
+    #[test]
     fn spellings_and_topics_are_derived() {
         let mut d = Derived::new("it:0:0");
         d.add("Love, love and LOVE. God is love.", "Love", 7, false);
         d.add("God", "Love", 7, false);
         d.add("a 3 x", "God", 8, false);
         let love = &d.words["love"];
-        assert_eq!((love["love"], love["Love"], love["LOVE"]), (2, 1, 1));
-        assert_eq!(d.words["god"]["God"], 2);
+        let counts = |s: &str| (love[s].count, love[s].within);
+        assert_eq!(
+            (counts("love"), counts("Love"), counts("LOVE")),
+            ((2, 2), (1, 0), (1, 1))
+        );
+        // "God" starts a sentence once and the text once.
+        assert_eq!(
+            (d.words["god"]["God"].count, d.words["god"]["God"].within),
+            (2, 0)
+        );
         assert!(!d.words.contains_key("a") && !d.words.contains_key("3"));
         assert_eq!(d.topics.as_ref().unwrap()[&7], "Love");
         assert!(Derived::new("nwt:0:0").topics.is_none());
