@@ -5,6 +5,7 @@
 //! turns their replies into download plans (`Library::plan_download`), and
 //! later consumes the downloaded files from disk.
 
+pub mod atlas;
 pub mod catalog;
 pub mod doc_blocks;
 mod instant;
@@ -337,6 +338,11 @@ impl Core {
     /// Full-text search over the installed publications.
     pub fn search(&self) -> search::Search {
         search::Search::new(self.inner.clone())
+    }
+
+    /// The Bible map and timeline dataset (compiled in; needs no storage).
+    pub fn atlas(&self) -> atlas::Atlas {
+        atlas::Atlas
     }
 
     /// The user's notes, highlights, tags, favorites and bookmarks.

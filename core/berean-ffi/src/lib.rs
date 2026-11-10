@@ -165,6 +165,13 @@ impl Core {
         })
     }
 
+    /// The Bible map and timeline dataset (compiled in; needs no storage).
+    pub fn atlas(&self) -> Arc<Atlas> {
+        Arc::new(Atlas {
+            inner: self.inner.atlas(),
+        })
+    }
+
     /// The user's notes, highlights, tags, favorites and bookmarks.
     pub fn userdata(&self) -> Arc<UserData> {
         Arc::new(UserData {
@@ -4500,5 +4507,488 @@ mod tests {
             ]
         );
         assert_eq!(markdown_spans(String::new()), []);
+    }
+}
+
+// ---- Atlas: Bible maps and timeline ----------------------------------------
+
+/// The map and timeline dataset; see the core's `atlas` module. Every call is
+/// cheap: the data is compiled in and parsed once.
+#[derive(uniffi::Object)]
+pub struct Atlas {
+    inner: berean_core::atlas::Atlas,
+}
+
+fn map_all<T, U: From<T>>(items: Vec<T>) -> Vec<U> {
+    items.into_iter().map(Into::into).collect()
+}
+
+#[uniffi::export]
+impl Atlas {
+    /// The dataset's version, e.g. `pilot-2026-10-28.2`.
+    pub fn version(&self) -> String {
+        self.inner.version()
+    }
+
+    /// Every period, in time order.
+    pub fn periods(&self) -> Vec<AtlasPeriod> {
+        map_all(self.inner.periods())
+    }
+
+    /// The period `id`; `NotFound` if there is none.
+    pub fn period(&self, id: String) -> Result<AtlasPeriod, CoreError> {
+        Ok(self.inner.period(&id)?.into())
+    }
+
+    /// The events of period `period_id`, in the order of the account.
+    pub fn events(&self, period_id: String) -> Result<Vec<AtlasEvent>, CoreError> {
+        Ok(map_all(self.inner.events(&period_id)?))
+    }
+
+    /// Every event, in the order of the account, those between periods
+    /// included.
+    pub fn all_events(&self) -> Vec<AtlasEvent> {
+        map_all(self.inner.all_events())
+    }
+
+    /// The events whose passage shares a verse with chapters
+    /// `first_chapter..=last_chapter` of Bible book `book`; empty where the
+    /// dataset has none.
+    pub fn events_in_chapters(
+        &self,
+        book: u32,
+        first_chapter: u32,
+        last_chapter: u32,
+    ) -> Vec<AtlasEvent> {
+        map_all(
+            self.inner
+                .events_in_chapters(book, first_chapter, last_chapter),
+        )
+    }
+
+    /// The events at place `place_id` (or a place inside it), in the order
+    /// of the account.
+    pub fn events_at(&self, place_id: String) -> Result<Vec<AtlasEvent>, CoreError> {
+        Ok(map_all(self.inner.events_at(&place_id)?))
+    }
+
+    /// Every place.
+    pub fn places(&self) -> Vec<AtlasPlace> {
+        map_all(self.inner.places())
+    }
+
+    /// The place `id`; `NotFound` if there is none.
+    pub fn place(&self, id: String) -> Result<AtlasPlace, CoreError> {
+        Ok(self.inner.place(&id)?.into())
+    }
+
+    /// Every person.
+    pub fn people(&self) -> Vec<AtlasPerson> {
+        map_all(self.inner.people())
+    }
+
+    /// The person `id`; `NotFound` if there is none.
+    pub fn person(&self, id: String) -> Result<AtlasPerson, CoreError> {
+        Ok(self.inner.person(&id)?.into())
+    }
+
+    /// The sources to credit wherever coordinates are shown.
+    pub fn attributions(&self) -> Vec<AtlasAttribution> {
+        map_all(self.inner.attributions())
+    }
+}
+
+/// The FFI mirror of [`berean_core::atlas::Confidence`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum AtlasConfidence {
+    Established,
+    Likely,
+    Uncertain,
+}
+
+impl From<berean_core::atlas::Confidence> for AtlasConfidence {
+    fn from(c: berean_core::atlas::Confidence) -> Self {
+        use berean_core::atlas::Confidence as C;
+        match c {
+            C::Established => AtlasConfidence::Established,
+            C::Likely => AtlasConfidence::Likely,
+            C::Uncertain => AtlasConfidence::Uncertain,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::atlas::PlaceKind`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum AtlasPlaceKind {
+    City,
+    Port,
+    Harbor,
+    Station,
+    Island,
+    Cape,
+    Bay,
+    Region,
+}
+
+impl From<berean_core::atlas::PlaceKind> for AtlasPlaceKind {
+    fn from(k: berean_core::atlas::PlaceKind) -> Self {
+        use berean_core::atlas::PlaceKind as K;
+        match k {
+            K::City => AtlasPlaceKind::City,
+            K::Port => AtlasPlaceKind::Port,
+            K::Harbor => AtlasPlaceKind::Harbor,
+            K::Station => AtlasPlaceKind::Station,
+            K::Island => AtlasPlaceKind::Island,
+            K::Cape => AtlasPlaceKind::Cape,
+            K::Bay => AtlasPlaceKind::Bay,
+            K::Region => AtlasPlaceKind::Region,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::atlas::Precision`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum AtlasPrecision {
+    Precise,
+    Rough,
+    Related,
+}
+
+impl From<berean_core::atlas::Precision> for AtlasPrecision {
+    fn from(p: berean_core::atlas::Precision) -> Self {
+        use berean_core::atlas::Precision as P;
+        match p {
+            P::Precise => AtlasPrecision::Precise,
+            P::Rough => AtlasPrecision::Rough,
+            P::Related => AtlasPrecision::Related,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::atlas::Coordinates`].
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct AtlasCoordinates {
+    pub lat: f64,
+    pub lon: f64,
+    pub precision: AtlasPrecision,
+    pub source: String,
+    pub source_url: Option<String>,
+}
+
+impl From<berean_core::atlas::Coordinates> for AtlasCoordinates {
+    fn from(c: berean_core::atlas::Coordinates) -> Self {
+        AtlasCoordinates {
+            lat: c.lat,
+            lon: c.lon,
+            precision: c.precision.into(),
+            source: c.source,
+            source_url: c.source_url,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::atlas::Citation`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct AtlasCitation {
+    pub publication: String,
+    pub location: String,
+    pub url: String,
+    pub quote: Option<String>,
+}
+
+impl From<berean_core::atlas::Citation> for AtlasCitation {
+    fn from(c: berean_core::atlas::Citation) -> Self {
+        AtlasCitation {
+            publication: c.publication,
+            location: c.location,
+            url: c.url,
+            quote: c.quote,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::atlas::NoteKind`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum AtlasNoteKind {
+    Conflict,
+    Gap,
+    Note,
+}
+
+/// The FFI mirror of [`berean_core::atlas::AtlasNote`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct AtlasNote {
+    pub kind: AtlasNoteKind,
+    pub text: String,
+}
+
+impl From<berean_core::atlas::AtlasNote> for AtlasNote {
+    fn from(n: berean_core::atlas::AtlasNote) -> Self {
+        use berean_core::atlas::NoteKind as K;
+        AtlasNote {
+            kind: match n.kind {
+                K::Conflict => AtlasNoteKind::Conflict,
+                K::Gap => AtlasNoteKind::Gap,
+                K::Note => AtlasNoteKind::Note,
+            },
+            text: n.text,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::atlas::AlternateSite`].
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct AtlasAlternateSite {
+    pub name: String,
+    pub coordinates: Option<AtlasCoordinates>,
+    pub rejected: bool,
+    pub note: Option<String>,
+    pub citations: Vec<AtlasCitation>,
+}
+
+impl From<berean_core::atlas::AlternateSite> for AtlasAlternateSite {
+    fn from(s: berean_core::atlas::AlternateSite) -> Self {
+        AtlasAlternateSite {
+            name: s.name,
+            coordinates: s.coordinates.map(Into::into),
+            rejected: s.rejected,
+            note: s.note,
+            citations: map_all(s.citations),
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::atlas::Place`].
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct AtlasPlace {
+    pub id: String,
+    pub kind: AtlasPlaceKind,
+    pub name: String,
+    pub alternate_names: Vec<String>,
+    pub confidence: AtlasConfidence,
+    pub coordinates: Option<AtlasCoordinates>,
+    pub parent: Option<String>,
+    pub alternate_sites: Vec<AtlasAlternateSite>,
+    pub citations: Vec<AtlasCitation>,
+    pub notes: Vec<AtlasNote>,
+}
+
+impl From<berean_core::atlas::Place> for AtlasPlace {
+    fn from(p: berean_core::atlas::Place) -> Self {
+        AtlasPlace {
+            id: p.id,
+            kind: p.kind.into(),
+            name: p.name,
+            alternate_names: p.alternate_names,
+            confidence: p.confidence.into(),
+            coordinates: p.coordinates.map(Into::into),
+            parent: p.parent,
+            alternate_sites: map_all(p.alternate_sites),
+            citations: map_all(p.citations),
+            notes: map_all(p.notes),
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::atlas::Person`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct AtlasPerson {
+    pub id: String,
+    pub name: String,
+    pub alternate_names: Vec<String>,
+    pub citations: Vec<AtlasCitation>,
+}
+
+impl From<berean_core::atlas::Person> for AtlasPerson {
+    fn from(p: berean_core::atlas::Person) -> Self {
+        AtlasPerson {
+            id: p.id,
+            name: p.name,
+            alternate_names: p.alternate_names,
+            citations: map_all(p.citations),
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::atlas::Dating`]: years are CE when
+/// positive, BCE when negative; never 0.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct AtlasDating {
+    pub start: i32,
+    pub end: i32,
+    pub approx: bool,
+    pub confidence: AtlasConfidence,
+    pub inherited: bool,
+}
+
+impl From<berean_core::atlas::Dating> for AtlasDating {
+    fn from(d: berean_core::atlas::Dating) -> Self {
+        AtlasDating {
+            start: d.start,
+            end: d.end,
+            approx: d.approx,
+            confidence: d.confidence.into(),
+            inherited: d.inherited,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::atlas::VersePoint`]; `part` is `a` or
+/// `b` for half a verse.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct AtlasVerse {
+    pub chapter: u32,
+    pub verse: u32,
+    pub part: Option<String>,
+}
+
+impl From<berean_core::atlas::VersePoint> for AtlasVerse {
+    fn from(v: berean_core::atlas::VersePoint) -> Self {
+        AtlasVerse {
+            chapter: v.chapter,
+            verse: v.verse,
+            part: v.part.map(String::from),
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::atlas::Scripture`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct AtlasScripture {
+    pub book: u32,
+    pub start: AtlasVerse,
+    pub end: AtlasVerse,
+    /// The full reference, e.g. `Acts 17:22b-31`.
+    pub reference: String,
+}
+
+impl From<berean_core::atlas::Scripture> for AtlasScripture {
+    fn from(s: berean_core::atlas::Scripture) -> Self {
+        AtlasScripture {
+            book: s.book,
+            start: s.start.into(),
+            end: s.end.into(),
+            reference: s.reference,
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::atlas::RouteStop`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct AtlasRouteStop {
+    pub label: String,
+    pub place_id: String,
+}
+
+/// The FFI mirror of [`berean_core::atlas::PeriodKind`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum AtlasPeriodKind {
+    Journey,
+    Custody,
+}
+
+/// The FFI mirror of [`berean_core::atlas::Period`].
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct AtlasPeriod {
+    pub id: String,
+    pub kind: AtlasPeriodKind,
+    pub name: String,
+    pub alternate_names: Vec<String>,
+    pub dating: AtlasDating,
+    pub scripture: AtlasScripture,
+    pub route: Vec<AtlasRouteStop>,
+    pub citations: Vec<AtlasCitation>,
+    pub notes: Vec<AtlasNote>,
+}
+
+impl From<berean_core::atlas::Period> for AtlasPeriod {
+    fn from(p: berean_core::atlas::Period) -> Self {
+        use berean_core::atlas::PeriodKind as K;
+        AtlasPeriod {
+            id: p.id,
+            kind: match p.kind {
+                K::Journey => AtlasPeriodKind::Journey,
+                K::Custody => AtlasPeriodKind::Custody,
+            },
+            name: p.name,
+            alternate_names: p.alternate_names,
+            dating: p.dating.into(),
+            scripture: p.scripture.into(),
+            route: p
+                .route
+                .into_iter()
+                .map(|s| AtlasRouteStop {
+                    label: s.label,
+                    place_id: s.place_id,
+                })
+                .collect(),
+            citations: map_all(p.citations),
+            notes: map_all(p.notes),
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::atlas::EventKind`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum AtlasEventKind {
+    Leg,
+    Stop,
+}
+
+/// The FFI mirror of [`berean_core::atlas::Event`].
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct AtlasEvent {
+    pub id: String,
+    pub kind: AtlasEventKind,
+    pub name: String,
+    pub scripture: AtlasScripture,
+    pub sequence: u32,
+    pub period_ids: Vec<String>,
+    pub place_ids: Vec<String>,
+    pub person_ids: Vec<String>,
+    pub dating: AtlasDating,
+    pub citations: Vec<AtlasCitation>,
+}
+
+impl From<berean_core::atlas::Event> for AtlasEvent {
+    fn from(e: berean_core::atlas::Event) -> Self {
+        use berean_core::atlas::EventKind as K;
+        AtlasEvent {
+            id: e.id,
+            kind: match e.kind {
+                K::Leg => AtlasEventKind::Leg,
+                K::Stop => AtlasEventKind::Stop,
+            },
+            name: e.name,
+            scripture: e.scripture.into(),
+            sequence: e.sequence,
+            period_ids: e.period_ids,
+            place_ids: e.place_ids,
+            person_ids: e.person_ids,
+            dating: e.dating.into(),
+            citations: map_all(e.citations),
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::atlas::Attribution`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct AtlasAttribution {
+    pub name: String,
+    pub supplied: String,
+    pub url: String,
+    pub license: String,
+    pub license_url: String,
+}
+
+impl From<berean_core::atlas::Attribution> for AtlasAttribution {
+    fn from(a: berean_core::atlas::Attribution) -> Self {
+        AtlasAttribution {
+            name: a.name,
+            supplied: a.supplied,
+            url: a.url,
+            license: a.license,
+            license_url: a.license_url,
+        }
     }
 }
