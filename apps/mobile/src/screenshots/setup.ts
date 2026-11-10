@@ -6,11 +6,13 @@
 // the dev-screenshots route, which builds without it unless __DEV__ or
 // EXPO_PUBLIC_SCREENSHOTS=1.
 import { PubKind, type PublicationSummary } from 'berean-ffi-rn';
+import { File } from 'expo-file-system';
 
 import { catalog, library, reader } from '@/ffi/core';
 import { checkForUpdate, downloadUpdate, getCatalogUpdate, subscribe as subscribeCatalog } from '@/library/catalog-update';
-import { getSnapshot, startInstall, subscribe as subscribeInstalls } from '@/library/installs';
+import { downloadTarget, fetchOk, getSnapshot, startInstall, subscribe as subscribeInstalls } from '@/library/installs';
 import { displayTitle } from '@/library/labels';
+import { cancelImport, getImports, importFile } from '@/library/side-load';
 import { seedSampleNotes } from '@/notes/dev-seed';
 import { seedReaderWorkspace, seedSampleWorkspace } from '@/studyspace/dev-seed';
 import { localDay } from '@/today/days';
@@ -88,6 +90,40 @@ function missingForToday(day: number): PublicationSummary[] {
   return missing.filter((p, i) => missing.findIndex((q) => q.pubKey === p.pubKey) === i);
 }
 
+/** The publication the setup opens as a file, the way Library › Import does. */
+const SIDE_LOADED = 'll';
+
+/**
+ * Downloads a small publication's .jwpub as a plain file and imports it
+ * through the side-load path (Library › Import, Open with), then imports it
+ * again to check that the app asks before replacing it.
+ */
+async function sideLoad(log: (line: string) => void) {
+  const pub = catalog().publications({ mepsLanguage: ENGLISH, keySymbol: SIDE_LOADED, limit: 1 })[0];
+  if (pub === undefined) throw new Error(`no ${SIDE_LOADED} in the catalog`);
+  if (installed(pub.pubKey)) return;
+  log(`Side-load: downloading ${pub.pubKey}`);
+  const signal = new AbortController().signal;
+  const reply = await fetchOk(library().downloadRequest(pub.pubKey).url, signal);
+  const plan = library().planDownload(pub.pubKey, await reply.arrayBuffer());
+  const fileName = `${SIDE_LOADED}_E.jwpub`;
+  const once = async () => {
+    const file = await File.downloadFileAsync(plan.url, downloadTarget(`side-load-${fileName}`), { idempotent: true });
+    await importFile(file.uri, { name: fileName, owned: true, open: false });
+    const jobs = getImports();
+    const failed = jobs.find((j) => j.state === 'failed');
+    if (failed?.state === 'failed') throw new Error(`side-load: ${failed.message}`);
+    return jobs;
+  };
+  await once();
+  if (!installed(pub.pubKey)) throw new Error(`side-load: ${pub.pubKey} is not installed`);
+  log(`Side-load: installed ${displayTitle(pub)} (${pub.pubKey})`);
+  const again = (await once()).find((j) => j.state === 'replace');
+  if (again === undefined) throw new Error('side-load: a second import did not ask to replace');
+  cancelImport(again.id);
+  log('Side-load: a second copy asks before replacing');
+}
+
 /** Runs the setup; each step logs a line. Throws on the first failure. */
 export async function runScreenshotSetup(log: (line: string) => void): Promise<void> {
   await updateCatalog(log);
@@ -105,6 +141,8 @@ export async function runScreenshotSetup(log: (line: string) => void): Promise<v
   }
   const still = missingForToday(day);
   if (still.length > 0) log(`Not in the catalog yet: ${still.map((p) => p.pubKey).join(', ')}`);
+
+  await sideLoad(log);
 
   log(seedSampleNotes());
   log(seedSampleWorkspace());

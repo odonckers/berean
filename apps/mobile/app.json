@@ -11,7 +11,24 @@
       "bundleIdentifier": "com.odonckers.berean.mobile",
       "supportsTablet": true,
       "infoPlist": {
-        "CADisableMinimumFrameDurationOnPhone": true
+        "CADisableMinimumFrameDurationOnPhone": true,
+        "CFBundleDocumentTypes": [
+          {
+            "CFBundleTypeName": "JWPUB Publication",
+            "CFBundleTypeRole": "Viewer",
+            "LSHandlerRank": "Alternate",
+            "LSItemContentTypes": ["com.odonckers.berean.jwpub"]
+          }
+        ],
+        "UTImportedTypeDeclarations": [
+          {
+            "UTTypeIdentifier": "com.odonckers.berean.jwpub",
+            "UTTypeDescription": "JWPUB Publication",
+            "UTTypeConformsTo": ["public.data", "public.archive"],
+            "UTTypeTagSpecification": { "public.filename-extension": ["jwpub"] }
+          }
+        ],
+        "LSSupportsOpeningDocumentsInPlace": false
       }
     },
     "android": {
@@ -23,7 +40,28 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "category": ["DEFAULT"],
+          "data": [
+            { "scheme": "content", "mimeType": "application/octet-stream" },
+            { "scheme": "content", "mimeType": "application/jwpub" },
+            { "scheme": "content", "mimeType": "application/x-jwpub" }
+          ]
+        },
+        {
+          "action": "VIEW",
+          "category": ["DEFAULT"],
+          "data": [
+            { "scheme": "file", "host": "*", "mimeType": "*/*", "pathPattern": ".*\\.jwpub" },
+            { "scheme": "file", "host": "*", "mimeType": "*/*", "pathPattern": ".*\\..*\\.jwpub" },
+            { "scheme": "content", "host": "*", "mimeType": "*/*", "pathPattern": ".*\\.jwpub" },
+            { "scheme": "content", "host": "*", "mimeType": "*/*", "pathPattern": ".*\\..*\\.jwpub" }
+          ]
+        }
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"

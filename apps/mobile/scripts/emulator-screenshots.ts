@@ -30,6 +30,9 @@ export const SCREENS: Screen[] = [
   { name: 'read', url: read('{bible}') },
   { name: 'today', url: 'berean:///today' },
   { name: 'library', url: 'berean:///library' },
+  // Sample imports of a .jwpub from the device, one per state: adding, asks
+  // to replace, failed (src/library/side-load.ts, showImportDemo).
+  { name: 'library-import', url: 'berean:///library?importDemo=1' },
   { name: 'whats-new', url: 'berean:///library/whats-new' },
   // Find focuses its search field on open.
   { name: 'library-find', url: 'berean:///library/find', type: 'watchtower' },
