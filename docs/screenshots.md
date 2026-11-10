@@ -24,8 +24,8 @@ variants:
 
 The screens are Read (John 1), Today, Library, Library with sample
 imports of a .jwpub (adding, asking to replace, failed), What's New,
-Library › Find (searching “watchtower”), Notes, Studyspace, Search and
-Appearance. The list lives in `SCREENS` in
+Library › Find (searching “watchtower”), Notes, Studyspace, Search
+(“shepherd”, and “God lo” with suggestions while typing) and Appearance. The list lives in `SCREENS` in
 `apps/mobile/scripts/emulator-screenshots.ts`; add a screen there when a
 new one matters.
 

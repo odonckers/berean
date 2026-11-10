@@ -40,6 +40,9 @@ export const SCREENS: Screen[] = [
   { name: 'studyspace', url: 'berean:///studyspace' },
   // /search is the iOS tab; Android opens search as its own screen.
   { name: 'search', url: 'berean:///search-view', type: 'shepherd' },
+  // A word still being typed: suggestions above the results. `input text`
+  // types %s as a space.
+  { name: 'search-suggestions', url: 'berean:///search-view', type: 'God%slo' },
   { name: 'appearance', url: 'berean:///appearance' },
 ];
 

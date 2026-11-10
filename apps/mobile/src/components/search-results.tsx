@@ -1,6 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import type { SymbolViewProps } from 'expo-symbols';
-import { useEffect, useRef, useState } from 'react';
+import type { TopicSuggestion } from 'berean-ffi-rn';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -18,6 +19,9 @@ import { FilterChip } from '@/components/filter-chip';
 import { ScaledSymbol } from '@/components/scaled-symbol';
 import { UIText } from '@/components/text';
 import { useBerean } from '@/design/theme';
+import { library } from '@/ffi/core';
+import { displayTitle } from '@/library/labels';
+import { load } from '@/library/load';
 import { createPressGuard, type PressGuard } from '@/search/press-guard';
 import { type ResultRow, useSearch } from '@/search/search-context';
 import {
@@ -31,11 +35,19 @@ import {
   type GroupKey,
   type Scope,
 } from '@/search/results';
+import { completionParts } from '@/search/suggestions';
 
 // The tab bar's Read and Library glyphs.
 const ROW_GLYPHS: Record<GroupKey, SymbolViewProps['name']> = {
   verses: { ios: 'book', android: 'menu_book' },
   publications: { ios: 'books.vertical', android: 'library_books' },
+};
+
+const SUGGESTION_GLYPHS: Record<'query' | 'topic' | 'fill', SymbolViewProps['name']> = {
+  query: { ios: 'magnifyingglass', android: 'search' },
+  topic: { ios: 'text.book.closed', android: 'article' },
+  // Fills the field, as in Safari's and the M3 search view's rows.
+  fill: { ios: 'arrow.up.left', android: 'north_west' },
 };
 
 const EMPTY_HINT =
@@ -188,11 +200,155 @@ function ResultRowView({ row, onOpen, guard, selected }: ResultRowViewProps) {
   );
 }
 
+type SuggestionRowProps = {
+  glyph: SymbolViewProps['name'];
+  accessibilityLabel: string;
+  accessibilityHint: string;
+  onPress: () => void;
+  guard: PressGuard;
+  /** Shown with the fill arrow: a query, which goes into the field. */
+  fills: boolean;
+  children: ReactNode;
+};
+
+function SuggestionRow({ glyph, accessibilityLabel, accessibilityHint, onPress, guard, fills, children }: SuggestionRowProps) {
+  const { colors, type, spacing } = useBerean();
+  const { fontScale } = useWindowDimensions();
+  const lineHeight = (type.ui.body.lineHeight ?? 0) * fontScale;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
+      onPressIn={(e) => guard.pressIn(e.nativeEvent.pageX, e.nativeEvent.pageY)}
+      onPress={(e) => {
+        if (guard.shouldOpen(e.nativeEvent.pageX, e.nativeEvent.pageY)) onPress();
+      }}
+      style={({ pressed }) => [
+        styles.row,
+        styles.suggestion,
+        { gap: spacing.md, paddingVertical: spacing.sm, opacity: pressed ? 0.6 : 1 },
+      ]}
+    >
+      <View
+        style={[styles.glyph, { minHeight: lineHeight }]}
+        accessible={false}
+        importantForAccessibility="no-hide-descendants"
+        accessibilityElementsHidden
+      >
+        <ScaledSymbol name={glyph} size={22} tintColor={colors.textSecondary} />
+      </View>
+      <View style={styles.rowText}>{children}</View>
+      {fills && (
+        <View
+          style={[styles.glyph, { minHeight: lineHeight }]}
+          accessible={false}
+          importantForAccessibility="no-hide-descendants"
+          accessibilityElementsHidden
+        >
+          <ScaledSymbol name={SUGGESTION_GLYPHS.fill} size={18} tintColor={colors.textSecondary} />
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
+// Installed publications' titles by key, for a topic's caption.
+function usePublicationTitles(topics: readonly TopicSuggestion[]): Map<string, string> {
+  const keys = topics.map((t) => t.location.pubKey).join('\n');
+  return useMemo(() => {
+    const titles = new Map<string, string>();
+    if (keys === '') return titles;
+    const installed = load(() => library().installed());
+    if (installed.ok) for (const p of installed.value) titles.set(p.pubKey, displayTitle(p));
+    return titles;
+  }, [keys]);
+}
+
+/**
+ * Suggestions while typing, above the results: Insight articles to open
+ * directly, then the query with its last word completed, which goes into
+ * the field (with a space, ready for the next word).
+ */
+function Suggestions({ guard, onOpened }: { guard: PressGuard; onOpened?: () => void }) {
+  const { look, colors, spacing } = useBerean();
+  const { text, suggestions, choose, open } = useSearch();
+  const titles = usePublicationTitles(suggestions.topics);
+  // Only those for the text in the field.
+  if (suggestions.text !== text) return null;
+  const { topics, queries } = suggestions;
+  if (topics.length === 0 && queries.length === 0) return null;
+  const labelInk = look === 'material' && { color: colors.accent };
+  return (
+    <View>
+      <View
+        accessible
+        accessibilityRole="header"
+        style={[styles.groupHeader, { paddingTop: spacing.lg, paddingBottom: spacing.xs }]}
+      >
+        <UIText variant="caption" secondary style={[styles.groupLabel, labelInk]}>
+          Suggestions
+        </UIText>
+      </View>
+      {topics.map((topic) => {
+        const publication = titles.get(topic.location.pubKey);
+        return (
+          <SuggestionRow
+            key={`topic:${topic.location.pubKey}/${topic.location.docId ?? ''}`}
+            glyph={SUGGESTION_GLYPHS.topic}
+            accessibilityLabel={publication === undefined ? topic.title : `${topic.title}, ${publication}`}
+            accessibilityHint="Opens the article"
+            guard={guard}
+            fills={false}
+            onPress={() => {
+              onOpened?.();
+              open(topic);
+            }}
+          >
+            <UIText numberOfLines={1} style={styles.title}>
+              {topic.title}
+            </UIText>
+            {publication !== undefined && (
+              <UIText variant="caption" secondary numberOfLines={1}>
+                {publication}
+              </UIText>
+            )}
+          </SuggestionRow>
+        );
+      })}
+      {queries.map((query) => {
+        const parts = completionParts(query, text);
+        return (
+          <SuggestionRow
+            key={`query:${query}`}
+            glyph={SUGGESTION_GLYPHS.query}
+            accessibilityLabel={query}
+            accessibilityHint="Searches for this"
+            guard={guard}
+            fills
+            onPress={() => choose(query)}
+          >
+            <UIText numberOfLines={1}>
+              {parts.typed}
+              <UIText style={styles.title}>{parts.completion}</UIText>
+            </UIText>
+          </SuggestionRow>
+        );
+      })}
+    </View>
+  );
+}
+
 // The line shown in place of results: the hint, searching, no results, or
 // the error.
 function StatusLine() {
-  const { state } = useSearch();
+  const { state, text, suggestions } = useSearch();
   const { spacing } = useBerean();
+  // A word still being typed rarely finds anything yet; the suggestions
+  // above say more than "No results".
+  const suggested =
+    suggestions.text === text && suggestions.topics.length + suggestions.queries.length > 0;
+  if (suggested && state.status === 'done') return null;
   let message: string;
   switch (state.status) {
     case 'empty':
@@ -238,6 +394,9 @@ export function SearchResults({
   ...listProps
 }: SearchResultsProps) {
   const { state, total, open } = useSearch();
+  // Results from the last query stay while the next one runs, dimmed, so
+  // the list doesn't jump; suggestions above them never dim.
+  const stale = state.status === 'loading' && total > 0;
   const groups = useVisibleGroups(scope);
   // One for the list: its scrolling cancels the press of whichever row.
   const [guard] = useState(createPressGuard);
@@ -256,13 +415,16 @@ export function SearchResults({
       sections={groups.map((g) => ({ ...g, data: g.hits }))}
       keyExtractor={(row) => row.key}
       renderItem={({ item }) => (
-        <ResultRowView
-          row={item}
-          onOpen={onOpen}
-          guard={guard}
-          selected={selectedKey === undefined ? undefined : item.key === selectedKey}
-        />
+        <View style={stale && styles.stale}>
+          <ResultRowView
+            row={item}
+            onOpen={onOpen}
+            guard={guard}
+            selected={selectedKey === undefined ? undefined : item.key === selectedKey}
+          />
+        </View>
       )}
+      ListHeaderComponent={<Suggestions guard={guard} onOpened={onOpened} />}
       viewabilityConfig={viewabilityConfig}
       onViewableItemsChanged={onViewableItemsChanged}
       // A row not laid out yet; rows are a step apart, so the next lands.
@@ -272,14 +434,15 @@ export function SearchResults({
       // A row's onPress fires before the list's onTouchEnd, so this only forgets presses that never reached it.
       onTouchEnd={guard.end}
       onTouchCancel={guard.end}
-      renderSectionHeader={({ section }) => <GroupHeader group={section} />}
+      renderSectionHeader={({ section }) => (
+        <View style={stale && styles.stale}>
+          <GroupHeader group={section} />
+        </View>
+      )}
       ListEmptyComponent={<StatusLine />}
       stickySectionHeadersEnabled={false}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
-      // Results from the last query stay while the next one runs, dimmed,
-      // so the list doesn't jump.
-      style={[listProps.style, state.status === 'loading' && total > 0 && styles.stale]}
     />
   );
 }
@@ -342,6 +505,8 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'flex-start' },
   glyph: { justifyContent: 'center' },
   rowText: { flex: 1 },
+  // A touch target at least 44 pt tall, whatever the text size.
+  suggestion: { minHeight: 44, alignItems: 'center' },
   title: { fontWeight: '600' },
   marked: { fontWeight: '700' },
   stale: { opacity: 0.6 },
