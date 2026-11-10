@@ -1,6 +1,6 @@
 import type { DocumentLanguage } from 'berean-ffi-rn';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 import { Pressable, SectionList, StyleSheet, View } from 'react-native';
 
 import { ScaledSymbol } from '@/components/scaled-symbol';
@@ -174,7 +174,7 @@ function LanguageRow({
   reading: boolean;
   downloading: boolean;
   onPress: () => void;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   const { colors, look, m3 } = useBerean();
   const material = look === 'material';
