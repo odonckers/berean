@@ -61,8 +61,24 @@ export const VARIANTS: Variant[] = [
   { name: 'tablet-landscape-light', size: '2560x1600', density: 320, night: false, fontScale: 1 },
 ];
 
+/**
+ * Runs adb. A busy emulator now and then drops adb's connection mid-run
+ * ("error: closed"); then it waits up to two minutes for the device to come
+ * back and tries once more.
+ */
 function adb(...args: string[]): Buffer {
-  return execFileSync('adb', args, { maxBuffer: 64 * 1024 * 1024 });
+  const run = () => execFileSync('adb', args, { maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
+  try {
+    return run();
+  } catch (error) {
+    const stderr = (error as { stderr?: Buffer }).stderr?.toString() ?? '';
+    const message = `${error instanceof Error ? error.message : error} ${stderr}`;
+    if (!/closed|offline|no devices|not found/.test(message)) throw error;
+    console.log(`  (adb lost the device, waiting for it: ${message.trim().split('\n').pop()})`);
+    execFileSync('adb', ['wait-for-device'], { timeout: 120_000 });
+    execFileSync('sleep', ['3']);
+    return run();
+  }
 }
 
 /** Runs a command line in the device shell (adb joins its arguments into one). */
