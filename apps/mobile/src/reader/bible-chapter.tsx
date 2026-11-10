@@ -30,6 +30,7 @@ import {
 import type { NativeGesture } from 'react-native-gesture-handler';
 import { useReducedMotion, useSharedValue } from 'react-native-reanimated';
 
+import { MapButton } from '@/atlas/map-button';
 import { ScriptureText, UIText } from '@/components/text';
 import { TextButton } from '@/components/text-button';
 import { useContentInsets, useHeaderHidden } from '@/design/tab-chrome';
@@ -648,8 +649,10 @@ export function BibleChapterView({
   const openBookmarksFor = (verse: number) => bookmarkHost.openFor(saveTarget(heading, { book, chapter }, verse));
   // Today (the day's text and the week's meetings) leads the reader's
   // actions: Read is where Berean keeps them, not tabs of their own.
+  // The map leads in chapters it covers (Acts' journeys).
   const toolbar = (
     <View style={styles.toolbar}>
+      <MapButton book={book} chapter={chapter} />
       <TodayButton />
       {aa}
       {bookmarkHost.button}
@@ -657,6 +660,7 @@ export function BibleChapterView({
   );
   const unreadToolbar = (
     <View style={styles.toolbar}>
+      <MapButton book={book} chapter={chapter} />
       <TodayButton />
       {aa}
     </View>

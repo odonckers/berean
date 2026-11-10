@@ -24,11 +24,18 @@ type Screen = { name: string; url: string; taps?: string[]; type?: string };
 
 // John 1 in the Bible the setup installed; it reports the key as a
 // "Bible: <pubKey>" line (src/screenshots/setup.ts).
-const read = (pubKey: string) => `berean:///?pubKey=${encodeURIComponent(pubKey)}&book=43&chapter=1`;
+const read = (pubKey: string, book = 43, chapter = 1) =>
+  `berean:///?pubKey=${encodeURIComponent(pubKey)}&book=${book}&chapter=${chapter}`;
 
 export const SCREENS: Screen[] = [
   { name: 'read', url: read('{bible}') },
   { name: 'today', url: 'berean:///today' },
+  // Acts 17, a chapter the map covers: its toolbar has the map button.
+  { name: 'read-acts', url: read('{bible}', 44, 17) },
+  // The map and timeline at its first journey, then at Acts 17's first
+  // event (Thessalonica), opened from the reader as the button does.
+  { name: 'atlas', url: 'berean:///atlas' },
+  { name: 'atlas-event', url: 'berean:///atlas?book=44&chapter=17' },
   // The weekend's study article (its toolbar has the Languages button), and
   // its Languages: English and Spanish on the device, the rest to download.
   // The setup reports which in an "Article: <pubKey> <docId>" line.

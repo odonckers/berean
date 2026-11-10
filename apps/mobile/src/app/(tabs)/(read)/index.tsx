@@ -2,6 +2,7 @@ import { PubKind } from 'berean-ffi-rn';
 import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 
+import { MAP_LABEL } from '@/atlas/map-button';
 import { Screen } from '@/components/screen';
 import { UIText } from '@/components/text';
 import { TextButton } from '@/components/text-button';
@@ -85,6 +86,7 @@ export default function ReadScreen() {
                 onPress={() => router.navigate('/library')}
               />
               <TextButton title={TODAY_LABEL} align="leading" onPress={() => router.push('/today')} />
+              <TextButton title={MAP_LABEL} align="leading" onPress={() => router.push('/atlas')} />
             </>
           ) : (
             <UIText secondary>{installed.message}</UIText>

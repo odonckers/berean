@@ -1,5 +1,6 @@
 import {
   Core,
+  type AtlasLike,
   type CatalogLike,
   type CoreLike,
   type LibraryLike,
@@ -41,4 +42,9 @@ export function reader(): ReaderLike {
 
 export function userdata(): UserDataLike {
   return getCore().userdata();
+}
+
+/** The map and timeline dataset (compiled into the core). */
+export function atlas(): AtlasLike {
+  return getCore().atlas();
 }

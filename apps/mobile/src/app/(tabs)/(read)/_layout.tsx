@@ -27,6 +27,12 @@ export default function ReadLayout() {
       {/* The article being read in another language, pushed from the
           document's toolbar; picking one replaces it with that article. */}
       <Stack.Screen name="article-languages" options={{ title: 'Languages', headerShown: true }} />
+      {/* The Bible map and timeline, pushed from the reader's toolbar in a
+          chapter it covers. A map fills the screen, so no large title. */}
+      <Stack.Screen
+        name="atlas"
+        options={{ title: 'Map and timeline', headerShown: true, headerLargeTitleEnabled: false }}
+      />
     </Stack>
   );
 }
