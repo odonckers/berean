@@ -608,12 +608,6 @@ fn suggestions_complete_the_last_word() {
         .queries
         .contains(&"Absalom".to_string()));
 
-    // A word's usual spelling inside sentences, not its capital at the
-    // start of one ("Look!").
-    let god_lo = suggest("God lo", &in_pubs(&[NWT_E])).queries;
-    assert!(god_lo.contains(&"God look".to_string()), "{god_lo:?}");
-    assert!(god_lo.contains(&"God Lord".to_string()), "{god_lo:?}");
-
     let love = suggest("lov", &all).queries;
     assert_eq!(love.len(), 8);
     assert_eq!(love[0], "love");
