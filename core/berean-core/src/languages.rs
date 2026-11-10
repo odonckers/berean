@@ -22,6 +22,8 @@ pub struct Language {
     pub code: String,
     /// The English name of the language.
     pub name: String,
+    /// The language's name for itself, e.g. `español`.
+    pub vernacular: String,
 }
 
 struct Table {
@@ -46,7 +48,7 @@ fn table() -> &'static Table {
                 continue;
             }
             let fields: Vec<&str> = line.split('\t').collect();
-            let [meps_id, code, name, _vernacular] = fields[..] else {
+            let [meps_id, code, name, vernacular] = fields[..] else {
                 panic!("languages.tsv: malformed line {line:?}");
             };
             languages.push(Language {
@@ -55,6 +57,7 @@ fn table() -> &'static Table {
                     .unwrap_or_else(|_| panic!("languages.tsv: bad id in {line:?}")),
                 code: code.to_string(),
                 name: name.to_string(),
+                vernacular: vernacular.to_string(),
             });
         }
         languages.sort_by_key(|l| l.meps_id);
@@ -96,6 +99,7 @@ mod tests {
         assert_eq!((e.code.as_str(), e.name.as_str()), ("E", "English"));
         let s = by_meps_id(1).unwrap();
         assert_eq!((s.code.as_str(), s.name.as_str()), ("S", "Spanish"));
+        assert_eq!(s.vernacular, "español");
         assert_eq!(by_code("S").unwrap().meps_id, 1);
         assert!(by_code("no such code").is_none());
     }
@@ -111,7 +115,7 @@ mod tests {
         assert_eq!(codes.len(), languages.len());
         assert!(languages
             .iter()
-            .all(|l| !l.code.is_empty() && !l.name.is_empty()));
+            .all(|l| !l.code.is_empty() && !l.name.is_empty() && !l.vernacular.is_empty()));
         for l in languages {
             assert_eq!(by_meps_id(l.meps_id), Some(l));
             assert_eq!(by_code(&l.code), Some(l));
