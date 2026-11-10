@@ -41,7 +41,7 @@ c55762f49cc53f8d6af06115a542d63021633161a974b23c163b8183ef00ee45  catalog-v5-ffa
 5ef3c5916f3ee7bae12101ef5aacc8ac301e42044f365df7e416c224b4c08593  rsg_E.jwpub  https://cfp2.jw-cdn.org/a/8e227c9/1/o/rsg_E.jwpub
 # The NWT Study Edition (berean-core/tests/study.rs): a Bible whose
 # VerseCommentary holds the study notes on each verse (128 MB).
-1cc8e1e4d6ecdd44bd0dad0b6aee841b3006e8d209f6e062c2df1b14f76bc08c  nwtsty_E.jwpub  https://cfp2.jw-cdn.org/a/dfedff6/11/o/nwtsty_E.jwpub
+bdce1bb6e0bda16cebb04390f9ab08fdf43d98753d6d64f6bea931cd05a627a2  nwtsty_E.jwpub  https://cfp2.jw-cdn.org/a/dfedff6/12/o/nwtsty_E.jwpub
 # Insight on the Scriptures (berean-core/tests/study.rs, search.rs): one
 # .jwpub holds both volumes; it installs as `it:0:0`, and the Research Guide
 # cites it most (352 MB).
