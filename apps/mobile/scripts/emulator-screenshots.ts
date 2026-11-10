@@ -29,6 +29,11 @@ const read = (pubKey: string) => `berean:///?pubKey=${encodeURIComponent(pubKey)
 export const SCREENS: Screen[] = [
   { name: 'read', url: read('{bible}') },
   { name: 'today', url: 'berean:///today' },
+  // The weekend's study article (its toolbar has the Languages button), and
+  // its Languages: English and Spanish on the device, the rest to download.
+  // The setup reports which in an "Article: <pubKey> <docId>" line.
+  { name: 'article', url: 'berean:///publication?pubKey={article}&docId={doc}' },
+  { name: 'article-languages', url: 'berean:///article-languages?pubKey={article}&docId={doc}' },
   { name: 'library', url: 'berean:///library' },
   // Sample imports of a .jwpub from the device, one per state: adding, asks
   // to replace, failed (src/library/side-load.ts, showImportDemo).
@@ -190,8 +195,11 @@ function diagnose() {
   for (const line of log.trim().split('\n').slice(-60)) console.log(`  ${line}`);
 }
 
-/** Runs the in-app setup and returns the installed Bible's key. */
-async function setup(): Promise<string> {
+/** What the setup reports: the installed Bible's key, and the article's key and MEPS id when it has one. */
+type Setup = { bible: string; article?: { pubKey: string; docId: string } };
+
+/** Runs the in-app setup and returns what it reports. */
+async function setup(): Promise<Setup> {
   console.log('Setting up: catalog, publications and sample notes…');
   const started = Date.now();
   open('berean:///dev-screenshots');
@@ -212,7 +220,8 @@ async function setup(): Promise<string> {
       }
       const bible = lines.find((t) => t.startsWith('Bible: '))?.slice('Bible: '.length);
       if (bible === undefined) throw new Error('The setup did not report its Bible.');
-      return bible;
+      const [pubKey, docId] = (lines.find((t) => t.startsWith('Article: '))?.slice('Article: '.length) ?? '').split(' ');
+      return { bible, article: docId === undefined ? undefined : { pubKey, docId } };
     }
     await sleep(5000);
   }
@@ -225,15 +234,31 @@ async function main() {
   mkdirSync(out, { recursive: true });
   shell('settings put system screen_off_timeout 1800000');
   demoMode();
-  const bible = await setup();
+  const { bible, article } = await setup();
+  // Placeholders in the screens' links, raw or percent-encoded.
+  const values: Record<string, string | undefined> = { bible, article: article?.pubKey, doc: article?.docId };
+  const fill = (url: string): string | undefined => {
+    let missing = false;
+    const filled = url.replace(/\{(\w+)\}|%7B(\w+)%7D/g, (_, raw?: string, encoded?: string) => {
+      const value = values[raw ?? encoded ?? ''];
+      if (value === undefined) missing = true;
+      return encodeURIComponent(value ?? '');
+    });
+    return missing ? undefined : filled;
+  };
   for (const variant of VARIANTS) {
     applyVariant(variant);
     // Size, density and night mode restart the status bar, which drops demo mode.
     await sleep(3000);
     demoMode();
     for (const screen of SCREENS) {
+      const url = fill(screen.url);
+      if (url === undefined) {
+        console.log(`  ${screen.name}/${variant.name}: skipped, the setup didn't report what it opens`);
+        continue;
+      }
       shell(`am force-stop ${PACKAGE}`);
-      open(screen.url.replace(encodeURIComponent('{bible}'), encodeURIComponent(bible)));
+      open(url);
       try {
         for (const label of screen.taps ?? []) {
           await sleep(2000);

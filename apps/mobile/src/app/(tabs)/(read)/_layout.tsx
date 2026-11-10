@@ -24,6 +24,9 @@ export default function ReadLayout() {
           Meetings tabs), pushed from the reader's toolbar. Like a
           publication, it keeps the native header for back and the title. */}
       <Stack.Screen name="today" options={{ title: 'Today', headerShown: true }} />
+      {/* The article being read in another language, pushed from the
+          document's toolbar; picking one replaces it with that article. */}
+      <Stack.Screen name="article-languages" options={{ title: 'Languages', headerShown: true }} />
     </Stack>
   );
 }

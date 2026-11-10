@@ -3,6 +3,7 @@ import { router, Stack } from 'expo-router';
 import { type ComponentRef, type ReactNode, useEffect, useEffectEvent, useMemo, useRef } from 'react';
 import { FlatList, Pressable, type ScrollView, StyleSheet, type Text, View } from 'react-native';
 
+import { ScaledSymbol } from '@/components/scaled-symbol';
 import { ScriptureText, UIText } from '@/components/text';
 import { useContentInsets } from '@/design/tab-chrome';
 import { useBerean } from '@/design/theme';
@@ -213,6 +214,7 @@ function DocumentReader({
         options={{
           headerRight: () => (
             <View style={styles.toolbar}>
+              <LanguagesButton pubKey={pubKey} docId={docId} />
               {aa}
               {host.button}
             </View>
@@ -230,8 +232,40 @@ function DocumentReader({
   );
 }
 
+/**
+ * The reader's Languages button, before Aa: the article in another
+ * language. Monochrome like Aa, a 48dp / 44pt target.
+ */
+function LanguagesButton({ pubKey, docId }: { pubKey: string; docId: bigint }) {
+  const { look, colors, m3 } = useBerean();
+  const material = look === 'material';
+  const target = material ? 48 : 44;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Languages"
+      accessibilityHint="Opens this article in another language"
+      onPress={() => router.push({ pathname: '/article-languages', params: { pubKey, docId: String(docId) } })}
+      style={({ pressed }) => [
+        styles.toolButton,
+        { minWidth: target, minHeight: target, opacity: pressed ? 0.6 : 1 },
+      ]}
+    >
+      <ScaledSymbol
+        name={{ ios: 'globe', android: 'language' }}
+        size={material ? 24 : 22}
+        tintColor={material ? m3.onSurfaceVariant : colors.text}
+        accessible={false}
+        importantForAccessibility="no-hide-descendants"
+        accessibilityElementsHidden
+      />
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   list: { flex: 1 },
+  toolButton: { alignItems: 'center', justifyContent: 'center' },
   toolbar: { flexDirection: 'row', alignItems: 'center' },
   row: {
     justifyContent: 'center',
