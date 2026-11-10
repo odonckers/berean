@@ -417,6 +417,7 @@ pub struct Language {
     pub meps_id: u32,
     pub code: String,
     pub name: String,
+    pub vernacular: String,
 }
 
 impl From<berean_core::languages::Language> for Language {
@@ -425,6 +426,7 @@ impl From<berean_core::languages::Language> for Language {
             meps_id: l.meps_id,
             code: l.code,
             name: l.name,
+            vernacular: l.vernacular,
         }
     }
 }
@@ -1326,6 +1328,24 @@ impl From<berean_core::meetings::DailyTextDay> for DailyTextDay {
     }
 }
 
+/// The FFI mirror of [`berean_core::translations::DocumentLanguage`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct DocumentLanguage {
+    pub language: Language,
+    pub publication: PublicationSummary,
+    pub installed: bool,
+}
+
+impl From<berean_core::translations::DocumentLanguage> for DocumentLanguage {
+    fn from(d: berean_core::translations::DocumentLanguage) -> Self {
+        DocumentLanguage {
+            language: d.language.into(),
+            publication: d.publication.into(),
+            installed: d.installed,
+        }
+    }
+}
+
 /// The FFI mirror of [`berean_core::meetings::MeetingWeek`].
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct MeetingWeek {
@@ -1610,6 +1630,17 @@ impl Reader {
     /// `day`; see the core's `Reader::meeting_week`.
     pub fn meeting_week(&self, meps_language: u32, day: i32) -> Result<MeetingWeek, CoreError> {
         Ok(self.inner.meeting_week(meps_language, day)?.into())
+    }
+
+    /// The languages the document `doc_id` of the installed publication
+    /// `pub_key` can be read in, its own included, by language name; see the
+    /// core's `Reader::document_languages`.
+    pub fn document_languages(
+        &self,
+        pub_key: String,
+        doc_id: i64,
+    ) -> Result<Vec<DocumentLanguage>, CoreError> {
+        Ok(mirror(self.inner.document_languages(&pub_key, doc_id)?))
     }
 
     /// Chapter `chapter` of book `book` (1-66) of the installed Bible `bible`.
@@ -3251,6 +3282,7 @@ mod tests {
                 meps_id: 0,
                 code: "E".into(),
                 name: "English".into(),
+                vernacular: "English".into(),
             }
         );
 
@@ -3332,6 +3364,7 @@ mod tests {
                 meps_id: 0,
                 code: "E".into(),
                 name: "English".into(),
+                vernacular: "English".into(),
             }
         );
         assert_eq!(catalog.plan_update(reply).unwrap(), None);

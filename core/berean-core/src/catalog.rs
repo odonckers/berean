@@ -630,6 +630,63 @@ impl Catalog {
         Ok(entry)
     }
 
+    /// Every catalog publication, in any language, holding the document with
+    /// MEPS id `doc_id`, by the catalog's `PublicationDocument` table: by
+    /// language, then newest issue first, then symbol. Empty without a
+    /// catalog, or with one that lacks the table.
+    pub(crate) fn holding_document(
+        &self,
+        doc_id: i64,
+    ) -> Result<Vec<PublicationSummary>, CoreError> {
+        let Some(conn) = self.open()? else {
+            return Ok(Vec::new());
+        };
+        // Not a table `validate` requires: a catalog without it says nothing
+        // about which publications hold a document.
+        let has_table: bool = conn.query_row(
+            "SELECT EXISTS (SELECT 1 FROM sqlite_master \
+             WHERE type = 'table' AND name = 'PublicationDocument')",
+            [],
+            |r| r.get(0),
+        )?;
+        if !has_table {
+            return Ok(Vec::new());
+        }
+        let mut stmt = conn.prepare(&format!(
+            "SELECT p.Symbol, p.MepsLanguageId, p.IssueTagNumber, p.Year, p.Title, \
+                    p.PublicationTypeId, p.IssueTitle \
+             FROM PublicationDocument d JOIN Publication p ON p.Id = d.PublicationId \
+             JOIN PublicationAsset a ON a.PublicationId = p.Id \
+             WHERE d.DocumentId = ?1 AND {RESOLVED} \
+             ORDER BY p.MepsLanguageId, p.Year DESC, p.IssueTagNumber DESC, p.Symbol"
+        ))?;
+        let rows = stmt.query_map([doc_id], |r| {
+            let symbol: String = r.get(0)?;
+            let meps_language: u32 = r.get(1)?;
+            let issue_tag: u32 = r.get(2)?;
+            Ok(PublicationSummary {
+                pub_key: format_pub_key(&symbol, meps_language, issue_tag),
+                symbol,
+                meps_language,
+                issue_tag,
+                year: r.get(3)?,
+                title: r.get(4)?,
+                issue_title: r.get::<_, Option<String>>(6)?.filter(|t| !t.is_empty()),
+                kind: kind_of(r.get(5)?),
+            })
+        })?;
+        // A key catalogued twice resolves to one row, but both may list the
+        // document; keep the first.
+        let mut out: Vec<PublicationSummary> = Vec::new();
+        for row in rows {
+            let row = row?;
+            if !out.iter().any(|p| p.pub_key == row.pub_key) {
+                out.push(row);
+            }
+        }
+        Ok(out)
+    }
+
     /// The issue title of the row each of `pub_keys` resolves to, by key.
     /// Keys the catalog lacks, and rows whose `IssueTitle` is NULL or empty,
     /// are left out; with no catalog the map is empty. Malformed key =>

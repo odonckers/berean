@@ -228,11 +228,13 @@ fn trimmed_catalog_queries() {
         meps_id: 0,
         code: "E".into(),
         name: "English".into(),
+        vernacular: "English".into(),
     };
     let spanish_language = Language {
         meps_id: 1,
         code: "S".into(),
         name: "Spanish".into(),
+        vernacular: "español".into(),
     };
     assert_eq!(catalog.languages().unwrap(), [english, spanish_language]);
     assert_eq!(assert_languages_round_trip(&env, &catalog), 2);
