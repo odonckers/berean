@@ -124,6 +124,28 @@ async function sideLoad(log: (line: string) => void) {
   log('Side-load: a second copy asks before replacing');
 }
 
+/** The language the article's Languages screen shows installed beside English. */
+const SECOND_LANGUAGE = 'S';
+
+/**
+ * The weekend's study article, for the article and its Languages screen:
+ * installs its issue in a second language too, so the list shows both
+ * sections, and reports it in an "Article: <pubKey> <docId>" line.
+ */
+async function articleInAnotherLanguage(day: number, log: (line: string) => void) {
+  const weekend = reader().meetingWeek(ENGLISH, day).weekend;
+  if (weekend.tag !== 'Ready') {
+    log('Article: none (the weekend study article is not installed)');
+    return;
+  }
+  const { publication, docId } = weekend.inner;
+  const second = reader()
+    .documentLanguages(publication.pubKey, docId)
+    .find((l) => l.language.code === SECOND_LANGUAGE);
+  if (second !== undefined && !second.installed) await install(second.publication, log);
+  log(`Article: ${publication.pubKey} ${docId}`);
+}
+
 /** Runs the setup; each step logs a line. Throws on the first failure. */
 export async function runScreenshotSetup(log: (line: string) => void): Promise<void> {
   await updateCatalog(log);
@@ -141,6 +163,8 @@ export async function runScreenshotSetup(log: (line: string) => void): Promise<v
   }
   const still = missingForToday(day);
   if (still.length > 0) log(`Not in the catalog yet: ${still.map((p) => p.pubKey).join(', ')}`);
+
+  await articleInAnotherLanguage(day, log);
 
   await sideLoad(log);
 
