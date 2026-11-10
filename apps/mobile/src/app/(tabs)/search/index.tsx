@@ -15,7 +15,7 @@ export default function SearchTabScreen() {
   const insets = useContentInsets();
   const inlineTitle = useHeaderHidden();
   const nativeField = Platform.OS === 'ios';
-  const { text, setText } = useSearch();
+  const { text, setText, fills } = useSearch();
 
   // The native field keeps its own text: on focus it takes the shared query,
   // so a query typed in the palette carries over.
@@ -29,6 +29,10 @@ export default function SearchTabScreen() {
       searchBar.current?.setText(textRef.current);
     }, []),
   );
+  // A chosen suggestion goes into the native field too.
+  useEffect(() => {
+    if (fills > 0) searchBar.current?.setText(textRef.current);
+  }, [fills]);
 
   return (
     <>

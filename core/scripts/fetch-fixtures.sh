@@ -17,6 +17,33 @@ sha256() {
   fi
 }
 
+# When a publication's pinned file is gone (jw.org replaces a .jwpub when it
+# publishes a new version), print the current one to pin in fixtures.txt.
+report_current() {
+  local name="$1" stem pub lang issue api current got
+  [[ "$name" == *.jwpub ]] || return 0
+  stem="${name%.jwpub}"
+  IFS=_ read -r pub lang issue <<<"$stem"
+  api="https://b.jw-cdn.org/apis/pub-media/GETPUBMEDIALINKS?output=json&fileformat=JWPUB&pub=$pub&langwritten=$lang"
+  [[ -n "${issue:-}" ]] && api="$api&issue=$issue"
+  current="$(curl -fsSL --retry 3 "$api" | jq -r --arg l "$lang" '.files[$l].JWPUB[0].file.url // empty')"
+  if [[ -z "$current" ]]; then
+    echo "the catalog lists no current $name either"
+    return 0
+  fi
+  echo "the catalog's current $name: $current"
+  local tmp_current
+  tmp_current="$(mktemp)"
+  if curl -fsSL --retry 3 -o "$tmp_current" "$current"; then
+    got="$(sha256 "$tmp_current")"
+    echo "to pin it, put this line in fixtures.txt (and check the tests that use it):"
+    echo "$got  $name  $current"
+  else
+    echo "that URL can't be downloaded either"
+  fi
+  rm -f "$tmp_current"
+}
+
 while read -r sum name url; do
   [[ -z "${sum:-}" || "$sum" == \#* ]] && continue
   target="$dest/$name"
@@ -27,7 +54,11 @@ while read -r sum name url; do
   tmp="$(mktemp "$dest/.$name.XXXXXX")"
   trap 'rm -f "$tmp"' EXIT
   echo "fetching: $name"
-  curl -fsSL --retry 3 -o "$tmp" "$url"
+  if ! curl -fsSL --retry 3 -o "$tmp" "$url"; then
+    echo "error: couldn't download $name from its pinned URL" >&2
+    report_current "$name" >&2 || true
+    exit 1
+  fi
   got="$(sha256 "$tmp")"
   if [[ "$got" != "$sum" ]]; then
     echo "error: sha256 mismatch for $name: expected $sum, got $got" >&2

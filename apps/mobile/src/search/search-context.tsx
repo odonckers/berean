@@ -3,8 +3,10 @@ import {
   CoreError_Tags,
   type BibleBook,
   type Hit,
+  type Location,
   type SearchLike,
   type SearchScope,
+  type TopicSuggestion,
 } from 'berean-ffi-rn';
 import { router, useSegments } from 'expo-router';
 import {
@@ -32,6 +34,12 @@ import {
 } from '@/search/results';
 import { createSearchSession, type QueryFailure, type SearchState } from '@/search/search-session';
 import { snippetRuns, snippetText, type SnippetRun } from '@/search/snippet';
+import {
+  createSuggestSession,
+  fillText,
+  SUGGEST_LIMIT,
+  type ShownSuggestions,
+} from '@/search/suggestions';
 
 /** A hit as rows show it. */
 export type ResultRow = {
@@ -56,11 +64,22 @@ export type SearchContextValue = {
   truncated: boolean;
   scope: Scope;
   setScope: (scope: Scope) => void;
-  /** Opens the hit in the reader, collapsing the search view if it is open. */
-  open: (hit: Hit) => void;
+  /** Opens the hit (or a topic) in the reader, collapsing the search view if it is open. */
+  open: (target: { location: Location }) => void;
+  /** Suggestions for the text as typed: Insight topics and completed queries. */
+  suggestions: ShownSuggestions<TopicSuggestion>;
+  /**
+   * Puts a suggested query in the field, with a space after it for the next
+   * word. `fills` counts these, so an entry that keeps its own text (the
+   * native iOS field) can take it.
+   */
+  choose: (query: string) => void;
+  fills: number;
 };
 
 const DEBOUNCE_MS = 220;
+// Suggestions are cheap and should keep up with typing.
+const SUGGEST_DEBOUNCE_MS = 90;
 
 // Every installed publication: an empty filter does not filter.
 const ALL: SearchScope = { pubKeys: [], kinds: [], languages: [], offset: 0 };
@@ -124,6 +143,12 @@ export function SearchProvider({ children }: { children: ReactNode }) {
   const [text, setTextState] = useState('');
   const [state, setState] = useState<SearchState<Hit>>({ status: 'empty' });
   const [scope, setScope] = useState<Scope>('all');
+  const [suggestions, setSuggestions] = useState<ShownSuggestions<TopicSuggestion>>({
+    text: '',
+    topics: [],
+    queries: [],
+  });
+  const [fills, setFills] = useState(0);
   // The full-screen search view is the root route ['search-view']; the iOS
   // look's tab is ['(tabs)', 'search'].
   const segments = useSegments();
@@ -150,12 +175,32 @@ export function SearchProvider({ children }: { children: ReactNode }) {
   );
   useEffect(() => () => session.dispose(), [session]);
 
+  const suggester = useMemo(
+    () =>
+      createSuggestSession<TopicSuggestion>({
+        suggest: (query, signal) => coreSearch().suggest(query, ALL, SUGGEST_LIMIT, { signal }),
+        onChange: setSuggestions,
+        debounceMs: SUGGEST_DEBOUNCE_MS,
+      }),
+    [],
+  );
+  useEffect(() => () => suggester.dispose(), [suggester]);
+
   const setText = useCallback(
     (next: string) => {
       setTextState(next);
       session.setText(next);
+      suggester.setText(next);
     },
-    [session],
+    [session, suggester],
+  );
+
+  const choose = useCallback(
+    (query: string) => {
+      setText(fillText(query));
+      setFills((n) => n + 1);
+    },
+    [setText],
   );
 
   const hits = state.status === 'done' || state.status === 'loading' ? state.hits : undefined;
@@ -186,8 +231,8 @@ export function SearchProvider({ children }: { children: ReactNode }) {
   }, [state]);
 
   const open = useCallback(
-    (hit: Hit) => {
-      const { pubKey, docId, book, chapter, verse } = hit.location;
+    ({ location }: { location: Location }) => {
+      const { pubKey, docId, book, chapter, verse } = location;
       const pub = load(() => library().installed().find((p) => p.pubKey === pubKey));
       const title = pub.ok && pub.value !== undefined ? displayTitle(pub.value) : '';
       // Collapse the full-screen search view first, so the reader isn't
@@ -213,8 +258,21 @@ export function SearchProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ text, setText, state, groups, total, truncated: isTruncated(total), scope, setScope, open }),
-    [text, setText, state, groups, total, scope, open],
+    () => ({
+      text,
+      setText,
+      state,
+      groups,
+      total,
+      truncated: isTruncated(total),
+      scope,
+      setScope,
+      open,
+      suggestions,
+      choose,
+      fills,
+    }),
+    [text, setText, state, groups, total, scope, open, suggestions, choose, fills],
   );
   return <SearchContext.Provider value={value}>{children}</SearchContext.Provider>;
 }
