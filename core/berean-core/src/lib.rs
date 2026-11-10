@@ -5,6 +5,7 @@
 //! turns their replies into download plans (`Library::plan_download`), and
 //! later consumes the downloaded files from disk.
 
+pub mod atlas;
 pub mod catalog;
 pub mod doc_blocks;
 mod instant;

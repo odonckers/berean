@@ -92,6 +92,11 @@ Only features that a cited source describes are listed. Rows marked **to verify*
 | UD-7 | Sync across devices | Not supported ("No. At this time…"). [S9] | n/a | — | — | — | Not a parity target. |
 | UD-8 | Note folders | Not in JW Library: a Berean extension (Owen, Oct 28). | Core in progress | both | Kiwi/Moss | Core: Markdown notes with folders and tags (design PR) | Berean-only tables in userData.db; dropped from .jwlibrary export; import clears them (the UI warns first, from `import_preview`). A Berean-native backup that keeps them is a Holding row. |
 
+## Study tools (Berean)
+| ID | Feature | JW Library behavior | Status | Layer | UI | Board row / PR | Notes |
+|---|---|---|---|---|---|---|---|
+| ST-1 | Bible map and timeline | Not in JW Library: a Berean extension. | UI pending | both | Kiwi/Moss | Core: map and timeline dataset | `berean_core::atlas`: the cited, offline dataset of `docs/design/map-timeline-data.md` (pilot: Paul's journeys, Acts 13–28), compiled in and checked on load. Places with kind, identification confidence and coordinates only where the gazetteer agrees with the publications (`None` for regions and for Lasea, Phoenix, St. Paul's Bay); periods earliest first with their *See the Good Land* route; events in the order of Acts with passage (`citation` "Ac 17:22b-31", `reference` "Acts 17:22b-31"), date span (`inherited` from its period or cited), places and people; citations (WOL link, short quote). Lookups: `events_in_period`, `events_at_place` (a place inside it counts), `events_in_passage(book, chapter, verse?)`. FFI: `Core.atlas()`, every type prefixed `Atlas`. `attribution()` (Pleiades CC BY 3.0, OpenBible.info CC BY 4.0) must show wherever coordinates do. |
+
 ## .jwlibrary backup / restore
 | ID | Feature | JW Library behavior | Status | Layer | UI | Board row / PR | Notes |
 |---|---|---|---|---|---|---|---|
