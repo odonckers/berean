@@ -49,6 +49,18 @@ drive() {
     back "clock settle"
 }
 
+# A drive again, once, when the first fails. The app's first launch on a
+# simulator sometimes never opens the agent's socket (seen on the iPad's
+# first drive and on the phone after a text size change); a second launch
+# does.
+again() {
+  local udid="$1"
+  drive "$@" && return 0
+  echo "-- trying $2 again"
+  xcrun simctl terminate "$udid" "$app" 2>/dev/null || true
+  drive "$@"
+}
+
 # Every variant is tried even when one fails, so a failure still leaves the
 # other screenshots to look at; the script fails at the end.
 status=0
@@ -60,13 +72,13 @@ for device in phone tablet; do
   xcrun simctl bootstatus "$udid" -b
   ./exact.mjs ios --sim "$udid"
   seed "$udid"
-  drive "$udid" "$device-light" light || status=1
-  drive "$udid" "$device-dark" dark || status=1
+  again "$udid" "$device-light" light || status=1
+  again "$udid" "$device-dark" dark || status=1
 done
 
 echo "== phone, largest text"
 before="$(xcrun simctl ui "$phone" content_size)"
 xcrun simctl ui "$phone" content_size accessibility-extra-extra-extra-large
-drive "$phone" phone-large-text light notap || status=1
+again "$phone" phone-large-text light notap || status=1
 xcrun simctl ui "$phone" content_size "$before" || true
 exit "$status"
