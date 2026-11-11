@@ -123,6 +123,22 @@ jobs:
       - name: Capture
         run: scripts/capture-ios.sh ../../shots "$PHONE" "$TABLET" ../../core/fixtures/nwtsty_E.jwpub
 
+      # The images in the log too, one base64 block each between markers,
+      # for reviewers who can read the log but not download artifacts.
+      - name: Screenshots in the log
+        if: always()
+        working-directory: .
+        run: |
+          cd shots 2>/dev/null || exit 0
+          for f in */*.png; do
+            [ -e "$f" ] || continue
+            echo "::group::$f"
+            echo "-----BEGIN PNG $f-----"
+            base64 -i "$f" -b 76
+            echo "-----END PNG $f-----"
+            echo "::endgroup::"
+          done
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:

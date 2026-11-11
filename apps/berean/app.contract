@@ -14,6 +14,7 @@ theme
 
 shape Pub
   key: string
+  symbol: string
   title: string
   kind: string
   detail: string
@@ -84,7 +85,7 @@ component Berean
                   text shelf.message color="softInk" testId="shelf-message"
               section
                 for p in shelf.pubs key=p.key
-                  link href=path("read", p.key) testId=`pub-${p.key}`
+                  link href=path("read", p.key) testId=`pub-${p.symbol}`
                     column flex=1 min-width=0 gap=2
                       text p.title color="ink"
                       text p.detail font-size="0.8125rem" color="softInk"

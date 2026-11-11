@@ -166,6 +166,7 @@ fn publication(p: &PublicationSummary) -> Value {
     };
     Value::record(vec![
         Value::str(&p.pub_key),
+        Value::str(&p.symbol),
         Value::str(&title),
         Value::str(kind),
         Value::str(&detail),

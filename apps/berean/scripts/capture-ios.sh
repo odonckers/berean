@@ -35,25 +35,29 @@ drive() {
     "prefer prefers-color-scheme $scheme" \
     "clock data" "clock settle" \
     "screenshot $out/library/$variant.png window" \
-    "tap pub-nwtsty_E" "clock data" "clock settle" \
+    tree \
+    "tap pub-nwtsty" "clock data" "clock settle" \
     "screenshot $out/read/$variant.png window" \
     "tap verse-3" "clock settle" \
     "check both" \
     back "clock settle"
 }
 
+# Every variant is tried even when one fails, so a failure still leaves the
+# other screenshots to look at; the script fails at the end.
+status=0
 for device in phone tablet; do
   udid="${!device}"
   echo "== $device ($udid)"
   ./exact.mjs ios --sim "$udid"
   seed "$udid"
-  drive "$udid" "$device-light" light
-  drive "$udid" "$device-dark" dark
+  drive "$udid" "$device-light" light || status=1
+  drive "$udid" "$device-dark" dark || status=1
 done
 
 echo "== phone, largest text"
 before="$(xcrun simctl ui "$phone" content_size)"
 xcrun simctl ui "$phone" content_size accessibility-extra-extra-extra-large
-drive "$phone" phone-large-text light || status=$?
+drive "$phone" phone-large-text light || status=1
 xcrun simctl ui "$phone" content_size "$before" || true
-exit "${status:-0}"
+exit "$status"
