@@ -1,237 +1,275 @@
-# Frontend rebuild on Expo UI
+# Frontend rebuild on Exact
 
 Status: **plan, pending Owen's go** (Nov 11, 2026). No code slice starts
-until Owen or the coordinator says go.
+until Owen says go, and nothing merges without his yes.
 
 Owen's ask (Nov 10): the app feels janky when running, Library has no
 images, buttons don't always work, and spacing looks off. Redo the
-frontend on Expo UI.
+frontend on Expo's Exact. On Nov 11 he confirmed Exact (`github.com/expo/exact`),
+knowing it isn't React Native and is pre-1.0. An earlier draft of this plan was written for
+Expo UI; this version replaces it.
 
-This plan covers the Expo app in `apps/mobile` on iOS and Android. The
-native Apple targets in `apple/` stay paused.
+Facts about Exact below come from its repository at commit `db72e04f`
+(Nov 11, 2026): its README, `docs/reference.md`, `docs/start-here.md` and
+`host/android/README.md`. Exact changes daily, so the first slice checks
+them again.
 
-## What Expo UI is, in the SDK we're on
+## What Exact is
 
-- `@expo/ui` gives React components that render real SwiftUI on iOS and
-  real Jetpack Compose on Android. It has three entry points:
-  - `@expo/ui`: the universal layer, 18 components including `Host`,
-    `List`/`ListItem`, `Button`, `Text`, `TextInput`, `Picker`, `Switch`,
-    `Slider`, `BottomSheet`, `FieldGroup`, `Icon`, `Row`, `Column`,
-    `ScrollView` and `RNHostView`.
-  - `@expo/ui/swift-ui`: about 47 SwiftUI views and modifiers, among them
-    `NavigationSplitView`, `ContextMenu`, `Menu`, `ConfirmationDialog`,
-    `SwipeActions`, `Toolbar` and `LazyVStack`.
-  - `@expo/ui/jetpack-compose`: about 50 Material 3 components, among them
-    `ModalBottomSheet`, `AlertDialog`, `DropdownMenu`, `SearchBar`,
-    `Carousel`, `LazyColumn`, `TopAppBar`, `SegmentedButton` and `Image`.
-- It has been stable since SDK 56. SDK 58 made `List` virtualize and
-  recycle rows, added the iOS navigation views, and made expo-router's
-  native tabs and `Stack.Toolbar` stable (`Stack.Toolbar` needs
-  `@expo/ui` on Android).
-- **The repo is already on SDK 58** (`expo ~58.0.21`, React Native 0.88),
-  so there is no SDK upgrade. We add `@expo/ui ~58.0.27` and take the
-  patch bumps in Dependabot's #99.
-- Every Expo UI tree sits inside a `Host`. Inside it there is no Yoga:
-  layout is `Row`/`Column` (or `HStack`/`VStack`). React Native views can
-  sit inside through `RNHostView`, and a screen can mix both, so the
-  rebuild can go one screen at a time.
+- A cross-platform app runtime from Expo, MIT licensed. The interface is
+  written in **Contract**, a small declarative language with CSS layout and
+  CSS names. Data logic is written in **TypeScript or Rust**.
+- The Contract compiler turns the view into a *plan*. On the web the plan
+  runs on a ~20 KB runtime over the browser's DOM. On iOS, macOS and Linux
+  a Rust runner executes it, a Rust layout kernel (Taffy) computes every
+  box, and the platform draws: **UIKit on iOS, AppKit on macOS**. There is
+  no webview, no JavaScript bridge in the UI and no React.
+- What the app doesn't style comes out as the platform's own: system
+  controls, text sizes, tab bar, Back, keyboard and accessibility.
+- Lists are virtualized and use the platform's own rows. Images, video,
+  complete SVG, Canvas 2D on every host, a WYSIWYG Markdown editor (web,
+  macOS, iOS), transitions, springs, pan/swipe/pinch gestures, a router
+  with a stack per tab, and native modules (a platform widget as a tag).
+- Agents can build, run, screenshot, tap, type and test the app on every
+  host through one script (`scripts/agent.mjs`), and `app.test.contract`
+  tests run unchanged on each host.
 
-Sources: [Expo UI reference (SDK 58)](https://docs.expo.dev/versions/v58.0.0/sdk/ui/),
-[universal components](https://docs.expo.dev/versions/v58.0.0/sdk/ui/universal/),
-[SDK 58 changelog](https://expo.dev/changelog/sdk-58),
-[Expo UI stable in SDK 56](https://expo.dev/blog/expo-ui-stable-sdk-56).
+### Platforms, as Exact describes them today
 
-### What Expo UI does not cover
-
-| Need | Expo UI today | What we use |
+| Platform | Status in Exact | Drawn with |
 | --- | --- | --- |
-| Bible chapter text: per-verse and per-word taps, highlight backgrounds, landing wash, line metrics for margin markers | `Text` has no spans with their own press, no selection, no line metrics | Keep React Native `Text`, rebuilt for speed (Read slice) |
-| Word highlighting and text selection | No text selection API documented | React Native text plus the core's word tokens from #116 |
-| Studyspace infinite canvas | Nothing | Keep Gesture Handler and Reanimated; Skia only if profiling asks for it |
-| Map | Nothing; expo-maps shows real-world tiles, not the Bible atlas | Keep #115's offline `react-native-svg` map inside `RNHostView` |
-| Note editor with live Markdown styling | `TextInput` has no styled spans | Keep the React Native `TextInput` |
-| Remote and file images in rows | SwiftUI `Image` is SF Symbols only | `expo-image` inside list rows |
-| Android navigation rail | No rail component | Keep our rail, restyled to the tokens |
-| Accessibility props, Dynamic Type | Not documented per component | Proved in the first slice before anything else moves |
+| iOS and iPadOS (Simulator and devices) | Working | UIKit and CoreText |
+| macOS | Working | AppKit and CoreText |
+| Web | Working; also Exact's development loop | The browser's DOM and CSS |
+| Linux | Working; reads but doesn't edit text | Its own painter (GPU or CPU), headless too |
+| **Android** | **"Admitted and early"** since Oct 7: builds and runs on an emulator or phone, has tests and the agent, TalkBack through its own accessibility provider. **No delivery or store packaging yet** | **Its own pixels** replayed onto Android's Canvas: no Material or Compose controls |
+| Windows | Unfinished | Its own painter |
 
-So the rebuild moves the app's chrome to native controls: tab bars,
-toolbars, lists, rows, buttons, menus, sheets, dialogs, pickers, search
-fields and settings. The reading surfaces stay React Native, made fast.
+### What it costs
+
+- **Pre-1.0, no API stability, no migration guides.** We pin one Exact
+  commit, and each bump is its own pull request with screenshots.
+- **No packaged CLI.** Apps build from a source checkout of Exact. The
+  toolchain is Rust, Bun 1.4.2, Chrome for the web driver, Xcode 27.1 or
+  later for Apple hosts, and pinned Hermes bundles (TypeScript only).
+- **It doesn't mix with React Native.** Nothing from the Expo app is
+  reused on screen, so this is a new app beside the Expo app, not a
+  screen-by-screen swap inside it.
+- **Our cloud sessions run on Linux** and can't build for iOS. They can run
+  Exact's web loop and its headless Linux host. iOS builds happen in CI on
+  macOS runners. Exact's own CI uses GitHub's `macos-26` runners.
+
+## Platforms: what this targets first
+
+- **First: iOS and iPadOS**, the platform Exact supports best among the two
+  Berean ships today.
+- **Android: kept, but behind.** Exact's Android runs and has TalkBack, but
+  it draws its own controls (it won't look like a Material app) and can't
+  be packaged for the Play Store yet. Until it can, Android users keep the
+  Expo app. This is a step back from Owen's Nov 8 hand-off ("native for iOS
+  and Android"), and it is called out here on purpose.
+- **macOS comes nearly free** because the same Contract runs on AppKit. The
+  native Apple targets in `apple/` (the Swift apps, paused since Nov 8) stay
+  paused; whether Exact's macOS build later replaces them is Owen's call.
+- **Web** is Exact's development loop and could become a shipped target,
+  but only after the Rust core builds for WebAssembly (below).
+
+## The Rust core
+
+- **Berean's core links directly, with no bindings layer.** Exact's Rust
+  data sources are crates that implement its `DataSource` trait
+  (`query`, `answer`, `parse`). A `berean-exact` data crate wraps
+  `berean-core` and answers the view's resources with its records, so the
+  uniffi bindings (`berean-ffi`, `modules/berean-ffi-rn`) aren't needed by
+  the new app. The Expo app keeps them until it's retired.
+- **Reads run off the UI thread.** Exact can place a Rust source on a
+  worker (`rust.placement: worker`), so loading a chapter or the catalog
+  doesn't hold the screen. That is the background loading the Expo app
+  never had.
+- **Storage.** The core owns its own SQLite files and unpacked
+  publications. Exact's documented route for a module that keeps its own
+  SQLite is a native module shim with `configure_storage`; a plain data
+  crate's storage goes through the host's requests. The first slice picks
+  one and records why.
+- **Downloads.** Today the Expo app downloads from the JW CDN and hands
+  files to the core. Under Exact, downloads go through Exact's
+  grant-checked `fetch` (declared grants), and the core opens the files.
+- **Web needs the core on WebAssembly.** The browser runs Rust as Wasm.
+  The core's bundled SQLite, zip, AES and zlib have to build for
+  `wasm32`, and the core would use Exact's browser SQLite. That is real
+  work, so web is not a first target.
+
+## What Exact covers for Berean, and what it doesn't yet
+
+| Need | Exact today | Plan |
+| --- | --- | --- |
+| Tabs, per-tab stacks, sheets, alerts, menus, search fields, settings forms | Platform controls and a router | Use as is |
+| Library lists and covers | Virtualized platform lists, remote and local images | Use; covers need the core (slice 3) |
+| Tablet cover grid | Grid virtualization is out for v1 | Rows in Library; a small unvirtualized grid only on What's New |
+| Bible chapter: per-verse and per-word taps, highlight backgrounds, margin markers | Text runs exist (with links); a press and a background per run, and line positions for markers, aren't documented | **Prove in the spike**; this decides whether Read ports |
+| Word highlighting and text selection | Text fields have selection ranges; selection in read-only text isn't documented | Prove in the spike, with #116's word tokens |
+| Studyspace infinite canvas | Canvas 2D on every host; pan, swipe, pinch with velocity; no gesture arena (out for v1) | Port after the spike shows tap and pan can share a card |
+| Map and timeline (#115) | Complete SVG on every host | #115's offline SVG basemap ports as SVG |
+| Note editor with live Markdown | WYSIWYG Markdown editor on web, macOS and iOS | Decide in the Notes slice: Exact's editor, or a plain field with the core's styling |
+| VoiceOver, TalkBack, largest text, light and dark | UIKit and AppKit accessibility; Android through its own provider; `light-dark()` | Check in every slice's screenshots |
 
 ## Why the app feels the way it does
 
-A survey of `apps/mobile` found that most of what Owen sees is not about
-the UI framework. Moving to Expo UI fixes the visual and touch problems
-in the chrome. The rest needs its own fixes, which this plan puts first.
+This holds whatever the framework. A survey of the Expo app found:
 
-- **Library has no images because covers were never built.** No layer
-  has them: `PublicationSummary` in the FFI has no image field
+- **Library has no images because covers were never built.** No layer has
+  them: `PublicationSummary` has no image field
   (`core/berean-ffi/src/lib.rs:260`), catalog ingest never reads the
   catalog's image tables, the jwpub manifest parser skips images, and no
-  Library row draws one. `expo-image` isn't installed. This needs core
-  work first.
-- **Jank comes from synchronous core calls on the JS thread.** Almost
-  every read is synchronous, and many run during render: the Bible
-  chapter (`src/reader/bible-chapter.tsx:169`), the Library's installed
-  list and languages on every focus, catalog queries of up to 200 rows
-  per keystroke, What's New, one notes query per tag, and a whole chapter
-  per Studyspace reader card. There is also no memoization anywhere and
-  no React Compiler, the chapter is one unvirtualized ScrollView, and
-  each download progress tick re-renders the whole Library.
+  Library row draws one. This needs core work in any framework.
+- **Jank comes from synchronous core calls on the JS thread.** Almost every
+  read runs during render: the Bible chapter
+  (`apps/mobile/src/reader/bible-chapter.tsx:169`), the Library's installed
+  list on every focus, catalog queries per keystroke, one notes query per
+  tag, a whole chapter per Studyspace card. Exact's worker-placed Rust
+  source removes this by design.
 - **Buttons don't always respond, for five reasons.**
-  - Library › Catalog's list has no `keyboardShouldPersistTaps`, so the
-    first tap on Download only closes the keyboard.
-  - Verse numbers are 11pt nested text spans that can't take a hit slop.
-  - The study pane's close button sits inside its resize drag, so a press
-    that moves 10px turns into a drag.
-  - Custom sheets chain on a fixed 350 ms timer on iOS, so a second
-    action can be lost.
-  - On Studyspace, tap, double-tap, pan, pinch and long-press compete,
-    and a fading canvas layer can sit over the new one.
-  - All of these get worse while a synchronous core call holds the JS
-    thread.
-- **Spacing looks off because the chrome is hand-drawn.** There is a 4pt
-  spacing scale, but sheets, alerts, action sheets and dialogs are custom
-  React Native imitations, the iPad tab bar is an approximation, some
-  screens use sizes outside the type scale (`fontSize: 15` in nine
-  files), and the iOS Library header crowds four text buttons beside a
-  large title. Native controls bring the platforms' own spacing and
-  touch targets.
+  - Library › Catalog's list doesn't keep taps while the keyboard is up.
+  - Verse numbers are 11pt text spans that can't take a larger target.
+  - The study pane's close button sits inside its resize drag.
+  - Custom sheets chain on a fixed 350 ms timer on iOS.
+  - On Studyspace, tap, double-tap, pan, pinch and long-press compete.
+  
+  Each one is designed out in its slice: native sheets and alerts,
+  verse targets at least 44 points, no press inside a drag area.
+- **Spacing looks off because the chrome is hand-drawn.** Sheets, alerts,
+  action sheets, dialogs and the iPad tab bar are React Native imitations,
+  and some screens use sizes outside the type scale. Exact leaves unsaid
+  presentation to the platform, so the rebuild writes less styling, not
+  more.
+
+## Screenshots for UI pull requests
+
+UI pull requests still need reviewed screenshots (`CLAUDE.md`,
+`docs/screenshots.md`). Exact's agent can screenshot every host, so:
+
+1. **iOS, from the first app PR:** a workflow on GitHub's `macos-26`
+   runners builds the Exact app for the iOS Simulator and captures each
+   screen on iPhone and iPad, light and dark, and the largest text size,
+   with `scripts/agent.mjs ios … screenshot`. It posts to the PR through
+   the same comment workflow the Android job uses today. It also runs the
+   app's `app.test.contract` tests.
+2. **Android, once Android work starts:** the existing emulator job builds
+   Exact's Android app and captures it with `agent android`.
+3. **Web, once the core runs on Wasm:** the fastest loop, with no macOS
+   runner needed.
+
+The existing Android screenshot workflow keeps covering the Expo app until
+it is retired.
 
 ## Principles for every slice
 
-- **Native chrome, Berean's colors.** Controls follow the platform: SwiftUI
-  on iOS (Liquid Glass on iOS 26), Material 3 on Android. Berean's four
-  themes and accents tint them (SwiftUI tint, Compose color roles), so
-  nothing is recolored by the system. The dev-menu switch that previews
-  the other platform's look goes away, and so do the `look` branches.
-- **One screen per pull request**, each reviewable on its own and each
-  with screenshots from the emulator workflow (and the iOS simulator once
-  slice 1b lands). The PR says the screenshots were reviewed.
-- **Every slice keeps:** phone, tablet portrait and landscape layouts;
-  light and dark; the largest text size; VoiceOver and TalkBack labels,
-  actions and focus order; and hardware keyboard shortcuts where they
-  exist today.
-- **No synchronous core call during render.** Reads go through the async
-  bindings from slice 2 and a small cache hook.
-- **Merging waits for Owen's yes** in the slice's thread.
+- One screen (or one piece of plumbing) per pull request, each with
+  reviewed iOS screenshots (iPhone, iPad, light, dark, largest text) and
+  `app.test.contract` tests for what the screen does.
+- Phone, tablet and landscape layouts; VoiceOver labels, headings and focus
+  order; hardware keyboard where it exists today.
+- No core read on the UI thread. The core is reached only through the
+  worker-placed data source.
+- Platform controls first; Berean's themes come in through CSS custom
+  properties and `light-dark()`, not hand-drawn controls.
+- Merging waits for Owen's yes in the slice's thread.
+- The Expo app keeps shipping and gets only fixes for real breakage until
+  the switch.
 
 ## Slices
 
 ### 0. This plan (docs only)
 
-### 1a. Foundation
+### 1. Spike: go or no-go
 
-- Add `@expo/ui` and `expo-image`; take #99's SDK 58 patch bumps.
-- Turn on the React Compiler and fix what it flags.
-- A `Host` wrapper that passes Berean's theme to SwiftUI and Compose, and
-  a short token map (spacing, type roles, colors) for Expo UI modifiers.
-- Rebuild **Appearance** on Expo UI as the proving screen: it is a
-  settings form, the best fit for `FieldGroup`, `Picker` and `Switch`.
-- Prove, before anything else moves, and write the results into this
-  doc: Dynamic Type and Android's 2× font scale, VoiceOver and TalkBack
-  labels and actions, `Host` sizing inside scroll views, a React Native
-  `expo-image` inside a `ListItem`, and theme switching without a flash.
-  If one of these fails, the plan changes here, not five screens later.
+- Pin an Exact commit and add `apps/exact` (name settled in the slice)
+  with a `berean-exact` data crate over `berean-core`, placed on a worker.
+- Two real screens: Library (installed publications from the core) and
+  one Bible chapter with tappable verse numbers, a highlighted verse and a
+  highlighted word.
+- Build for the iOS Simulator in CI and capture screenshots; build the
+  Linux headless host in a cloud session to check the loop works there.
+- Answer in this doc: per-word taps and highlight backgrounds in text,
+  margin note positions, storage route (data crate or native module),
+  VoiceOver and largest text, and how long builds take in CI.
+- **If the Bible text can't be drawn the way Berean needs, stop here** and
+  bring Owen the options before any more is built.
 
-### 1b. iOS screenshots
+### 2. CI
 
-- Half of the rebuild renders SwiftUI, and CI captures only Android today.
-- Add an iOS simulator job on GitHub-hosted macOS runners (free for a
-  public repo) that captures the same `SCREENS` on iPhone and iPad, light,
-  dark and largest text, into the same PR comment.
-- This uses GitHub's runners, not the self-hosted Mac, so it doesn't
-  touch the paused Apple targets.
+- The iOS screenshot and Contract-test workflow, on `macos-26`, with the
+  Exact checkout and Rust, Bun and Hermes caches.
+- A Linux job that builds the data crate and runs the core's tests with it.
 
-### 2. Core: covers and async reads
+### 3. Core: covers
 
-One core package at a time, after #116 merges, since both change the
-shared bindings.
+- Read the catalog's image rows and expose a cover on the publication
+  summary: a CDN address for catalog entries, the unpacked file for
+  installed ones. Which tables and sizes is checked against the real
+  catalog. Shared by both apps.
+- One core change at a time, after #116 merges.
 
-- **Covers:** read the catalog's image rows and expose a cover on
-  `PublicationSummary` (a CDN address for catalog entries, the unpacked
-  file for installed ones). Which image tables and sizes to use is
-  checked against the real catalog in this slice.
-- **Async reads:** async variants of the heavy reads (Bible chapter and
-  books, installed list, catalog query, What's New, notes by tag or
-  folder, Studyspace documents), so they run on the core's threads. Small
-  lookups stay synchronous.
+### 4. Shell, theme and Appearance
 
-### 3. Shell and navigation
+- Tabs (Read, Studyspace, Notes, Library, Search) with a stack each; iPad
+  layout; Berean's four themes and accents as tokens; Appearance as the
+  first settings screen.
 
-- `NativeTabs` on phones and on iPad, where iPadOS draws its own tab bar
-  and sidebar; this removes `floating-tab-bar.tsx`. Android tablets keep
-  a navigation rail, restyled to the tokens, since Expo UI has none.
-- Header buttons move to `Stack.Toolbar`; crowded headers fold into a
-  native menu.
-- Replace the React Native `Modal` imitations (confirm dialog, action
-  sheet, name dialog, `sheet.tsx`) with native sheets, alerts,
-  confirmation dialogs and context menus. Each later slice uses these.
+### 5. Library
 
-### 4. Library (first screen, since images are broken)
+- Library, Catalog, Languages, What's New, Find and import, with covers,
+  downloads through Exact's `fetch`, and per-row progress.
 
-- Library, Catalog, Languages, What's New and Find on Expo UI lists, with
-  covers through `expo-image` (cached, with a placeholder by publication
-  kind).
-- Download progress isolated per row, so a tick redraws one row.
-- Catalog and Find search fields that keep the first tap.
-- Import states and the What's New shelf (a carousel on both platforms).
-- Tablet: a cover grid in wide windows.
+### 6. Today and publications
 
-### 5. Today and publications
+- Today, publication and article screens, and article Languages.
 
-- Today, the publication and article screens' chrome, and article
-  Languages. Document text stays React Native.
+### 7. Read
 
-### 6. Read
+- Bible chapter, book and chapter picker, highlights, bookmarks, the
+  study pane, and the ports of map and timeline (#115) and word
+  highlighting.
 
-- Chapter chrome: book and chapter picker, toolbar, highlight sheet and
-  bookmark picker as native sheets and menus.
-- The chapter text stays React Native, rebuilt for speed: loaded through
-  the async read, split into virtualized paragraphs, memoized blocks,
-  and larger verse targets.
-- The study pane's close button moves out of the resize drag.
-- Ports the map and timeline (#115) and word highlighting (after #116)
-  into the new chrome.
+### 8. Notes
 
-### 7. Notes
+- Folders, tags, the list and the editor.
 
-- Notes, folders, tags and the list on Expo UI lists with native swipe
-  actions and context menus.
-- The editor keeps its React Native `TextInput`; Markdown styling moves
-  off the keystroke path.
+### 9. Studyspace
 
-### 8. Studyspace
+- The canvas, cards and reader cards. The queued canvas and Markdown work
+  follows this slice.
 
-- Toolbars, menus and card actions on Expo UI. The canvas stays Gesture
-  Handler and Reanimated, with its gesture conflicts fixed (taps win over
-  pans that haven't moved, no layer left over the live one).
-- The queued canvas and Markdown work comes after this slice.
+### 10. Search
 
-### 9. Search
+- Search screen, suggestions and the keyboard palette.
 
-- The search screen and the Ctrl+K palette on native search fields and
-  lists.
+### 11. Ship and switch
 
-### 10. Cleanup
-
-- Remove the `look` switch, the old sheet and dialog components and
-  unused tokens; update `docs/design` and the screenshot list.
+- TestFlight and App Store packaging for the Exact iOS app.
+- Owen decides when iOS users move to it. The Expo iOS build stops then.
+- Android stays on the Expo app until Exact's Android can be packaged and
+  passes the same screenshot review.
 
 ## Work in flight
 
-- **Map and timeline (#115)** and **word highlighting** (its core part
-  is #116, its app part opens after #116 merges) finish on the current
-  frontend and merge as they are.
-- The rebuild ports their screens in slice 6. #115's map is a
-  `react-native-svg` view and moves over unchanged inside `RNHostView`;
-  only its chrome is rebuilt.
-- Slices 1 to 5 don't touch the reader files those two change, so they
-  can run alongside. Slice 2 waits for #116 because of the shared
-  bindings file.
+- **Map and timeline (#115)** and **word highlighting** (core #116; its
+  app part opens after #116 merges) finish on the Expo app and merge as
+  they are. Users get them now, and the Expo app is what ships until the
+  switch.
+- Their core parts carry over unchanged: the atlas data (#112) and word
+  tokens (#116) are in `berean-core`, which the Exact app links.
+- Their screens are rebuilt in slice 7. #115's basemap is generated SVG
+  (`apps/mobile/scripts/gen-basemap.ts`), which Exact draws natively.
+- Slice 3 waits for #116 because both change the core's public types.
 
 ## Not in this plan
 
-- The native Apple targets (`apple/`), which stay paused.
-- New features. Each slice keeps today's behavior; the queued Studyspace
-  canvas and Markdown work follows the rebuild.
+- The Swift apps in `apple/`, which stay paused.
+- New features. Each slice keeps today's behavior.
+
+## Product question for Owen
+
+- Exact's iOS is solid and its Android is early (its own drawing, no store
+  packaging). Is iOS first, with Android staying on the Expo app until
+  Exact's Android can ship, the order you want?
