@@ -1,0 +1,5 @@
+# actionlint 1.7.7 (repo.yml) predates GitHub's macos-26 runner label, which
+# exact.yml uses; list it here so the lint accepts it.
+self-hosted-runner:
+  labels:
+    - macos-26
