@@ -130,6 +130,7 @@ function Atlas({ data }: { data: AtlasData }) {
         fitKey={`${selection?.section}/${selection?.event ?? ''}`}
         accessibilityLabel={mapLabel}
         onOpenPlace={openPlace}
+        bottomInset={wide ? insets.bottom : 0}
         style={wide ? styles.wideMap : { height: Math.round(Math.min(Math.max(window.height * 0.38, 220), 440)) }}
       />
     );

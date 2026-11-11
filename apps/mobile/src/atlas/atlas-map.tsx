@@ -78,6 +78,8 @@ type Props = {
   onOpenPlace?: (id: string) => void;
   /** False for a still map (a place's own): no gestures. */
   interactive?: boolean;
+  /** Room under the map taken by system bars, kept clear of the credit. */
+  bottomInset?: number;
   style?: ViewStyle;
 };
 
@@ -97,6 +99,7 @@ export function AtlasMap({
   accessibilityLabel,
   onOpenPlace,
   interactive = true,
+  bottomInset = 0,
   style,
 }: Props) {
   const { colors } = useBerean();
@@ -410,7 +413,10 @@ export function AtlasMap({
           accessible={false}
           importantForAccessibility="no"
           maxFontSizeMultiplier={1.3}
-          style={[styles.credit, { color: colors.textSecondary, backgroundColor: mix(palette.water, palette.land, 0.6) }]}
+          style={[
+            styles.credit,
+            { bottom: bottomInset, color: colors.textSecondary, backgroundColor: mix(palette.water, palette.land, 0.6) },
+          ]}
         >
           Pleiades · OpenBible.info · Natural Earth
         </Text>
