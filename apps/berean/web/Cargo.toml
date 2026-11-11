@@ -1,0 +1,19 @@
+[package]
+name = "berean-web"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+build = "build.rs"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+exact-logic = { path = "../.sdk/exact/logic" }
+exact-web = { path = "../.sdk/exact/host/web" }
+exact-web-capabilities = { path = "../.sdk/exact/host/web-capabilities" }
+exact-js-web = { path = "../.sdk/exact/js/web" }
+
+[build-dependencies]
+exact-js-bake = { path = "../.sdk/exact/js/bake" }

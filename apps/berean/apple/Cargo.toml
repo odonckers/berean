@@ -1,0 +1,21 @@
+[package]
+name = "berean-apple"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+build = "build.rs"
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+berean-data = { path = "../data" }
+exact-logic = { path = "../.sdk/exact/logic" }
+exact-apple = { path = "../.sdk/exact/host/apple" }
+exact-apple-update = { path = "../.sdk/exact/host/apple-update" }
+exact-js = { path = "../.sdk/exact/js" }
+
+[build-dependencies]
+berean-data = { path = "../data" }
+exact-js-bake = { path = "../.sdk/exact/js/bake" }

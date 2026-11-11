@@ -1,7 +1,8 @@
 # Frontend rebuild on Exact
 
-Status: **plan; iOS first decided (Nov 11, 2026), pending Owen's go to start**. No code slice starts
-until Owen says go, and nothing merges without his yes.
+Status: **slice 1, the test build, in progress** (Owen said go on Nov 11, 2026). The app is in
+`apps/berean`; what the test build found is under [Test build findings](#test-build-findings).
+Nothing merges without Owen's yes.
 
 Owen's ask (Nov 10): the app feels janky when running, Library has no
 images, buttons don't always work, and spacing looks off. Redo the
@@ -78,7 +79,7 @@ them again.
 
 - **Berean's core links directly, with no bindings layer.** Exact's Rust
   data sources are crates that implement its `DataSource` trait
-  (`query`, `answer`, `parse`). A `berean-exact` data crate wraps
+  (`query`, `answer`, `parse`). A data crate (`apps/berean/data`, `berean-data`) wraps
   `berean-core` and answers the view's resources with its records, so the
   uniffi bindings (`berean-ffi`, `modules/berean-ffi-rn`) aren't needed by
   the new app. The Expo app keeps them until it's retired.
@@ -87,10 +88,12 @@ them again.
   doesn't hold the screen. That is the background loading the Expo app
   never had.
 - **Storage.** The core owns its own SQLite files and unpacked
-  publications. Exact's documented route for a module that keeps its own
-  SQLite is a native module shim with `configure_storage`; a plain data
-  crate's storage goes through the host's requests. The first slice picks
-  one and records why.
+  publications. Decided in the test build: the data crate opens the core
+  itself, in the directory the host hands every data source through
+  `configure_storage` (on iOS, `Application Support/exact/<app id>/data`).
+  No native module shim is needed, because the crate is linked natively
+  (`app.json` turns Rust live replacement off, so nothing tries to run the
+  core as Wasm on iOS).
 - **Downloads.** Today the Expo app downloads from the JW CDN and hands
   files to the core. Under Exact, downloads go through Exact's
   grant-checked `fetch` (declared grants), and the core opens the files.
@@ -183,8 +186,8 @@ it is retired.
 
 ### 1. Spike: go or no-go
 
-- Pin an Exact commit and add `apps/exact` (name settled in the slice)
-  with a `berean-exact` data crate over `berean-core`, placed on a worker.
+- Pin an Exact commit and add `apps/berean` (Exact refuses an app folder
+  named `exact`) with a `berean-data` crate over `berean-core`, placed on a worker.
 - Two real screens: Library (installed publications from the core) and
   one Bible chapter with tappable verse numbers, a highlighted verse and a
   highlighted word.

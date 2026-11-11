@@ -1,0 +1,5 @@
+// A test's store starts empty, so the Library says nothing is installed
+// and a Bible key that isn't installed says so instead of drawing text.
+test "the library opens with nothing installed"
+  clock data
+  expect text "shelf-message" == "No publications are installed yet."
