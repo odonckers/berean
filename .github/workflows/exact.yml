@@ -1,0 +1,148 @@
+name: exact
+
+# The Exact test build (apps/berean, docs/frontend-rebuild.md slice 1).
+# Builds it for the iOS Simulator on a GitHub Mac, installs the pinned
+# Study Bible fixture into the app's test storage, drives the Library and a
+# Bible chapter, and captures them on iPhone and iPad, light and dark, and
+# at a large text size. The images go up as the `screenshots-ios` artifact,
+# named <screen>/<variant>.png as screenshots.yml names its own. It runs
+# with a read-only token and never writes to the repo or the PR.
+
+on:
+  pull_request:
+    paths:
+      - "apps/berean/**"
+      - "core/berean-core/**"
+      - "core/Cargo.toml"
+      - "core/Cargo.lock"
+      - ".github/workflows/exact.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: exact-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Exact may send authoring notes to its team; never from CI.
+  EXACT_FEEDBACK: "0"
+  APP_ID: com.odonckers.berean.exact
+
+jobs:
+  ios:
+    # Exact's Apple host needs the iOS 27.1 SDK or later, which GitHub has
+    # only on its Xcode 27 image (a public preview); macos-26 stops at 26.6.
+    runs-on: xcode-27
+    timeout-minutes: 120
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
+    defaults:
+      run:
+        working-directory: apps/berean
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - name: Exact at the pinned commit
+        run: scripts/fetch-exact.sh
+
+      - name: Rust (rust-toolchain.toml)
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustup target add aarch64-apple-ios-sim aarch64-apple-ios
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: exact-ios-xcode27
+          workspaces: apps/berean
+          cache-on-failure: true
+
+      - name: Hermes bundles
+        working-directory: apps/berean/.sdk/exact
+        run: |
+          cargo run --manifest-path vendor/ibex/crates/hermes-lean-sys-installer/Cargo.toml -- --target aarch64-apple-darwin
+          cargo run --manifest-path vendor/ibex/crates/hermes-lean-sys-installer/Cargo.toml -- --target aarch64-apple-ios-sim
+
+      - name: What a native build lacks
+        continue-on-error: true
+        run: |
+          xcodebuild -version
+          bun .sdk/exact/scripts/exact.mjs setup --check
+
+      - name: Make the simulators
+        run: |
+          # Our own iPhone and 11-inch iPad on the newest iOS runtime, so the
+          # job doesn't depend on which devices the image ships.
+          xcrun simctl list runtimes available --json > "$RUNNER_TEMP/runtimes.json"
+          if ! jq -e '.runtimes[] | select(.platform == "iOS")' "$RUNNER_TEMP/runtimes.json" > /dev/null; then
+            echo "No iOS runtime for this Xcode; downloading one"
+            xcodebuild -downloadPlatform iOS
+            xcrun simctl list runtimes available --json > "$RUNNER_TEMP/runtimes.json"
+          fi
+          # The newest general iOS runtime: some runtimes are for one device
+          # only (iOS-27-2-iPhone19-4), so prefer the one that runs the most.
+          runtime=$(jq -c '[.runtimes[] | select(.platform == "iOS")] | sort_by([(.version | split(".") | map(tonumber)), (.supportedDeviceTypes | length)]) | last' "$RUNNER_TEMP/runtimes.json")
+          # The first of these the runtime supports.
+          pick() { echo "$runtime" | jq -r --argjson want "$1" '[.supportedDeviceTypes[] | select(.name as $n | $want | index($n))] | sort_by(.name as $n | $want | index($n)) | first | .identifier // empty'; }
+          iphone=$(pick '["iPhone 17 Pro","iPhone 17","iPhone 16 Pro","iPhone 16"]')
+          ipad=$(pick '["iPad Pro 11-inch (M5)","iPad Pro 11-inch (M4)","iPad Air 11-inch (M4)","iPad Air 11-inch (M3)","iPad Air 11-inch (M2)"]')
+          id=$(echo "$runtime" | jq -r .identifier)
+          echo "runtime $id, iPhone $iphone, iPad $ipad"
+          if [ -z "$iphone" ] || [ -z "$ipad" ]; then
+            jq -r '.runtimes[] | "\(.identifier) \(.version): \([.supportedDeviceTypes[].name] | join(", "))"' "$RUNNER_TEMP/runtimes.json"
+            exit 1
+          fi
+          phone=$(xcrun simctl create "Berean iPhone" "$iphone" "$id")
+          tablet=$(xcrun simctl create "Berean iPad" "$ipad" "$id")
+          echo "PHONE=$phone" >> "$GITHUB_ENV"
+          echo "TABLET=$tablet" >> "$GITHUB_ENV"
+
+      - name: The Study Bible fixture
+        working-directory: core
+        run: |
+          line=$(grep ' nwtsty_E.jwpub ' scripts/fixtures.txt)
+          sum=$(echo "$line" | awk '{print $1}'); url=$(echo "$line" | awk '{print $3}')
+          mkdir -p fixtures
+          curl -fsSL --retry 3 -o fixtures/nwtsty_E.jwpub "$url"
+          echo "$sum  fixtures/nwtsty_E.jwpub" | shasum -a 256 -c -
+
+      - name: Build for the iPhone simulator
+        run: ./exact.mjs ios --sim "$PHONE"
+
+      - name: Tests on the iPhone simulator
+        run: ./exact.mjs test ios --sim "$PHONE"
+
+      - name: Capture
+        run: scripts/capture-ios.sh ../../shots "$PHONE" "$TABLET" ../../core/fixtures/nwtsty_E.jwpub
+
+      # The images in the log too, one base64 block each between markers,
+      # for reviewers who can read the log but not download artifacts.
+      - name: Screenshots in the log
+        if: always()
+        working-directory: .
+        run: |
+          cd shots 2>/dev/null || exit 0
+          for f in */*.png; do
+            [ -e "$f" ] || continue
+            echo "::group::$f"
+            echo "-----BEGIN PNG $f-----"
+            base64 -i "$f" -b 76
+            echo "-----END PNG $f-----"
+            echo "::endgroup::"
+          done
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots-ios
+          path: shots
+          retention-days: 14
+          if-no-files-found: warn

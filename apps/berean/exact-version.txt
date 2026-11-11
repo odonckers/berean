@@ -1,0 +1,6 @@
+# The Exact checkout this app builds with (github.com/expo/exact, MIT).
+# Exact is pre-1.0 and has no releases, so the app pins a commit.
+# scripts/fetch-exact.sh clones it into .sdk/exact; to move the pin, change
+# the commit here, run the script, then `bun exact.mjs update` and
+# `bun exact.mjs lock`, and build.
+db72e04f9339d595cd3d5fa2a1383ffde1a7ccf7

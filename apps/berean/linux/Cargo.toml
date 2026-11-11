@@ -1,0 +1,21 @@
+[package]
+name = "berean-linux"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+build = "build.rs"
+
+[[bin]]
+name = "berean-linux"
+path = "src/main.rs"
+
+[dependencies]
+berean-data = { path = "../data" }
+exact-logic = { path = "../.sdk/exact/logic" }
+exact-linux = { path = "../.sdk/exact/host/linux" }
+exact-js = { path = "../.sdk/exact/js" }
+
+[build-dependencies]
+berean-data = { path = "../data" }
+exact-js-bake = { path = "../.sdk/exact/js/bake" }

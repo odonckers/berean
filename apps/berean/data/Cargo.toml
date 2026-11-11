@@ -1,0 +1,18 @@
+# Berean's data crate: the Contract's sources answered by the Rust core
+# (core/berean-core), placed on a worker so no read runs on the UI thread.
+[package]
+name = "berean-data"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+test = false
+bench = false
+
+[dependencies]
+berean-core = { path = "../../../core/berean-core" }
+exact-data = { path = "../.sdk/exact/data" }
+exact-plan = { path = "../.sdk/exact/plan" }
+exact-runner = { path = "../.sdk/exact/runner" }
