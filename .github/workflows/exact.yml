@@ -65,7 +65,7 @@ jobs:
         working-directory: apps/berean/.sdk/exact
         run: |
           cargo run --manifest-path vendor/ibex/crates/hermes-lean-sys-installer/Cargo.toml -- --target aarch64-apple-darwin
-          cargo run --manifest-path vendor/ibex/crates/hermes-lean-sys-installer/Cargo.toml -- --target aarch64-apple-ios
+          cargo run --manifest-path vendor/ibex/crates/hermes-lean-sys-installer/Cargo.toml -- --target aarch64-apple-ios-sim
 
       - name: What a native build lacks
         continue-on-error: true
