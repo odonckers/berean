@@ -77,16 +77,28 @@ jobs:
           xcodebuild -version
           bun .sdk/exact/scripts/exact.mjs setup --check
 
-      - name: Pick the simulators
+      - name: Make the simulators
         run: |
-          xcrun simctl list devices available --json > "$RUNNER_TEMP/sims.json"
-          # The newest iOS runtime's devices.
-          newest='[.devices | to_entries[] | select(.key | test("iOS"))] | sort_by(.key | [scan("[0-9]+") | tonumber]) | last | .value'
-          phone=$(jq -r "$newest"' | [.[] | select(.name | test("^iPhone [0-9]+$|^iPhone [0-9]+ Pro$"))] | last | .udid' "$RUNNER_TEMP/sims.json")
-          tablet=$(jq -r "$newest"' | [.[] | select(.name | test("^iPad Pro 11|^iPad Air 11"))] | last | .udid' "$RUNNER_TEMP/sims.json")
-          jq -r --arg p "$phone" --arg t "$tablet" '.devices[][] | select(.udid == $p or .udid == $t) | "\(.name) \(.udid)"' "$RUNNER_TEMP/sims.json"
-          echo "PHONE=$phone" >> "$GITHUB_ENV"
-          echo "TABLET=$tablet" >> "$GITHUB_ENV"
+          # Our own iPhone and 11-inch iPad on the newest iOS runtime, so the
+          # job doesn't depend on which devices the image ships.
+          xcrun simctl list runtimes available --json > "$RUNNER_TEMP/runtimes.json"
+          if ! jq -e '.runtimes[] | select(.platform == "iOS")' "$RUNNER_TEMP/runtimes.json" > /dev/null; then
+            echo "No iOS runtime for this Xcode; downloading one"
+            xcodebuild -downloadPlatform iOS
+            xcrun simctl list runtimes available --json > "$RUNNER_TEMP/runtimes.json"
+          fi
+          xcrun simctl list devicetypes --json > "$RUNNER_TEMP/types.json"
+          runtime=$(jq -r '[.runtimes[] | select(.platform == "iOS")] | sort_by(.version | split(".") | map(tonumber)) | last | .identifier' "$RUNNER_TEMP/runtimes.json")
+          iphone=$(jq -r '[.devicetypes[] | select(.name | test("^iPhone [0-9]+( Pro)?$"))] | last | .identifier' "$RUNNER_TEMP/types.json")
+          ipad=$(jq -r '[.devicetypes[] | select(.name | test("^iPad (Pro|Air) 11"))] | last | .identifier' "$RUNNER_TEMP/types.json")
+          echo "runtime $runtime, iPhone $iphone, iPad $ipad"
+          if [ "$runtime" = null ] || [ "$iphone" = null ] || [ "$ipad" = null ]; then
+            jq -r '.runtimes[] | "\(.identifier) \(.version)"' "$RUNNER_TEMP/runtimes.json"
+            jq -r '.devicetypes[].name' "$RUNNER_TEMP/types.json"
+            exit 1
+          fi
+          echo "PHONE=$(xcrun simctl create "Berean iPhone" "$iphone" "$runtime")" >> "$GITHUB_ENV"
+          echo "TABLET=$(xcrun simctl create "Berean iPad" "$ipad" "$runtime")" >> "$GITHUB_ENV"
 
       - name: The Study Bible fixture
         working-directory: core
