@@ -117,5 +117,8 @@ jobs:
           BEREAN_REQUIRE_FIXTURE: "1"
         run: cargo test -p berean-data
 
+      - name: Build the headless Linux host
+        run: ./exact.mjs linux
+
       - name: Contract tests on the headless Linux host
         run: ./exact.mjs test linux
