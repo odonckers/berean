@@ -1200,6 +1200,8 @@ pub struct VerseRun {
     pub text: String,
     pub footnotes: Vec<String>,
     pub cross_refs: Vec<String>,
+    pub first_token: u32,
+    pub tokens: Vec<TokenSpan>,
 }
 
 impl From<berean_core::reader::VerseRun> for VerseRun {
@@ -1210,6 +1212,25 @@ impl From<berean_core::reader::VerseRun> for VerseRun {
             text: r.text,
             footnotes: r.footnotes,
             cross_refs: r.cross_refs,
+            first_token: r.first_token,
+            tokens: mirror(r.tokens),
+        }
+    }
+}
+
+/// The FFI mirror of [`berean_core::tokens::TokenSpan`]: a word token's
+/// place in a run's text, in UTF-16 code units, `end` exclusive.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct TokenSpan {
+    pub start: u32,
+    pub end: u32,
+}
+
+impl From<berean_core::tokens::TokenSpan> for TokenSpan {
+    fn from(t: berean_core::tokens::TokenSpan) -> Self {
+        TokenSpan {
+            start: t.start,
+            end: t.end,
         }
     }
 }
@@ -2687,6 +2708,17 @@ impl UserData {
             .into())
     }
 
+    /// Highlight `range` in `color`, joining it with the highlights it
+    /// overlaps in the same document or chapter into one in `color`; their
+    /// notes move to it.
+    pub fn highlight(
+        &self,
+        range: TextRange,
+        color: HighlightColor,
+    ) -> Result<Highlight, CoreError> {
+        Ok(self.inner.highlight(&range.into(), color.into())?.into())
+    }
+
     /// Recolor the highlight `id`.
     pub fn set_highlight_color(&self, id: String, color: HighlightColor) -> Result<(), CoreError> {
         Ok(self.inner.set_highlight_color(&id, color.into())?)
@@ -3762,6 +3794,39 @@ mod tests {
     fn core_error_displays_its_message() {
         assert_eq!(CoreError::Io("x".into()).to_string(), "io error: x");
         assert_eq!(CoreError::NotFound.to_string(), "not found");
+    }
+
+    #[test]
+    fn highlight_joins_through_ffi() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = open_core(&dir);
+        let ud = core.userdata();
+        let verse = |v| Location {
+            pub_key: "nwtsty:0:0".into(),
+            doc_id: None,
+            book: Some(43),
+            chapter: Some(3),
+            verse: Some(v),
+            paragraph: None,
+        };
+        let words = |a, b| TextRange {
+            span: LocationSpan {
+                start: verse(16),
+                end: verse(16),
+            },
+            start_token: Some(a),
+            end_token: Some(b),
+        };
+        ud.highlight(words(2, 5), HighlightColor::Yellow).unwrap();
+        let joined = ud.highlight(words(4, 9), HighlightColor::Green).unwrap();
+        assert_eq!(joined.range, words(2, 9));
+        assert_eq!(joined.color, HighlightColor::Green);
+        let mut chapter = verse(16);
+        chapter.verse = None;
+        assert_eq!(
+            ud.highlights("nwtsty:0:0".into(), chapter).unwrap(),
+            [joined]
+        );
     }
 
     #[test]

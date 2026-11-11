@@ -120,6 +120,7 @@ use crate::doc_blocks::{self, DocBlock};
 use crate::jwpub::{self, DocumentParagraph, DocumentSummary, Publication, PublicationViewItem};
 use crate::languages;
 use crate::library::{format_pub_key, Library, PubKind, PublicationSummary};
+use crate::tokens::{tokenize, TokenSpan};
 use crate::{CoreError, Inner};
 
 /// The `PublicationView` whose items are the table of contents.
@@ -295,6 +296,13 @@ pub struct VerseRun {
     pub footnotes: Vec<String>,
     /// The letters of the cross-reference markers in the part, in order.
     pub cross_refs: Vec<String>,
+    /// The index among its verse's word tokens of the part's first token:
+    /// 0 on a verse's first part, the count of the tokens before it on a
+    /// later part. A highlight's `start_token` and `end_token` count in it.
+    pub first_token: u32,
+    /// Where each of the part's word tokens is in `text` (see
+    /// [`crate::tokens`]); empty in a [`ParagraphStyle::Note`].
+    pub tokens: Vec<TokenSpan>,
 }
 
 /// One book of a Bible, for navigating to its chapters.
@@ -2006,6 +2014,7 @@ pub(crate) fn read_chapter(
         true,
         &mut blocks,
     )?;
+    number_tokens(&mut blocks);
     for verse in &mut verses {
         let runs: Vec<&str> = blocks
             .iter()
@@ -2029,6 +2038,25 @@ pub(crate) fn read_chapter(
         verses,
         blocks,
     })
+}
+
+/// Set each verse run's `first_token`: the tokens of the verse's parts
+/// before it, in reading order.
+fn number_tokens(blocks: &mut [ChapterBlock]) {
+    let mut counted: HashMap<u32, u32> = HashMap::new();
+    for block in blocks {
+        let ChapterBlock::Paragraph { style, runs, .. } = block else {
+            continue;
+        };
+        if *style == ParagraphStyle::Note {
+            continue;
+        }
+        for run in runs {
+            let before = counted.entry(run.verse).or_default();
+            run.first_token = *before;
+            *before += u32::try_from(run.tokens.len()).unwrap_or(u32::MAX);
+        }
+    }
 }
 
 /// Append the blocks of a chapter's `PreContent`, `Content` or (`post`)
@@ -2078,6 +2106,7 @@ fn chapter_blocks(
                 style: ParagraphStyle::Note,
                 runs: vec![VerseRun {
                     label: None,
+                    tokens: Vec::new(),
                     ..inline_run(content, 0)?
                 }],
             }),
@@ -2141,6 +2170,8 @@ fn inline_run(html: &str, verse: u32) -> Result<VerseRun, CoreError> {
         text: String::new(),
         footnotes: Vec::new(),
         cross_refs: Vec::new(),
+        first_token: 0,
+        tokens: Vec::new(),
     };
     let mut kept = String::new();
     let mut at = 0;
@@ -2167,6 +2198,7 @@ fn inline_run(html: &str, verse: u32) -> Result<VerseRun, CoreError> {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ");
+    run.tokens = tokenize(&run.text);
     Ok(run)
 }
 
@@ -2691,6 +2723,8 @@ mod tests {
                         text: "Now the earth".into(),
                         footnotes: vec!["a".into()],
                         cross_refs: vec!["c".into()],
+                        first_token: 0,
+                        tokens: tokenize("Now the earth"),
                     }],
                 },
             ]
@@ -2702,7 +2736,7 @@ mod tests {
                 paragraph: 9,
                 style: ParagraphStyle::Note,
                 runs,
-            }] if runs[0].text == "The end." && runs[0].verse == 0
+            }] if runs[0].text == "The end." && runs[0].verse == 0 && runs[0].tokens.is_empty()
         ));
     }
 

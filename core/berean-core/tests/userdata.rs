@@ -577,6 +577,113 @@ fn highlight_color_and_removal() {
 }
 
 #[test]
+fn highlighting_over_highlights_joins_them() {
+    let env = Env::new();
+    let ud = env.core().userdata();
+    let v = |n| verse(NWT_E, 43, 3, n);
+    // Words 2..=5 of verse 16, words 8..=10 of it, and verses 17 to 18.
+    let a = ud
+        .highlight(
+            &range(v(16), v(16), (Some(2), Some(5))),
+            HighlightColor::Yellow,
+        )
+        .unwrap();
+    let b = ud
+        .highlight(
+            &range(v(16), v(16), (Some(8), Some(10))),
+            HighlightColor::Green,
+        )
+        .unwrap();
+    let c = ud
+        .highlight(&range(v(17), v(18), (None, None)), HighlightColor::Blue)
+        .unwrap();
+    // Apart, they stay apart.
+    assert_eq!(
+        ud.highlights(NWT_E, &chapter(NWT_E, 43, 3)).unwrap(),
+        [a.clone(), b.clone(), c.clone()]
+    );
+    let note = ud
+        .add_note("On a", "text", Some(&v(16)), Some(&a.id), None)
+        .unwrap();
+
+    // Words 4..=9 overlap a and b: one pink highlight from 2 to 10, with a's note.
+    let ab = ud
+        .highlight(
+            &range(v(16), v(16), (Some(4), Some(9))),
+            HighlightColor::Pink,
+        )
+        .unwrap();
+    assert_eq!(ab.range, range(v(16), v(16), (Some(2), Some(10))));
+    assert_eq!(ab.color, HighlightColor::Pink);
+    assert_eq!(
+        ud.highlights(NWT_E, &chapter(NWT_E, 43, 3)).unwrap(),
+        [c.clone(), ab.clone()]
+    );
+    let notes = ud.notes(&NoteFilter::default()).unwrap();
+    assert_eq!(notes[0].id, note.id);
+    assert_eq!(notes[0].highlight_id.as_deref(), Some(ab.id.as_str()));
+
+    // From word 7 of verse 16 to word 1 of verse 17: joined with ab and c, so
+    // it runs from ab's start to c's whole last verse.
+    let all = ud
+        .highlight(
+            &range(v(16), v(17), (Some(7), Some(1))),
+            HighlightColor::Orange,
+        )
+        .unwrap();
+    assert_eq!(all.range, range(v(16), v(18), (Some(2), None)));
+    assert_eq!(
+        ud.highlights(NWT_E, &chapter(NWT_E, 43, 3)).unwrap(),
+        std::slice::from_ref(&all)
+    );
+    // Inside it, a highlight just recolors the whole.
+    let inside = ud
+        .highlight(
+            &range(v(17), v(17), (Some(3), Some(3))),
+            HighlightColor::Purple,
+        )
+        .unwrap();
+    assert_eq!(inside.range, all.range);
+    assert_eq!(inside.color, HighlightColor::Purple);
+    let raw = env.raw();
+    assert_eq!(rows(&raw, "SELECT UserMarkId FROM UserMark").len(), 1);
+    assert_eq!(
+        rows(
+            &raw,
+            "SELECT BlockType, Identifier, StartToken, EndToken FROM BlockRange ORDER BY Identifier"
+        ),
+        [
+            vec![int(2), int(16), int(2), Value::Null],
+            vec![int(2), int(17), Value::Null, Value::Null],
+            vec![int(2), int(18), Value::Null, Value::Null],
+        ]
+    );
+    // Another chapter, or the paragraphs of a document, are never joined.
+    let other = ud
+        .highlight(
+            &range(
+                verse(NWT_E, 43, 4, 16),
+                verse(NWT_E, 43, 4, 16),
+                (None, None),
+            ),
+            HighlightColor::Blue,
+        )
+        .unwrap();
+    assert_eq!(
+        ud.highlights(NWT_E, &chapter(NWT_E, 43, 4)).unwrap(),
+        [other]
+    );
+    assert_eq!(
+        ud.highlights(NWT_E, &chapter(NWT_E, 43, 3)).unwrap().len(),
+        1
+    );
+    assert!(is_invalid(ud.highlight(
+        &range(v(16), v(16), (Some(5), Some(2))),
+        HighlightColor::Blue
+    )));
+}
+
+#[test]
 fn bad_highlights_are_invalid() {
     let env = Env::new();
     let ud = env.core().userdata();
