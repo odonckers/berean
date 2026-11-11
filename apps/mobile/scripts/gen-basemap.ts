@@ -1,0 +1,151 @@
+// Builds src/atlas/basemap.generated.ts, the map's land outline, from
+// Natural Earth's 1:50m land polygons (public domain,
+// https://www.naturalearthdata.com/about/terms-of-use/).
+//
+// Run by hand, not in CI; the output is committed:
+//
+//   curl -sSfLo /tmp/ne_50m_land.geojson \
+//     https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_land.geojson
+//   node scripts/gen-basemap.ts /tmp/ne_50m_land.geojson
+//
+// It clips the land to the atlas's frame (src/atlas/projection.ts),
+// projects it, simplifies each ring (Douglas-Peucker) and writes one SVG
+// path in map units.
+
+import { readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { FRAME, project } from '../src/atlas/projection.ts';
+
+type Ring = [number, number][];
+
+const source = process.argv[2];
+if (source === undefined) {
+  console.error('usage: node scripts/gen-basemap.ts <ne_50m_land.geojson>');
+  process.exit(1);
+}
+
+/** Map units a simplified ring may stray from the original. */
+const TOLERANCE = 0.6;
+/** Rings smaller than this many square map units are dropped (specks). */
+const MIN_AREA = 3;
+
+// Sutherland-Hodgman against one edge of the frame.
+function clipEdge(ring: Ring, inside: (p: [number, number]) => boolean, cross: (a: [number, number], b: [number, number]) => [number, number]): Ring {
+  const out: Ring = [];
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i];
+    const b = ring[(i + 1) % ring.length];
+    const ia = inside(a);
+    const ib = inside(b);
+    if (ia) out.push(a);
+    if (ia !== ib) out.push(cross(a, b));
+  }
+  return out;
+}
+
+function clip(ring: Ring): Ring {
+  const { west, east, south, north } = FRAME;
+  const atLon = (lon: number) => (a: [number, number], b: [number, number]): [number, number] => {
+    const t = (lon - a[0]) / (b[0] - a[0]);
+    return [lon, a[1] + t * (b[1] - a[1])];
+  };
+  const atLat = (lat: number) => (a: [number, number], b: [number, number]): [number, number] => {
+    const t = (lat - a[1]) / (b[1] - a[1]);
+    return [a[0] + t * (b[0] - a[0]), lat];
+  };
+  let r = ring;
+  r = clipEdge(r, (p) => p[0] >= west, atLon(west));
+  r = clipEdge(r, (p) => p[0] <= east, atLon(east));
+  r = clipEdge(r, (p) => p[1] >= south, atLat(south));
+  r = clipEdge(r, (p) => p[1] <= north, atLat(north));
+  return r;
+}
+
+function distanceToSegment(p: [number, number], a: [number, number], b: [number, number]): number {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const length = dx * dx + dy * dy;
+  const t = length === 0 ? 0 : Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / length));
+  return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
+}
+
+function simplify(points: Ring, tolerance: number): Ring {
+  if (points.length < 3) return points;
+  const keep = new Array<boolean>(points.length).fill(false);
+  keep[0] = keep[points.length - 1] = true;
+  const stack: [number, number][] = [[0, points.length - 1]];
+  while (stack.length > 0) {
+    const [first, last] = stack.pop()!;
+    let worst = -1;
+    let at = -1;
+    for (let i = first + 1; i < last; i++) {
+      const d = distanceToSegment(points[i], points[first], points[last]);
+      if (d > worst) {
+        worst = d;
+        at = i;
+      }
+    }
+    if (worst > tolerance) {
+      keep[at] = true;
+      stack.push([first, at], [at, last]);
+    }
+  }
+  return points.filter((_, i) => keep[i]);
+}
+
+/** One decimal: a tenth of a map unit is about 250 m. */
+function round(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
+function area(ring: Ring): number {
+  let sum = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i];
+    const b = ring[(i + 1) % ring.length];
+    sum += a[0] * b[1] - b[0] * a[1];
+  }
+  return Math.abs(sum) / 2;
+}
+
+const geojson = JSON.parse(readFileSync(source, 'utf8')) as {
+  features: { geometry: { type: string; coordinates: unknown } }[];
+};
+
+const rings: Ring[] = [];
+for (const feature of geojson.features) {
+  const { type, coordinates } = feature.geometry;
+  const polygons = (type === 'Polygon' ? [coordinates] : coordinates) as Ring[][];
+  for (const polygon of polygons) {
+    for (const ring of polygon) rings.push(ring);
+  }
+}
+
+let path = '';
+let kept = 0;
+for (const ring of rings) {
+  const clipped = clip(ring.slice(0, -1));
+  if (clipped.length < 3) continue;
+  const projected = clipped.map(([lon, lat]) => {
+    const p = project(lon, lat);
+    return [p.x, p.y] as [number, number];
+  });
+  // Simplify as an open line from the first point back round to it.
+  const simple = simplify([...projected, projected[0]], TOLERANCE).slice(0, -1);
+  if (simple.length < 3 || area(simple) < MIN_AREA) continue;
+  kept++;
+  path += 'M' + simple.map(([x, y]) => `${round(x)} ${round(y)}`).join('L') + 'Z';
+}
+
+const out = `// Generated by scripts/gen-basemap.ts from Natural Earth's 1:50m land
+// (public domain). Don't edit by hand; rerun the script.
+
+/** The land inside the atlas frame, as one SVG path in map units. */
+export const LAND_PATH =
+  ${JSON.stringify(path)};
+`;
+const target = join(dirname(fileURLToPath(import.meta.url)), '../src/atlas/basemap.generated.ts');
+writeFileSync(target, out);
+console.log(`${kept} rings, ${path.length} characters -> ${target}`);
