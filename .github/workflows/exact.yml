@@ -1,12 +1,15 @@
 name: exact
 
-# The Exact test build (apps/berean, docs/frontend-rebuild.md slice 1).
-# Builds it for the iOS Simulator on a GitHub Mac, installs the pinned
-# Study Bible fixture into the app's test storage, drives the Library and a
-# Bible chapter, and captures them on iPhone and iPad, light and dark, and
-# at a large text size. The images go up as the `screenshots-ios` artifact,
-# named <screen>/<variant>.png as screenshots.yml names its own. It runs
-# with a read-only token and never writes to the repo or the PR.
+# The Exact app (apps/berean, docs/frontend-rebuild.md) on iOS. Builds it
+# for the iOS Simulator on a GitHub Mac, runs its Contract tests, installs
+# the pinned Study Bible fixture into the app's test storage, drives the
+# Library and a Bible chapter, and captures them on iPhone and iPad, light
+# and dark, and at a large text size. The images go up as the
+# `screenshots-ios` artifact, named <screen>/<variant>.png as screenshots.yml
+# names its own, with a pr.json saying which PR they are for;
+# screenshots-comment.yml posts them on that PR. This workflow runs with a
+# read-only token and never writes to the repo or the PR. The Linux side
+# (the data crate's tests and the headless host) is exact-linux.yml.
 
 on:
   pull_request:
@@ -17,6 +20,11 @@ on:
       - "core/Cargo.lock"
       - ".github/workflows/exact.yml"
   workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number to post the screenshots on (optional)
+        required: false
+        default: ""
 
 concurrency:
   group: exact-${{ github.event.pull_request.number || github.ref }}
@@ -47,9 +55,30 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Describe the run
+        working-directory: .
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.inputs.pr }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          mkdir -p shots
+          jq -n --arg event "$EVENT" --arg pr "$PR_NUMBER" --arg sha "$HEAD_SHA" --arg captured "$(git rev-parse HEAD)" \
+            '{event: $event, pr: $pr, head_sha: $sha, captured_sha: $captured}' > shots/pr.json
+          cat shots/pr.json
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
+
+      # Hermes' prebuilt bundles and Bun's packages, both fixed by the
+      # pinned Exact commit.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/hermes-lean-sys
+            ~/.bun/install/cache
+          key: exact-ios-${{ hashFiles('apps/berean/exact-version.txt') }}
 
       - name: Exact at the pinned commit
         run: scripts/fetch-exact.sh
@@ -117,8 +146,29 @@ jobs:
       - name: Build for the iPhone simulator
         run: ./exact.mjs ios --sim "$PHONE"
 
+      # After the build, not during it: two booted simulators slow the
+      # build by half again. Both are up and settled before the first launch,
+      # since a launch onto a simulator still starting sometimes never opens
+      # the agent's socket.
+      - name: Boot the simulators
+        run: |
+          xcrun simctl boot "$PHONE" 2>/dev/null || true
+          xcrun simctl boot "$TABLET" 2>/dev/null || true
+          xcrun simctl bootstatus "$PHONE" -b
+          xcrun simctl bootstatus "$TABLET" -b
+
       - name: Tests on the iPhone simulator
-        run: ./exact.mjs test ios --sim "$PHONE"
+        run: |
+          # Once more, on a restarted simulator, if the app's launch never
+          # reached the agent. Each try is limited, since that can hang.
+          limit() { perl -e 'alarm shift; exec @ARGV' 900 "$@"; }
+          limit ./exact.mjs test ios --sim "$PHONE" || {
+            echo "-- restarting the simulator and trying the tests again"
+            xcrun simctl shutdown "$PHONE" 2>/dev/null || true
+            xcrun simctl boot "$PHONE"
+            xcrun simctl bootstatus "$PHONE" -b
+            limit ./exact.mjs test ios --sim "$PHONE"
+          }
 
       - name: Capture
         run: scripts/capture-ios.sh ../../shots "$PHONE" "$TABLET" ../../core/fixtures/nwtsty_E.jwpub

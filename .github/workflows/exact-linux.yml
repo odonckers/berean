@@ -1,0 +1,130 @@
+name: exact-linux
+
+# The Exact app's Linux side (apps/berean, docs/frontend-rebuild.md slice 2):
+# the data crate's tests over the real core, with the pinned Study Bible
+# fixture installed the way the app installs it, and the app's Contract
+# tests on Exact's headless Linux host. Quicker than the iOS job
+# (exact.yml), so a broken data source shows here first.
+
+on:
+  pull_request:
+    paths:
+      - "apps/berean/**"
+      - "core/berean-core/**"
+      - "core/Cargo.toml"
+      - "core/Cargo.lock"
+      - "core/scripts/fixtures.txt"
+      - ".github/workflows/exact-linux.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: exact-linux-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Exact may send authoring notes to its team; never from CI.
+  EXACT_FEEDBACK: "0"
+  # Line tables are the part of the build the tests can do without, and the
+  # runner's disk is tight.
+  CARGO_PROFILE_DEV_DEBUG: "0"
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: apps/berean
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Free disk space
+        # Toolchains the image ships and this job never uses.
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: System packages
+        # The Linux host's DRM/KMS, input and font dependencies.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config clang libudev-dev libinput-dev libdrm-dev libgbm-dev \
+            libxkbcommon-dev libfontconfig1-dev libfreetype-dev libwayland-dev
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      # Hermes' prebuilt bundle and Bun's packages, both fixed by the pinned
+      # Exact commit.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/hermes-lean-sys
+            ~/.bun/install/cache
+          key: exact-linux-${{ hashFiles('apps/berean/exact-version.txt') }}
+
+      - name: Exact at the pinned commit
+        run: scripts/fetch-exact.sh
+
+      - name: Rust (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: exact-linux
+          workspaces: apps/berean
+          cache-on-failure: true
+
+      - name: Hermes bundle
+        working-directory: apps/berean/.sdk/exact
+        run: cargo run --manifest-path vendor/ibex/crates/hermes-lean-sys-installer/Cargo.toml -- --target x86_64-unknown-linux-gnu
+
+      # The same fixtures cache core.yml fills, by the same key.
+      - name: Fixtures cache key
+        id: fixtures-key
+        working-directory: core
+        run: |
+          sums=$(grep -v -e '^#' -e '^[[:space:]]*$' scripts/fixtures.txt | awk '{print $1}' | sha256sum | cut -d' ' -f1)
+          echo "key=jwpub-fixtures-$sums" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: core/fixtures
+          key: ${{ steps.fixtures-key.outputs.key }}
+          restore-keys: jwpub-fixtures-
+
+      - name: Fetch fixtures
+        working-directory: core
+        run: scripts/fetch-fixtures.sh
+
+      - name: Format
+        run: cargo fmt -p berean-data --check
+
+      - name: Clippy
+        run: cargo clippy -p berean-data --all-targets -- -D warnings
+
+      - name: Data crate tests
+        env:
+          # Fail, not skip, when the Study Bible fixture is missing.
+          BEREAN_REQUIRE_FIXTURE: "1"
+        run: cargo test -p berean-data
+
+      # The build compiles helpers in Exact's own workspace offline, so its
+      # crates have to be on disk first.
+      - name: Exact's crates
+        working-directory: apps/berean/.sdk/exact
+        run: cargo fetch --locked
+
+      - name: Build the headless Linux host
+        run: ./exact.mjs linux
+
+      - name: Contract tests on the headless Linux host
+        run: ./exact.mjs test linux

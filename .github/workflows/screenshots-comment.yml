@@ -1,7 +1,8 @@
 name: screenshots-comment
 
-# Posts what screenshots.yml captured on its PR, as one comment that is
-# updated in place (docs/screenshots.md). This runs from main with a write
+# Posts what screenshots.yml (the Expo app on Android) or exact.yml (the
+# Exact app on the iOS Simulator) captured on its PR, as one comment for
+# each that is updated in place (docs/screenshots.md). This runs from main with a write
 # token, so it never checks out or runs PR code: it only reads the
 # artifact, accepts nothing but PNGs named <screen>/<variant>.png, checks
 # that the PR's head is the commit that was captured, and builds the comment
@@ -10,7 +11,7 @@ name: screenshots-comment
 
 on:
   workflow_run:
-    workflows: [screenshots]
+    workflows: [screenshots, exact]
     types: [completed]
 
 permissions:
@@ -40,7 +41,7 @@ jobs:
         id: download
         continue-on-error: true
         with:
-          name: screenshots
+          name: ${{ github.event.workflow_run.name == 'exact' && 'screenshots-ios' || 'screenshots' }}
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/artifact
