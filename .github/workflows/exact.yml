@@ -61,7 +61,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: exact-ios
+          shared-key: exact-ios-xcode27
           workspaces: apps/berean
           cache-on-failure: true
 

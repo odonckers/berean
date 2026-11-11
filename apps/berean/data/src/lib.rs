@@ -196,10 +196,10 @@ fn run(id: String, text: &str, verse: u32, label: bool, mark: &str) -> Value {
     ])
 }
 
-/// The test build's sample highlights: verse 16 in yellow and, in verse 3,
+/// The test build's sample highlights: verse 5 in yellow and, in verse 3,
 /// the first word of more than six letters in green. Real highlights come
 /// from the user's data once word highlighting (#116) merges.
-const MARKED_VERSE: u32 = 16;
+const MARKED_VERSE: u32 = 5;
 const MARKED_WORD_VERSE: u32 = 3;
 
 fn chapter_value(read: &BibleChapter, book_name: &str, last: u32) -> Value {

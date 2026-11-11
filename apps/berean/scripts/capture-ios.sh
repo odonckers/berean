@@ -5,8 +5,8 @@
 #
 # For each simulator: install the app, put the Study Bible in the inbox of
 # the agent's `ci` store (the data crate installs what it finds there on
-# first open), then drive the Library and John 3 and save
-# <out>/<screen>/<variant>.png: phone-light, phone-dark, phone-large-text,
+# first open), then drive the Library and John 3, tap verse 2, and save
+# <out>/<screen>/<variant>.png (library, read, tapped): phone-light, phone-dark, phone-large-text,
 # tablet-light, tablet-dark. `check both` lists clipped text, covered
 # controls, small targets and low contrast in the log.
 set -euo pipefail
@@ -17,7 +17,7 @@ tablet="$3"
 bible="$(cd "$(dirname "$4")" && pwd)/$(basename "$4")"
 app="${APP_ID:-com.odonckers.berean.exact}"
 cd "$(dirname "$0")/.."
-mkdir -p "$out/library" "$out/read"
+mkdir -p "$out/library" "$out/read" "$out/tapped"
 
 seed() {
   local udid="$1" container inbox
@@ -38,7 +38,8 @@ drive() {
     tree \
     "tap pub-nwtsty" "clock data" "clock settle" \
     "screenshot $out/read/$variant.png window" \
-    "tap verse-3" "clock settle" \
+    "tap verse-2" "clock settle" \
+    "screenshot $out/tapped/$variant.png window" \
     "check both" \
     back "clock settle"
 }
@@ -49,6 +50,9 @@ status=0
 for device in phone tablet; do
   udid="${!device}"
   echo "== $device ($udid)"
+  # Booted and ready before the install, so the first launch isn't racing
+  # the simulator's own start-up.
+  xcrun simctl bootstatus "$udid" -b
   ./exact.mjs ios --sim "$udid"
   seed "$udid"
   drive "$udid" "$device-light" light || status=1
