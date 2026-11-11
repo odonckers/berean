@@ -30,7 +30,7 @@ jobs:
       run:
         working-directory: core
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref }}
           persist-credentials: false
@@ -51,7 +51,7 @@ jobs:
           sums=$(grep -v -e '^#' -e '^[[:space:]]*$' scripts/fixtures.txt | awk '{print $1}' | sha256sum | cut -d' ' -f1)
           echo "key=jwpub-fixtures-$sums" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: core/fixtures
           key: ${{ steps.fixtures-key.outputs.key }}
