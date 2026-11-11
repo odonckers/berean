@@ -133,6 +133,11 @@ jobs:
           tablet=$(xcrun simctl create "Berean iPad" "$ipad" "$id")
           echo "PHONE=$phone" >> "$GITHUB_ENV"
           echo "TABLET=$tablet" >> "$GITHUB_ENV"
+          # Booting now lets both finish their first-boot work during the
+          # build; a launch onto a simulator still settling sometimes never
+          # opens the agent's socket.
+          xcrun simctl boot "$phone"
+          xcrun simctl boot "$tablet"
 
       - name: The Study Bible fixture
         working-directory: core
@@ -147,7 +152,14 @@ jobs:
         run: ./exact.mjs ios --sim "$PHONE"
 
       - name: Tests on the iPhone simulator
-        run: ./exact.mjs test ios --sim "$PHONE"
+        run: |
+          xcrun simctl bootstatus "$PHONE" -b
+          # Once more if the app's launch never reached the agent (above).
+          ./exact.mjs test ios --sim "$PHONE" || {
+            echo "-- trying the tests again"
+            xcrun simctl terminate "$PHONE" "$APP_ID" 2>/dev/null || true
+            ./exact.mjs test ios --sim "$PHONE"
+          }
 
       - name: Capture
         run: scripts/capture-ios.sh ../../shots "$PHONE" "$TABLET" ../../core/fixtures/nwtsty_E.jwpub
