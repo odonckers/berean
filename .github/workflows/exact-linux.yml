@@ -117,6 +117,12 @@ jobs:
           BEREAN_REQUIRE_FIXTURE: "1"
         run: cargo test -p berean-data
 
+      # The build compiles helpers in Exact's own workspace offline, so its
+      # crates have to be on disk first.
+      - name: Exact's crates
+        working-directory: apps/berean/.sdk/exact
+        run: cargo fetch --locked
+
       - name: Build the headless Linux host
         run: ./exact.mjs linux
 
