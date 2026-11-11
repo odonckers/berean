@@ -1,6 +1,6 @@
 # Frontend rebuild on Exact
 
-Status: **slice 1, the test build, in progress** (Owen said go on Nov 11, 2026). The app is in
+Status: **slice 1, the test build, done; waiting on Owen's yes to merge** (Owen said go on Nov 11, 2026). The app is in
 `apps/berean`; what the test build found is under [Test build findings](#test-build-findings).
 Nothing merges without Owen's yes.
 
@@ -58,7 +58,9 @@ them again.
   screen-by-screen swap inside it.
 - **Our cloud sessions run on Linux** and can't build for iOS. They can run
   Exact's web loop and its headless Linux host. iOS builds happen in CI on
-  macOS runners. Exact's own CI uses GitHub's `macos-26` runners.
+  macOS runners. Exact's own CI uses GitHub's `macos-26` runners but
+  doesn't build for iOS there; Berean's iOS job needs the `xcode-27`
+  image (see [Test build findings](#test-build-findings)).
 
 ## Platforms: what this targets first
 
@@ -151,8 +153,8 @@ This holds whatever the framework. A survey of the Expo app found:
 UI pull requests still need reviewed screenshots (`CLAUDE.md`,
 `docs/screenshots.md`). Exact's agent can screenshot every host, so:
 
-1. **iOS, from the first app PR:** a workflow on GitHub's `macos-26`
-   runners builds the Exact app for the iOS Simulator and captures each
+1. **iOS, from the first app PR:** a workflow on GitHub's `xcode-27`
+   runners (`.github/workflows/exact.yml`) builds the Exact app for the iOS Simulator and captures each
    screen on iPhone and iPad, light and dark, and the largest text size,
    with `scripts/agent.mjs ios … screenshot`. It posts to the PR through
    the same comment workflow the Android job uses today. It also runs the
@@ -180,6 +182,33 @@ it is retired.
 - The Expo app keeps shipping and gets only fixes for real breakage until
   the switch.
 
+## Test build findings
+
+Slice 1 (`apps/berean`, PR #118), Nov 11, 2026, at Exact `db72e04f`. The
+iOS results are from the `exact` workflow on the iOS 27.2 Simulator
+(iPhone 17 Pro and iPad Pro 11-inch), reading John 3 from the real Study
+Bible (`nwtsty_E.jwpub`) through `berean-core`.
+
+**Verdict: go.** The Bible chapter draws the way Berean needs.
+
+| Question | Answer |
+| --- | --- |
+| Per-verse taps | Work. Each verse number is an inline text run with `press=`; iOS delivers the tap as a native inline-text activation, with no overlay views. |
+| Per-word and per-verse highlights | Work. A run takes its own `background-color`: a word (green) and a whole verse (yellow) in the same paragraph, and the tapped verse (blue), in light and dark. |
+| Per-word taps | Not tried at scale. The mechanism is the same run with a `press`, so a word tap means a run per word (about 900 in John 3); slice 7 measures that before relying on it. |
+| Margin markers | Still open. Exact documents no line positions for a run, so markers wait for slice 7, or sit at the start of a paragraph. |
+| Text selection | Not checked yet; the chapter list sets `user-select="text"`. |
+| Storage | The data crate opens the core itself from the directories Exact passes to `configure_storage`; no native module. Rust runs on a worker (`rust.mode` off), so iOS runs the core natively, not as Wasm. |
+| Accessibility | Exact's `check both` on the iPhone finds nothing in light or dark: text fits, nothing covered, targets 44 points or more, contrast passes. Verse numbers read as "Verse N". VoiceOver itself wasn't driven. |
+| Largest text | The Library and the chapter grow with Dynamic Type and nothing clips. The chapter's line spacing gets loose at the largest size, and the header title stays at its size. Both are styling for slice 7. |
+| iPad | Works. On the 11-inch iPad Pro the chapter keeps a centered reading column of at most 42rem, and `check` finds nothing in light or dark. The Library's one row stretches across the screen, which the Library slice changes. |
+| Builds | Exact's iOS host needs the iOS 27.1 SDK or later. GitHub's `macos-26` image stops at Xcode 26.6, so the job runs on the `xcode-27` image (a public preview) with Xcode 27.2. A cold build takes about 25 minutes and the whole job under an hour, most of the rest being two simulators' first launches; cached runs are the next thing to measure. |
+| Linux | The same app builds and its Contract test passes on the headless Linux host in a cloud session, which is the fast loop for Contract changes. |
+
+What the test build leaves for later slices: covers (slice 3), a download
+screen (it reads `.jwpub` files dropped into `inbox/`), and the web build,
+which needs the core on WebAssembly.
+
 ## Slices
 
 ### 0. This plan (docs only)
@@ -201,7 +230,7 @@ it is retired.
 
 ### 2. CI
 
-- The iOS screenshot and Contract-test workflow, on `macos-26`, with the
+- The iOS screenshot and Contract-test workflow, on `xcode-27`, with the
   Exact checkout and Rust, Bun and Hermes caches.
 - A Linux job that builds the data crate and runs the core's tests with it.
 
