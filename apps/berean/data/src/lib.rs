@@ -335,3 +335,6 @@ impl DataSource for Berean {
         }))
     }
 }
+
+#[cfg(test)]
+mod tests;

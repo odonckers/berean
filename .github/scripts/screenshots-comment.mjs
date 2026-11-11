@@ -1,7 +1,8 @@
-// Posts a screenshots.yml run's images on its PR (screenshots-comment.yml,
-// docs/screenshots.md). Runs from main with a write token, on an artifact
-// that PR code made, so it trusts nothing in that artifact but what it
-// checks here:
+// Posts a screenshots.yml run's images (the Expo app on Android) or an
+// exact.yml run's (the Exact app on the iOS Simulator) on its PR, each in a
+// comment of its own (screenshots-comment.yml, docs/screenshots.md). Runs
+// from main with a write token, on an artifact that PR code made, so it
+// trusts nothing in that artifact but what it checks here:
 // - only PNG files named <screen>/<variant>.png (lowercase, digits and
 //   dashes) and a small pr.json; any other file, a link or a bad PNG fails
 //   the run;
@@ -9,14 +10,14 @@
 //   the run captured (for a manual run, the number someone with write
 //   access typed in);
 // - the comment is built here, from those names only.
-// Images go to the ci-screenshots branch, under pr-<n>/<run id>/, and that
-// branch is rewritten as one commit that keeps each PR's latest run.
+// Images go to the ci-screenshots branch, under pr-<n>/<run id>/ (Android)
+// or pr-<n>-ios/<run id>/ (iOS), and that branch is rewritten as one commit
+// that keeps each PR's latest run of each.
 
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
-const MARKER = '<!-- berean-screenshots -->';
 const BRANCH = 'ci-screenshots';
 const IMAGE = /^[a-z0-9-]{1,40}\/[a-z0-9-]{1,40}\.png$/;
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -24,20 +25,50 @@ const MAX_FILES = 150;
 const MAX_IMAGE = 4 * 1024 * 1024;
 const MAX_TOTAL = 80 * 1024 * 1024;
 
-const SCREENS = ['read', 'today', 'library', 'notes', 'studyspace', 'search', 'appearance'];
-const SCREEN_TITLES = { read: 'Read', today: 'Today', library: 'Library', notes: 'Notes', studyspace: 'Studyspace', search: 'Search', appearance: 'Appearance' };
-const ROWS = [
-  [
-    ['phone-light', 'Phone, light', 220],
-    ['phone-dark', 'Phone, dark', 220],
-    ['phone-large-text', 'Phone, largest text', 220],
-  ],
-  [
-    ['tablet-light', 'Tablet, light', 260],
-    ['tablet-dark', 'Tablet, dark', 260],
-    ['tablet-landscape-light', 'Tablet, landscape', 420],
-  ],
-];
+// What each capturing workflow posts, by its name.
+const KINDS = {
+  screenshots: {
+    marker: '<!-- berean-screenshots -->',
+    heading: 'Screenshots',
+    dir: (pr) => `pr-${pr}`,
+    intro: (commit, runLink) =>
+      `${commit} on an Android emulator: a Pixel 6 phone and a 1600×2560 tablet, at half size. Tap one to open it; the full-size set is in the screenshots-full artifact of ${runLink}. Review these before merging (docs/screenshots.md).`,
+    screens: ['read', 'today', 'library', 'notes', 'studyspace', 'search', 'appearance'],
+    titles: { read: 'Read', today: 'Today', library: 'Library', notes: 'Notes', studyspace: 'Studyspace', search: 'Search', appearance: 'Appearance' },
+    rows: [
+      [
+        ['phone-light', 'Phone, light', 220],
+        ['phone-dark', 'Phone, dark', 220],
+        ['phone-large-text', 'Phone, largest text', 220],
+      ],
+      [
+        ['tablet-light', 'Tablet, light', 260],
+        ['tablet-dark', 'Tablet, dark', 260],
+        ['tablet-landscape-light', 'Tablet, landscape', 420],
+      ],
+    ],
+  },
+  exact: {
+    marker: '<!-- berean-screenshots-ios -->',
+    heading: 'iOS screenshots (Exact)',
+    dir: (pr) => `pr-${pr}-ios`,
+    intro: (commit, runLink) =>
+      `${commit} of the Exact app (apps/berean) on the iOS Simulator: an iPhone 17 Pro and an 11-inch iPad Pro. Tap one to open it at full size; the set is also in the screenshots-ios artifact of ${runLink}. Review these before merging (docs/screenshots.md).`,
+    screens: ['library', 'read', 'tapped'],
+    titles: { library: 'Library', read: 'Read', tapped: 'Read, after tapping a verse' },
+    rows: [
+      [
+        ['phone-light', 'iPhone, light', 200],
+        ['phone-dark', 'iPhone, dark', 200],
+        ['phone-large-text', 'iPhone, largest text', 200],
+      ],
+      [
+        ['tablet-light', 'iPad, light', 280],
+        ['tablet-dark', 'iPad, dark', 280],
+      ],
+    ],
+  },
+};
 
 const env = (name) => {
   const value = process.env[name];
@@ -51,6 +82,9 @@ const artifactDir = env('ARTIFACT_DIR');
 const workDir = env('WORK_DIR');
 const event = JSON.parse(readFileSync(env('GITHUB_EVENT_PATH'), 'utf8'));
 const run = event.workflow_run;
+const kind = KINDS[run.name];
+if (!kind) throw new Error(`No screenshots kind for workflow ${JSON.stringify(run.name)}`);
+const MARKER = kind.marker;
 
 function summary(text) {
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${text}\n`);
@@ -152,8 +186,8 @@ function publish(pr, images) {
   } catch {
     console.log(`No ${BRANCH} branch yet; starting it.`);
   }
-  const dir = `pr-${pr}/${run.id}`;
-  rmSync(join(workDir, `pr-${pr}`), { recursive: true, force: true });
+  const dir = `${kind.dir(pr)}/${run.id}`;
+  rmSync(join(workDir, kind.dir(pr)), { recursive: true, force: true });
   for (const image of images) {
     mkdirSync(join(workDir, dir, image.split('/')[0]), { recursive: true });
     cpSync(join(artifactDir, image), join(workDir, dir, image));
@@ -172,7 +206,8 @@ function gallery(images, base) {
     if (!byScreen.has(screen)) byScreen.set(screen, new Set());
     byScreen.get(screen).add(file.slice(0, -'.png'.length));
   }
-  const order = [...SCREENS.filter((s) => byScreen.has(s)), ...[...byScreen.keys()].filter((s) => !SCREENS.includes(s)).sort()];
+  const { screens, titles, rows: ROWS } = kind;
+  const order = [...screens.filter((s) => byScreen.has(s)), ...[...byScreen.keys()].filter((s) => !screens.includes(s)).sort()];
   const known = new Set(ROWS.flat().map(([v]) => v));
   const cell = (screen, variant, width) => {
     const url = `${base}/${screen}/${variant}.png`;
@@ -187,7 +222,7 @@ function gallery(images, base) {
         (row) =>
           `<tr>${row.map(([, title]) => `<th>${title}</th>`).join('')}</tr>\n<tr>${row.map(([v, , width]) => cell(screen, v, width)).join('')}</tr>`,
       );
-    const title = SCREEN_TITLES[screen] ?? screen;
+    const title = titles[screen] ?? screen;
     return `<details><summary><b>${title}</b></summary>\n\n<table>\n${rows.join('\n')}\n</table>\n\n</details>`;
   });
   return sections.join('\n');
@@ -214,7 +249,7 @@ async function main() {
   const commit = (sha ?? run.head_sha).slice(0, 7);
 
   if (run.conclusion !== 'success' || images.length === 0) {
-    const body = `${MARKER}\n### Screenshots\n\nThe capture failed for ${commit}, so there are no new screenshots. See ${runLink}.`;
+    const body = `${MARKER}\n### ${kind.heading}\n\nThe capture failed for ${commit}, so there are no new screenshots. See ${runLink}.`;
     if (pr) await upsertComment(pr, body);
     else summary(body);
     return;
@@ -228,9 +263,9 @@ async function main() {
   const base = publish(pr, images);
   const body = [
     MARKER,
-    '### Screenshots',
+    `### ${kind.heading}`,
     '',
-    `${commit} on an Android emulator: a Pixel 6 phone and a 1600×2560 tablet, at half size. Tap one to open it; the full-size set is in the screenshots-full artifact of ${runLink}. Review these before merging (docs/screenshots.md).`,
+    kind.intro(commit, runLink),
     '',
     gallery(images, base),
   ].join('\n');

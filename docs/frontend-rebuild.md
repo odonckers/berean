@@ -1,6 +1,6 @@
 # Frontend rebuild on Exact
 
-Status: **slice 1, the test build, done; waiting on Owen's yes to merge** (Owen said go on Nov 11, 2026). The app is in
+Status: **slice 1, the test build, merged (#118); slice 2, CI, in review** (Owen said go on Nov 11, 2026). The app is in
 `apps/berean`; what the test build found is under [Test build findings](#test-build-findings).
 Nothing merges without Owen's yes.
 
@@ -202,7 +202,7 @@ Bible (`nwtsty_E.jwpub`) through `berean-core`.
 | Accessibility | Exact's `check both` on the iPhone finds nothing in light or dark: text fits, nothing covered, targets 44 points or more, contrast passes. Verse numbers read as "Verse N". VoiceOver itself wasn't driven. |
 | Largest text | The Library and the chapter grow with Dynamic Type and nothing clips. The chapter's line spacing gets loose at the largest size, and the header title stays at its size. Both are styling for slice 7. |
 | iPad | Works. On the 11-inch iPad Pro the chapter keeps a centered reading column of at most 42rem, and `check` finds nothing in light or dark. The Library's one row stretches across the screen, which the Library slice changes. |
-| Builds | Exact's iOS host needs the iOS 27.1 SDK or later. GitHub's `macos-26` image stops at Xcode 26.6, so the job runs on the `xcode-27` image (a public preview) with Xcode 27.2. A cold build takes about 25 minutes and the whole job under an hour, most of the rest being two simulators' first launches; cached runs are the next thing to measure. |
+| Builds | Exact's iOS host needs the iOS 27.1 SDK or later. GitHub's `macos-26` image stops at Xcode 26.6, so the job runs on the `xcode-27` image (a public preview) with Xcode 27.2. A cold build takes about 25 minutes and the whole job under an hour, most of the rest being two simulators' first launches. With Rust's cache warm the build takes about 15 minutes and the job about 50. |
 | Linux | The same app builds and its Contract test passes on the headless Linux host in a cloud session, which is the fast loop for Contract changes. |
 
 What the test build leaves for later slices: covers (slice 3), a download
@@ -231,8 +231,12 @@ which needs the core on WebAssembly.
 ### 2. CI
 
 - The iOS screenshot and Contract-test workflow, on `xcode-27`, with the
-  Exact checkout and Rust, Bun and Hermes caches.
-- A Linux job that builds the data crate and runs the core's tests with it.
+  Exact checkout and Rust, Bun and Hermes caches. Its screenshots post on
+  the PR as their own comment (docs/screenshots.md).
+- A Linux job that builds the data crate and runs the core's tests with it:
+  `exact-linux.yml` runs the data crate's tests over the real core, with
+  the Study Bible fixture installed through the inbox, and the Contract
+  tests on Exact's headless Linux host.
 
 ### 3. Core: covers
 

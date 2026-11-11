@@ -29,9 +29,32 @@ Library › Find (searching “watchtower”), Notes, Studyspace, Search
 `apps/mobile/scripts/emulator-screenshots.ts`; add a screen there when a
 new one matters.
 
-What it does not show: anything on iOS, iPadOS or macOS, and screens you
-can only reach by tapping through a flow. For those, add screenshots by
-hand to the PR description.
+What it does not show: the Expo app on iOS, iPadOS or macOS, and screens
+you can only reach by tapping through a flow. For those, add screenshots
+by hand to the PR description.
+
+## The Exact app on iOS
+
+Pull requests that touch `apps/berean` (the frontend rebuild on Exact,
+docs/frontend-rebuild.md) get a second comment, “iOS screenshots (Exact)”.
+`.github/workflows/exact.yml` builds the app for the iOS Simulator on
+GitHub's `xcode-27` Mac image, runs its Contract tests, installs the pinned
+Study Bible fixture through the app's inbox and drives it with Exact's
+agent (`apps/berean/scripts/capture-ios.sh`):
+
+| Variant | Device |
+| --- | --- |
+| `phone-light`, `phone-dark` | iPhone 17 Pro |
+| `phone-large-text` | the iPhone at the largest Dynamic Type size |
+| `tablet-light`, `tablet-dark` | 11-inch iPad Pro (M5) |
+
+The screens are Library, Read (John 3) and Read after tapping verse 2
+(not at the largest text size, where verse 2 is below the fold). The
+images go up as the `screenshots-ios` artifact, full size, and in the
+job's log as base64 between `-----BEGIN PNG` markers. The same comment
+workflow posts them, to `pr-<n>-ios/` on `ci-screenshots`. A run takes
+about 50 minutes with a warm cache. Actions › exact › Run workflow takes a
+PR number too.
 
 ## How it works
 
@@ -40,7 +63,7 @@ hand to the PR description.
   the PR's code with a read-only token and uploads the images as the
   `screenshots` artifact (half size) and `screenshots-full`.
 - `.github/workflows/screenshots-comment.yml` runs from `main` when that
-  finishes. It never runs PR code. It accepts only PNGs named
+  (or `exact.yml`) finishes. It never runs PR code. It accepts only PNGs named
   `<screen>/<variant>.png`, checks that the PR's head is the commit that
   was captured, pushes the images to the `ci-screenshots` branch (one
   commit holding each PR's latest run) and writes the comment itself. This
