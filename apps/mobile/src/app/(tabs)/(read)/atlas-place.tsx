@@ -101,7 +101,7 @@ export default function AtlasPlaceScreen() {
                 <View key={`${c.publication}-${i}`} style={[styles.quote, { borderColor: colors.separator }]}>
                   <UIText>“{c.quote}”</UIText>
                   <UIText variant="caption" secondary>
-                    {publicationName(c.publication)}, {c.location}
+                    {publicationName(c.publication)}, {c.location.replace(`${c.publication} `, '')}
                   </UIText>
                 </View>
               ),

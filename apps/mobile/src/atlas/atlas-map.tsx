@@ -41,12 +41,16 @@ import { mix } from '@/design/appearance';
 import { useBerean } from '@/design/theme';
 import { type Camera, cameraAbout, clamp, screenToCanvas, type Size } from '@/studyspace/camera';
 
-/** The map's colours, from the theme: land on the page colour, water a wash of the accent. */
+/**
+ * The map's colours, from the theme, as a printed atlas has them: the sea
+ * plain page, the land a step toward the text with a drawn coast. (Water
+ * washed with the accent read as land in the earthy themes.)
+ */
 export function mapPalette(colors: { surface: string; text: string; textSecondary: string; accent: string }) {
   return {
-    land: colors.surface,
-    water: mix(colors.surface, colors.accent, 0.14),
-    coast: mix(colors.surface, colors.text, 0.3),
+    land: mix(colors.surface, colors.text, 0.09),
+    water: colors.surface,
+    coast: mix(colors.surface, colors.text, 0.38),
     dot: colors.textSecondary,
     accent: colors.accent,
     halo: colors.surface,
