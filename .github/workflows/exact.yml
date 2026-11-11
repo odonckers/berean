@@ -87,7 +87,9 @@ jobs:
             xcodebuild -downloadPlatform iOS
             xcrun simctl list runtimes available --json > "$RUNNER_TEMP/runtimes.json"
           fi
-          runtime=$(jq -c '[.runtimes[] | select(.platform == "iOS")] | sort_by(.version | split(".") | map(tonumber)) | last' "$RUNNER_TEMP/runtimes.json")
+          # The newest general iOS runtime: some runtimes are for one device
+          # only (iOS-27-2-iPhone19-4), so prefer the one that runs the most.
+          runtime=$(jq -c '[.runtimes[] | select(.platform == "iOS")] | sort_by([(.version | split(".") | map(tonumber)), (.supportedDeviceTypes | length)]) | last' "$RUNNER_TEMP/runtimes.json")
           # The first of these the runtime supports.
           pick() { echo "$runtime" | jq -r --argjson want "$1" '[.supportedDeviceTypes[] | select(.name as $n | $want | index($n))] | sort_by(.name as $n | $want | index($n)) | first | .identifier // empty'; }
           iphone=$(pick '["iPhone 17 Pro","iPhone 17","iPhone 16 Pro","iPhone 16"]')
@@ -95,7 +97,7 @@ jobs:
           id=$(echo "$runtime" | jq -r .identifier)
           echo "runtime $id, iPhone $iphone, iPad $ipad"
           if [ -z "$iphone" ] || [ -z "$ipad" ]; then
-            echo "$runtime" | jq -r '.supportedDeviceTypes[].name'
+            jq -r '.runtimes[] | "\(.identifier) \(.version): \([.supportedDeviceTypes[].name] | join(", "))"' "$RUNNER_TEMP/runtimes.json"
             exit 1
           fi
           phone=$(xcrun simctl create "Berean iPhone" "$iphone" "$id")
