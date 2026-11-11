@@ -1,6 +1,6 @@
 # Frontend rebuild on Exact
 
-Status: **plan, pending Owen's go** (Nov 11, 2026). No code slice starts
+Status: **plan; iOS first decided (Nov 11, 2026), pending Owen's go to start**. No code slice starts
 until Owen says go, and nothing merges without his yes.
 
 Owen's ask (Nov 10): the app feels janky when running, Library has no
@@ -61,7 +61,7 @@ them again.
 
 ## Platforms: what this targets first
 
-- **First: iOS and iPadOS**, the platform Exact supports best among the two
+- **First: iOS and iPadOS** (decided by Owen, Nov 11), the platform Exact supports best among the two
   Berean ships today.
 - **Android: kept, but behind.** Exact's Android runs and has TalkBack, but
   it draws its own controls (it won't look like a Material app) and can't
@@ -268,8 +268,7 @@ it is retired.
 - The Swift apps in `apple/`, which stay paused.
 - New features. Each slice keeps today's behavior.
 
-## Product question for Owen
+## Decided
 
-- Exact's iOS is solid and its Android is early (its own drawing, no store
-  packaging). Is iOS first, with Android staying on the Expo app until
-  Exact's Android can ship, the order you want?
+- **iOS first** (Owen, Nov 11, 2026). Android users stay on the Expo app
+  until Exact's Android can be packaged for the Play Store.
