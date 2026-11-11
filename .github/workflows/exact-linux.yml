@@ -40,7 +40,7 @@ jobs:
       run:
         working-directory: apps/berean
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -64,7 +64,7 @@ jobs:
 
       # Hermes' prebuilt bundle and Bun's packages, both fixed by the pinned
       # Exact commit.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/hermes-lean-sys
@@ -95,7 +95,7 @@ jobs:
           sums=$(grep -v -e '^#' -e '^[[:space:]]*$' scripts/fixtures.txt | awk '{print $1}' | sha256sum | cut -d' ' -f1)
           echo "key=jwpub-fixtures-$sums" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: core/fixtures
           key: ${{ steps.fixtures-key.outputs.key }}

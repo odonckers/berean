@@ -51,7 +51,7 @@ jobs:
       run:
         working-directory: apps/berean
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -73,7 +73,7 @@ jobs:
 
       # Hermes' prebuilt bundles and Bun's packages, both fixed by the
       # pinned Exact commit.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/hermes-lean-sys
@@ -189,7 +189,7 @@ jobs:
             echo "::endgroup::"
           done
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: screenshots-ios
