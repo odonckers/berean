@@ -53,7 +53,9 @@ The screens are Library, Read (John 3) and Read after tapping verse 2
 images go up as the `screenshots-ios` artifact, full size, and in the
 job's log as base64 between `-----BEGIN PNG` markers. The same comment
 workflow posts them, to `pr-<n>-ios/` on `ci-screenshots`. A run takes
-about 50 minutes with a warm cache. Actions › exact › Run workflow takes a
+about an hour. The first launch of the app on a fresh simulator sometimes
+never reaches Exact's agent, so the tests and each capture try once more
+before failing. Actions › exact › Run workflow takes a
 PR number too.
 
 ## How it works
