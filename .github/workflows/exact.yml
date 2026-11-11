@@ -133,11 +133,6 @@ jobs:
           tablet=$(xcrun simctl create "Berean iPad" "$ipad" "$id")
           echo "PHONE=$phone" >> "$GITHUB_ENV"
           echo "TABLET=$tablet" >> "$GITHUB_ENV"
-          # Booting now lets both finish their first-boot work during the
-          # build; a launch onto a simulator still settling sometimes never
-          # opens the agent's socket.
-          xcrun simctl boot "$phone"
-          xcrun simctl boot "$tablet"
 
       - name: The Study Bible fixture
         working-directory: core
@@ -151,14 +146,28 @@ jobs:
       - name: Build for the iPhone simulator
         run: ./exact.mjs ios --sim "$PHONE"
 
+      # After the build, not during it: two booted simulators slow the
+      # build by half again. Both are up and settled before the first launch,
+      # since a launch onto a simulator still starting sometimes never opens
+      # the agent's socket.
+      - name: Boot the simulators
+        run: |
+          xcrun simctl boot "$PHONE" 2>/dev/null || true
+          xcrun simctl boot "$TABLET" 2>/dev/null || true
+          xcrun simctl bootstatus "$PHONE" -b
+          xcrun simctl bootstatus "$TABLET" -b
+
       - name: Tests on the iPhone simulator
         run: |
-          xcrun simctl bootstatus "$PHONE" -b
-          # Once more if the app's launch never reached the agent (above).
-          ./exact.mjs test ios --sim "$PHONE" || {
-            echo "-- trying the tests again"
-            xcrun simctl terminate "$PHONE" "$APP_ID" 2>/dev/null || true
-            ./exact.mjs test ios --sim "$PHONE"
+          # Once more, on a restarted simulator, if the app's launch never
+          # reached the agent. Each try is limited, since that can hang.
+          limit() { perl -e 'alarm shift; exec @ARGV' 900 "$@"; }
+          limit ./exact.mjs test ios --sim "$PHONE" || {
+            echo "-- restarting the simulator and trying the tests again"
+            xcrun simctl shutdown "$PHONE" 2>/dev/null || true
+            xcrun simctl boot "$PHONE"
+            xcrun simctl bootstatus "$PHONE" -b
+            limit ./exact.mjs test ios --sim "$PHONE"
           }
 
       - name: Capture

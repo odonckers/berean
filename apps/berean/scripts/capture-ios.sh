@@ -37,6 +37,9 @@ drive() {
   if [ "${4:-}" != notap ]; then
     tap=("tap verse-2" "clock settle" "screenshot $out/tapped/$variant.png window")
   fi
+  # A drive that never reaches the agent can wait forever; ten minutes is
+  # several times a slow one. perl's alarm survives the exec.
+  perl -e 'alarm shift; exec @ARGV' 600 \
   ./exact.mjs agent ios --sim "$udid" --storage ci --scale 2 \
     "prefer prefers-color-scheme $scheme" \
     "clock data" "clock settle" \
@@ -49,15 +52,17 @@ drive() {
     back "clock settle"
 }
 
-# A drive again, once, when the first fails. The app's first launch on a
-# simulator sometimes never opens the agent's socket (seen on the iPad's
-# first drive and on the phone after a text size change); a second launch
-# does.
+# A drive again, once, when the first fails, on a freshly restarted
+# simulator. The app's first launch sometimes never opens the agent's
+# socket (seen on the iPad's first drive and on the phone after a text size
+# change), and relaunching onto the same simulator can hang the same way.
 again() {
   local udid="$1"
   drive "$@" && return 0
-  echo "-- trying $2 again"
-  xcrun simctl terminate "$udid" "$app" 2>/dev/null || true
+  echo "-- restarting the simulator and trying $2 again"
+  xcrun simctl shutdown "$udid" 2>/dev/null || true
+  xcrun simctl boot "$udid"
+  xcrun simctl bootstatus "$udid" -b
   drive "$@"
 }
 
