@@ -976,15 +976,16 @@ fn verse_runs_number_their_word_tokens() {
             }
         }
     }
-    // John 3:16 starts "For God loved the world": "world" is token 4.
+    // John 3:16 opens Jesus' words: “For God loved the world. The opening
+    // quote mark is token 0, so "world" is token 5.
     let ch = r.bible_chapter(NWT_E, 43, 3).unwrap();
     let v16 = verse_runs(&ch).into_iter().find(|r| r.verse == 16).unwrap();
-    let t = v16.tokens[4];
     let units: Vec<u16> = v16.text.encode_utf16().collect();
-    assert_eq!(
-        String::from_utf16(&units[t.start as usize..t.end as usize]).unwrap(),
-        "world"
-    );
+    let word = |i: usize| {
+        let t = v16.tokens[i];
+        String::from_utf16(&units[t.start as usize..t.end as usize]).unwrap()
+    };
+    assert_eq!([word(0), word(1), word(5)], ["“", "For", "world"]);
 }
 
 #[test]
