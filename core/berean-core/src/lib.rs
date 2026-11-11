@@ -17,6 +17,7 @@ pub mod notes;
 pub mod reader;
 pub mod search;
 pub mod titles;
+pub mod tokens;
 pub mod translations;
 pub mod userdata;
 

@@ -10,6 +10,7 @@ use berean_core::reader::{
     BibleBook, BibleChapter, ChapterBlock, Located, Location, LocationSpan, ParagraphStyle, Reader,
     Resolved, TocEntry, VerseRun,
 };
+use berean_core::tokens::tokenize;
 use berean_core::{CancelToken, Core, CoreError};
 use common::{fixture, raw_db, span_of};
 
@@ -906,13 +907,23 @@ fn heading(text: &str) -> ChapterBlock {
     ChapterBlock::Heading { text: text.into() }
 }
 
-fn run(verse: u32, label: Option<&str>, text: &str, cross_refs: &[&str]) -> VerseRun {
+/// A run as the reader reads it; `first_token` counts its verse's tokens in
+/// the parts before it.
+fn run(
+    verse: u32,
+    label: Option<&str>,
+    text: &str,
+    cross_refs: &[&str],
+    first_token: u32,
+) -> VerseRun {
     VerseRun {
         verse,
         label: label.map(Into::into),
         text: text.into(),
         footnotes: Vec::new(),
         cross_refs: cross_refs.iter().map(|&m| m.into()).collect(),
+        first_token,
+        tokens: tokenize(text),
     }
 }
 
@@ -934,6 +945,47 @@ fn verse_runs(ch: &BibleChapter) -> Vec<&VerseRun> {
         .filter(|(style, _)| **style != ParagraphStyle::Note)
         .flat_map(|(_, runs)| runs)
         .collect()
+}
+
+/// Every verse run's tokens lie in its text, in order, and a verse's later
+/// parts count on from the parts before them.
+#[test]
+fn verse_runs_number_their_word_tokens() {
+    let r = reader();
+    for (book, chapter) in [(19, 23), (43, 3), (19, 119), (66, 22)] {
+        let ch = r.bible_chapter(NWT_E, book, chapter).unwrap();
+        let mut counted = std::collections::HashMap::new();
+        for run in verse_runs(&ch) {
+            let before: &mut u32 = counted.entry(run.verse).or_default();
+            assert_eq!(run.first_token, *before, "{book}:{chapter} {run:?}");
+            *before += run.tokens.len() as u32;
+            let units = run.text.encode_utf16().count() as u32;
+            let mut end = 0;
+            for t in &run.tokens {
+                assert!(
+                    t.start >= end && t.start < t.end && t.end <= units,
+                    "{run:?}"
+                );
+                end = t.end;
+            }
+            assert_eq!(run.tokens, tokenize(&run.text));
+        }
+        for (style, runs) in paragraphs(&ch) {
+            if *style == ParagraphStyle::Note {
+                assert!(runs.iter().all(|r| r.tokens.is_empty()));
+            }
+        }
+    }
+    // John 3:16 opens Jesus' words: “For God loved the world. The opening
+    // quote mark is token 0, so "world" is token 5.
+    let ch = r.bible_chapter(NWT_E, 43, 3).unwrap();
+    let v16 = verse_runs(&ch).into_iter().find(|r| r.verse == 16).unwrap();
+    let units: Vec<u16> = v16.text.encode_utf16().collect();
+    let word = |i: usize| {
+        let t = v16.tokens[i];
+        String::from_utf16(&units[t.start as usize..t.end as usize]).unwrap()
+    };
+    assert_eq!([word(0), word(1), word(5)], ["“", "For", "world"]);
 }
 
 #[test]
@@ -960,6 +1012,11 @@ fn john_3_blocks() {
                 .into(),
             footnotes: vec!["a".into()],
             cross_refs: vec!["f".into(), "g".into()],
+            first_token: 0,
+            tokens: tokenize(
+                "In response Jesus said to him: “Most truly I say to you, unless anyone is \
+                 born again, he cannot see the Kingdom of God.”"
+            ),
         }
     );
     for r in &runs {
@@ -985,15 +1042,15 @@ fn psalm_23_blocks() {
         [
             (
                 &ParagraphStyle::Superscription,
-                &[run(0, None, "A melody of David.", &[])][..]
+                &[run(0, None, "A melody of David.", &[], 0)][..]
             ),
             (
                 &ParagraphStyle::PoetryLine,
-                &[run(1, Some("23"), "Jehovah is my Shepherd.", &["a"])][..]
+                &[run(1, Some("23"), "Jehovah is my Shepherd.", &["a"], 0)][..]
             ),
             (
                 &ParagraphStyle::PoetryContinuation,
-                &[run(1, None, "I will lack nothing.", &["b"])][..]
+                &[run(1, None, "I will lack nothing.", &["b"], 5)][..]
             ),
         ]
     );

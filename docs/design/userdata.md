@@ -62,6 +62,14 @@ highlights carry `StartToken`/`EndToken` in every block. To round-trip exactly, 
 drew them, the core must keep token offsets and know JW's tokenizer, which isn't documented. Phase 2 has to
 confirm it against a real export (§5).
 
+**Word tokens (Nov 2026).** `berean_core::tokens` counts tokens as JW Library's backup mergers describe it: a word
+(letters, digits and combining marks, with one other character between two words joining them, as in
+"Jehovah’s" and "2:41") or any other single character, white space and zero-width spaces separating them; verse
+numbers and footnote and cross-reference markers aren't counted. Each `VerseRun` carries its tokens (UTF-16
+offsets in its text) and `first_token`, so the apps draw and make word highlights. `UserData::highlight` joins a
+new highlight with the ones it overlaps into one, in the new color, moving their notes. Still to confirm against a
+real JW Library export.
+
 ## 2. Data model: options
 
 - **(A) Mirror JW's v16 tables, in a separate `userData.db` in the core's data dir. The core owns the file and

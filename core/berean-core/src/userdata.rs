@@ -1253,6 +1253,101 @@ fn check_slot(slot: u8) -> Result<(), CoreError> {
     Ok(())
 }
 
+/// Where a [`TextRange`] is: its document or chapter, and its first and last
+/// paragraph or verse, checked as [`Userdata::add_highlight`] says.
+struct Extent {
+    place: Place,
+    block_type: i64,
+    first: u32,
+    last: u32,
+}
+
+impl Extent {
+    fn of(range: &TextRange) -> Result<Self, CoreError> {
+        let (place, start) = split(&range.span.start)?;
+        let (end_place, end) = split(&range.span.end)?;
+        let invalid = |what: &str| CoreError::Invalid(format!("{what}: {range:?}"));
+        if place != end_place {
+            return Err(invalid(
+                "a highlight can't cross documents, chapters or books",
+            ));
+        }
+        let (block_type, first, last) = match (start, end) {
+            (Some(Block::Paragraph(a)), Some(Block::Paragraph(b))) => (1, a, b),
+            (Some(Block::Verse(a)), Some(Block::Verse(b))) => (2, a, b),
+            _ => {
+                return Err(invalid(
+                    "a highlight runs between paragraphs of a document or verses of a chapter",
+                ))
+            }
+        };
+        if first > last {
+            return Err(invalid("a highlight must run forward"));
+        }
+        if let (true, Some(s), Some(e)) = (first == last, range.start_token, range.end_token) {
+            if s > e {
+                return Err(invalid("a highlight's tokens must run forward"));
+            }
+        }
+        Ok(Extent {
+            place,
+            block_type,
+            first,
+            last,
+        })
+    }
+}
+
+/// A range's first and last block, by its verse or paragraph.
+fn range_blocks(range: &TextRange) -> (u32, u32) {
+    let block = |l: &Location| l.verse.or(l.paragraph).unwrap_or(0);
+    (block(&range.span.start), block(&range.span.end))
+}
+
+/// Where a range starts and ends, as (block, token): a missing start token
+/// is the block's first word, a missing end token its last.
+fn start_key(range: &TextRange) -> (u32, u32) {
+    (range_blocks(range).0, range.start_token.unwrap_or(0))
+}
+
+fn end_key(range: &TextRange) -> (u32, u32) {
+    (range_blocks(range).1, range.end_token.unwrap_or(u32::MAX))
+}
+
+/// Whether two ranges of one document or chapter share a word.
+fn overlaps(a: &TextRange, b: &TextRange) -> bool {
+    start_key(a) <= end_key(b) && start_key(b) <= end_key(a)
+}
+
+/// Insert the highlight `range` (checked as `extent`) and its block ranges;
+/// its `UserMarkId`.
+fn insert_highlight(
+    conn: &Connection,
+    extent: &Extent,
+    range: &TextRange,
+    color: HighlightColor,
+) -> Result<i64, CoreError> {
+    let location = location_id(conn, &extent.place)?;
+    conn.execute(
+        &format!(
+            "INSERT INTO UserMark (ColorIndex, LocationId, StyleIndex, UserMarkGuid, Version) \
+             VALUES (?1, ?2, 0, {NEW_GUID}, 1)"
+        ),
+        params![color.index(), location],
+    )?;
+    let mark = conn.last_insert_rowid();
+    let mut insert = conn.prepare(
+        "INSERT INTO BlockRange (BlockType, Identifier, StartToken, EndToken, UserMarkId) \
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+    )?;
+    for id in extent.first..=extent.last {
+        let start_token = range.start_token.filter(|_| id == extent.first);
+        let end_token = range.end_token.filter(|_| id == extent.last);
+        insert.execute(params![extent.block_type, id, start_token, end_token, mark])?;
+    }
+    Ok(mark)
+}
+
 /// The highlight `UserMarkId` names, or `None` if the typed reads skip it
 /// (a color outside 1..=6, a location or blocks we can't map).
 fn read_highlight(conn: &Connection, mark: i64) -> Result<Option<Highlight>, CoreError> {
@@ -1734,62 +1829,82 @@ impl UserData {
     /// from `range.span.start` to `range.span.end`. The span must run
     /// forward from a paragraph to one in the same document, or from a verse
     /// to one in the same chapter, else `Invalid`; so must the tokens of a
-    /// one-block range.
+    /// one-block range. Other highlights are left as they are, even where
+    /// they overlap it; [`Userdata::highlight`] joins them.
     pub fn add_highlight(
         &self,
         range: &TextRange,
         color: HighlightColor,
     ) -> Result<Highlight, CoreError> {
-        let (start_place, start) = split(&range.span.start)?;
-        let (end_place, end) = split(&range.span.end)?;
-        let invalid = |what: &str| CoreError::Invalid(format!("{what}: {range:?}"));
-        if start_place != end_place {
-            return Err(invalid(
-                "a highlight can't cross documents, chapters or books",
-            ));
-        }
-        let (block_type, first, last) = match (start, end) {
-            (Some(Block::Paragraph(a)), Some(Block::Paragraph(b))) => (1, a, b),
-            (Some(Block::Verse(a)), Some(Block::Verse(b))) => (2, a, b),
-            _ => {
-                return Err(invalid(
-                    "a highlight runs between paragraphs of a document or verses of a chapter",
-                ))
-            }
-        };
-        if first > last {
-            return Err(invalid("a highlight must run forward"));
-        }
-        if let (true, Some(s), Some(e)) = (first == last, range.start_token, range.end_token) {
-            if s > e {
-                return Err(invalid("a highlight's tokens must run forward"));
-            }
-        }
-
+        let extent = Extent::of(range)?;
         let mut conn = self.inner.userdata();
         let tx = conn.transaction()?;
-        let location = location_id(&tx, &start_place)?;
-        tx.execute(
-            &format!(
-                "INSERT INTO UserMark (ColorIndex, LocationId, StyleIndex, UserMarkGuid, Version) \
-                 VALUES (?1, ?2, 0, {NEW_GUID}, 1)"
-            ),
-            params![color.index(), location],
-        )?;
-        let mark = tx.last_insert_rowid();
-        let mut insert = tx.prepare(
-            "INSERT INTO BlockRange (BlockType, Identifier, StartToken, EndToken, UserMarkId) \
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-        )?;
-        for id in first..=last {
-            let start_token = range.start_token.filter(|_| id == first);
-            let end_token = range.end_token.filter(|_| id == last);
-            insert.execute(params![block_type, id, start_token, end_token, mark])?;
-        }
-        drop(insert);
+        let mark = insert_highlight(&tx, &extent, range, color)?;
         tx.commit()?;
         read_highlight(&conn, mark)?
             .ok_or_else(|| CoreError::Invalid(format!("highlight not readable: {range:?}")))
+    }
+
+    /// Highlight `range` in `color` the way a reader draws over highlights
+    /// already there: every highlight in the same document or chapter that
+    /// overlaps `range` (sharing at least one word) is joined with it into
+    /// one highlight in `color`, running from the earliest start to the
+    /// latest end, and the notes on them move to it. With none overlapping
+    /// it is [`Userdata::add_highlight`]. `Invalid` as `add_highlight` is.
+    ///
+    /// A missing token counts as the block's edge: no `start_token` is the
+    /// block's first word, no `end_token` its last.
+    pub fn highlight(
+        &self,
+        range: &TextRange,
+        color: HighlightColor,
+    ) -> Result<Highlight, CoreError> {
+        let extent = Extent::of(range)?;
+        let mut conn = self.inner.userdata();
+        let tx = conn.transaction()?;
+        let marks: Vec<i64> = tx
+            .prepare(&format!(
+                "SELECT m.UserMarkId FROM UserMark m JOIN Location l \
+                 ON l.LocationId = m.LocationId WHERE {} ORDER BY m.UserMarkId",
+                place_match("l")
+            ))?
+            .query_map(params_from_iter(extent.place.values()), |r| r.get(0))?
+            .collect::<Result<_, _>>()?;
+        let mut joined = range.clone();
+        let mut absorbed = Vec::new();
+        for mark in marks {
+            let Some(other) = read_highlight(&tx, mark)? else {
+                continue;
+            };
+            let Ok(other_extent) = Extent::of(&other.range) else {
+                continue;
+            };
+            if other_extent.block_type != extent.block_type || !overlaps(range, &other.range) {
+                continue;
+            }
+            if start_key(&other.range) < start_key(&joined) {
+                joined.span.start = other.range.span.start.clone();
+                joined.start_token = other.range.start_token;
+            }
+            if end_key(&other.range) > end_key(&joined) {
+                joined.span.end = other.range.span.end.clone();
+                joined.end_token = other.range.end_token;
+            }
+            absorbed.push(mark);
+        }
+        let joined_extent = Extent::of(&joined)?;
+        let mark = insert_highlight(&tx, &joined_extent, &joined, color)?;
+        for old in absorbed {
+            tx.execute(
+                "UPDATE Note SET UserMarkId = ?2 WHERE UserMarkId = ?1",
+                params![old, mark],
+            )?;
+            tx.execute("DELETE FROM BlockRange WHERE UserMarkId = ?1", [old])?;
+            tx.execute("DELETE FROM UserMark WHERE UserMarkId = ?1", [old])?;
+        }
+        tx.commit()?;
+        read_highlight(&conn, mark)?
+            .ok_or_else(|| CoreError::Invalid(format!("highlight not readable: {joined:?}")))
     }
 
     /// Recolor the highlight `id`; unknown => `NotFound`.
