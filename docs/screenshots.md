@@ -48,14 +48,17 @@ agent (`apps/berean/scripts/capture-ios.sh`):
 | `phone-large-text` | the iPhone at the largest Dynamic Type size |
 | `tablet-light`, `tablet-dark` | 11-inch iPad Pro (M5) |
 
-The screens are Library, Read (John 3) and Read after tapping verse 2
-(not at the largest text size, where verse 2 is below the fold). The
+The screens are Library, Read (John 3), Read after tapping verse 2
+(not at the largest text size, where verse 2 is below the fold),
+Settings › Appearance, and Appearance after picking Sepia and its fourth
+accent. The
 images go up as the `screenshots-ios` artifact, full size, and in the
 job's log as base64 between `-----BEGIN PNG` markers. The same comment
 workflow posts them, to `pr-<n>-ios/` on `ci-screenshots`. A run takes
-under an hour. The first launch of the app on a fresh simulator sometimes
-never reaches Exact's agent, so each try has a time limit, and the tests
-and each capture try once more on a restarted simulator before failing. Actions › exact › Run workflow takes a
+about an hour. The first launch of the app on a fresh simulator sometimes
+never reaches Exact's agent, so each try has a time limit, the tests get
+up to three tries and each capture two, each retry on a restarted
+simulator. Actions › exact › Run workflow takes a
 PR number too.
 
 ## How it works

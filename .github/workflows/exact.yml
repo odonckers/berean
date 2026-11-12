@@ -3,8 +3,8 @@ name: exact
 # The Exact app (apps/berean, docs/frontend-rebuild.md) on iOS. Builds it
 # for the iOS Simulator on a GitHub Mac, runs its Contract tests, installs
 # the pinned Study Bible fixture into the app's test storage, drives the
-# Library and a Bible chapter, and captures them on iPhone and iPad, light
-# and dark, and at a large text size. The images go up as the
+# Library, a Bible chapter and Settings › Appearance, and captures them on
+# iPhone and iPad, light and dark, and at a large text size. The images go up as the
 # `screenshots-ios` artifact, named <screen>/<variant>.png as screenshots.yml
 # names its own, with a pr.json saying which PR they are for;
 # screenshots-comment.yml posts them on that PR. This workflow runs with a
@@ -15,6 +15,7 @@ on:
   pull_request:
     paths:
       - "apps/berean/**"
+      - "docs/design/themes/tokens.json"
       - "core/berean-core/**"
       - "core/Cargo.toml"
       - "core/Cargo.lock"
@@ -44,7 +45,7 @@ jobs:
     # Exact's Apple host needs the iOS 27.1 SDK or later, which GitHub has
     # only on its Xcode 27 image (a public preview); macos-26 stops at 26.6.
     runs-on: xcode-27
-    timeout-minutes: 120
+    timeout-minutes: 150
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
     defaults:
@@ -159,16 +160,24 @@ jobs:
 
       - name: Tests on the iPhone simulator
         run: |
-          # Once more, on a restarted simulator, if the app's launch never
-          # reached the agent. Each try is limited, since that can hang.
+          # Up to three tries, each on a restarted simulator after the first,
+          # since the app's first launch sometimes never reaches the agent.
+          # Each try is limited, since that can hang. The restart waits for
+          # the shutdown: a boot sent too soon finds the device still booted.
           limit() { perl -e 'alarm shift; exec @ARGV' 900 "$@"; }
-          limit ./exact.mjs test ios --sim "$PHONE" || {
+          restart() {
             echo "-- restarting the simulator and trying the tests again"
-            xcrun simctl shutdown "$PHONE" 2>/dev/null || true
+            xcrun simctl shutdown "$PHONE" || true
+            for _ in $(seq 1 30); do
+              xcrun simctl list devices | grep "$PHONE" | grep -q Shutdown && break
+              sleep 2
+            done
             xcrun simctl boot "$PHONE"
             xcrun simctl bootstatus "$PHONE" -b
-            limit ./exact.mjs test ios --sim "$PHONE"
           }
+          limit ./exact.mjs test ios --sim "$PHONE" ||
+            { restart && limit ./exact.mjs test ios --sim "$PHONE"; } ||
+            { restart && limit ./exact.mjs test ios --sim "$PHONE"; }
 
       - name: Capture
         run: scripts/capture-ios.sh ../../shots "$PHONE" "$TABLET" ../../core/fixtures/nwtsty_E.jwpub

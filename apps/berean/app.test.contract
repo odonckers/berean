@@ -1,5 +1,72 @@
 // A test's store starts empty, so the Library says nothing is installed
-// and a Bible key that isn't installed says so instead of drawing text.
+// and Read says how to open a Bible instead of drawing text.
 test "the library opens with nothing installed"
   clock data
+  tap "tab-library"
+  clock data
   expect text "shelf-message" == "No publications are installed yet."
+
+test "read starts empty and says how to open a Bible"
+  clock data
+  expect state nav.tab == "read"
+  expect text "title-read" == "Read"
+  expect tree missing "chapter"
+  expect tree missing "previous"
+
+test "each tab keeps its own stack"
+  clock data
+  tap "tab-library"
+  tap "open-settings"
+  expect text "title-settings" == "Settings"
+  tap "tab-notes"
+  expect text "title-notes" == "Notes"
+  tap "tab-library"
+  expect text "title-settings" == "Settings"
+  back
+  expect text "title-library" == "Library"
+  tap "tab-studyspace"
+  expect text "title-studyspace" == "Studyspace"
+  tap "tab-search"
+  expect text "title-search" == "Search"
+
+test "appearance starts on paper, slot one, automatic"
+  clock data
+  tap "tab-library"
+  tap "open-settings"
+  expect text "settings-appearance-value" == "Paper"
+  tap "settings-appearance"
+  expect text "title-appearance" == "Appearance"
+  expect state themeId == "paper"
+  expect state accentId == "one"
+  expect state appearanceId == "automatic"
+
+test "each choice applies at once and is kept"
+  clock data
+  tap "tab-library"
+  tap "open-settings"
+  tap "settings-appearance"
+  tap "theme-sepia"
+  tap "accent-three"
+  tap "appearance-dark"
+  expect state themeId == "sepia"
+  expect state accentId == "three"
+  expect state appearanceId == "dark"
+  reload
+  clock data
+  clock +5
+  expect state themeId == "sepia"
+  expect state accentId == "three"
+  expect state appearanceId == "dark"
+  tap "tab-library"
+  tap "open-settings"
+  expect text "settings-appearance-value" == "Sepia"
+
+test "switching theme keeps the accent slot"
+  clock data
+  tap "tab-library"
+  tap "open-settings"
+  tap "settings-appearance"
+  tap "accent-three"
+  tap "theme-sage"
+  expect state accentId == "three"
+  expect state themeId == "sage"

@@ -1,16 +1,9 @@
-// Berean on Exact: the test build (docs/frontend-rebuild.md, slice 1).
-// Two screens: the Library of installed publications, and one Bible chapter
-// with tappable verse numbers, a highlighted verse and a highlighted word.
-
-theme
-  page="light-dark(#ffffff, #141414)"
-  ink="light-dark(#1d1d1f, #e8e6e1)"
-  softInk="light-dark(#6e6e73, #9a9893)"
-  verseInk="light-dark(#8a5a00, #e0b35c)"
-  card="light-dark(#f2f2f7, #1f1f21)"
-  markYellow="light-dark(#fff0a0, #5b4a05)"
-  markGreen="light-dark(#cdeec6, #1f4a27)"
-  picked="light-dark(#dbe6ff, #233456)"
+// Berean on Exact (docs/frontend-rebuild.md). Five tabs, each its own stack:
+// Read shows the Bible last opened from the Library, Studyspace, Notes and
+// Search wait for their slices, and the Library pushes Settings › Appearance,
+// where the theme, accent and appearance are picked (themes-spec.md §3, §5).
+// Colours are app.tamber's tokens, made from docs/design/themes/tokens.json.
+use EmptyState from "exact:content"
 
 shape Pub
   key: string
@@ -45,22 +38,63 @@ shape Chapter
   paras: Para[]
 
 routes nav
-  library "/"
-    read "/read/:key"
+  tab read "/"
+  tab studyspace "/studyspace"
+  tab notes "/notes"
+  tab library "/library"
+    settings "/settings"
+      appearance "/settings/appearance"
+  tab search "/search"
+
+// tokens:begin (scripts/tamber-from-tokens.ts writes this block from tokens.json)
+shape Choice
+  id: string
+  name: string
+
+fn themeChoices(): Choice[] = [Choice(id="paper", name="Paper"), Choice(id="sepia", name="Sepia"), Choice(id="stone", name="Stone"), Choice(id="sage", name="Sage")]
+fn accentChoices(theme: string): Choice[] = theme == "sepia" ? [Choice(id="one", name="Sienna"), Choice(id="two", name="Oxblood"), Choice(id="three", name="Olive"), Choice(id="four", name="Dusk blue"), Choice(id="five", name="Mulberry"), Choice(id="six", name="Juniper")] : theme == "stone" ? [Choice(id="one", name="Slate blue"), Choice(id="two", name="Brick"), Choice(id="three", name="Pine"), Choice(id="four", name="Iris"), Choice(id="five", name="Amber"), Choice(id="six", name="Rose")] : theme == "sage" ? [Choice(id="one", name="Moss"), Choice(id="two", name="Spruce"), Choice(id="three", name="Lake"), Choice(id="four", name="Heather"), Choice(id="five", name="Clay"), Choice(id="six", name="Wheat")] : [Choice(id="one", name="Terracotta"), Choice(id="two", name="Ink blue"), Choice(id="three", name="Fern"), Choice(id="four", name="Plum"), Choice(id="five", name="Ochre"), Choice(id="six", name="Lagoon")]
+// tokens:end
+
+fn appearanceChoices(): Choice[] = [Choice(id="automatic", name="Automatic"), Choice(id="light", name="Light"), Choice(id="dark", name="Dark")]
+fn nameOf(choices: Choice[], id: string): string = match first(choices.filter(c => c.id == id)) { case some(c) => c.name, case none => "" }
+fn titleOf(name: string): string = name == "read" ? "Read" : name == "studyspace" ? "Studyspace" : name == "notes" ? "Notes" : name == "library" ? "Library" : name == "search" ? "Search" : name == "settings" ? "Settings" : "Appearance"
+// The scheme setScheme takes for an appearance.
+fn schemeOf(appearance: string): string = appearance == "light" or appearance == "dark" ? appearance : "system"
 
 component Berean
   resource shelf = library() as shape Shelf
-  derive here = top(nav)
-  derive openKey = (here.name == "read" ? here.params.key : "")
+  // The Bible Read shows, kept on this device; "" until one is opened.
+  state readingKey = "" persist
   state book = 43
   state chapterNo = 3
   state tapped = 0
-  resource chapter = bibleChapter(openKey, book, chapterNo) as shape Chapter
+  resource chapter = bibleChapter(readingKey, book, chapterNo) as shape Chapter
+  // Settings › Appearance, kept per device (themes-spec.md §3 rule 3).
+  state themeId = "paper" persist
+  state accentId = "one" persist
+  state appearanceId = "automatic" persist
+  derive accents = accentChoices(themeId)
 
+  // The kept choices take effect at launch.
+  task restore mount
+    after(1, applyAppearance)
+  action applyAppearance
+    setMode("theme", themeId)
+    setMode("accent", accentId)
+    setScheme(schemeOf(appearanceId))
+
+  action pick(name: string)
+    nav = select(nav, name)
   action back
     nav = back(nav)
   action follow(url: string)
     nav = go(nav, url)
+  action openSettings
+    nav = go(nav, path("settings"))
+  action open(key: string)
+    readingKey = key
+    tapped = 0
+    nav = select(nav, "read")
   action tapVerse(v: number)
     tapped = (tapped == v ? 0 : v)
   action previous
@@ -71,44 +105,186 @@ component Berean
     if chapterNo < chapter.last
       chapterNo = chapterNo + 1
       tapped = 0
+  action chooseTheme(id: string)
+    themeId = id
+    setMode("theme", id)
+  action chooseAccent(id: string)
+    accentId = id
+    setMode("accent", id)
+  action chooseAppearance(id: string)
+    appearanceId = id
+    setScheme(schemeOf(id))
 
   view
-    main testId="root" navigationKey=`${here.id}` navigationBack="back" navigate=follow width="100%" height="100%" background-color="page"
-      for e in stack(nav) key=e.id
-        if e.name == "library"
-          column navigationKey=`${e.id}` navigationScroll="shelf" position="absolute" inset=0
-            header display="flex" align-items="center"
-              text "Library" role="heading" aria-level=1 flex=1
-            list id="shelf" appearance="auto" listStyle="inset-grouped" flex=1 min-height=0 testId="shelf"
-              if shelf.message != ""
-                section
-                  text shelf.message color="softInk" testId="shelf-message"
-              section
-                for p in shelf.pubs key=p.key
-                  link href=path("read", p.key) testId=`pub-${p.symbol}`
-                    column flex=1 min-width=0 gap=2
-                      text p.title color="ink"
-                      text p.detail font-size="0.8125rem" color="softInk"
-                    image "symbol:forward-chevron"
-        if e.name == "read"
-          column navigationKey=`${e.id}` position="absolute" inset=0
-            header display="flex" align-items="center"
-              text chapter.title role="heading" aria-level=2 testId="chapter-title"
-              button press=previous disabled=(chapterNo <= 1) aria-label="Previous chapter" testId="previous"
-                image "symbol:back"
-              button press=next disabled=(chapterNo >= chapter.last) aria-label="Next chapter" testId="next"
-                image "symbol:forward-chevron"
-            if chapter.message != ""
-              text chapter.message color="softInk" padding=20 testId="chapter-message"
-            list appearance="none" virtualized=true estimated-item-height=120 flex=1 min-height=0 overflow-x="hidden" user-select="text" testId="chapter"
-              for p in chapter.paras key=p.id
-                view width="100%"
-                  if p.kind == "heading"
-                    text p.runs.map(r => r.text).join("") role="heading" aria-level=3 font-size="1.0625rem" font-weight=600 color="ink" width="100%" max-width="42rem" margin-left="auto" margin-right="auto" padding-left=20 padding-right=20 padding-top=18 padding-bottom=6 box-sizing="border-box"
+    main testId="root" navigationKey=`${top(nav).id}` navigationBack="back" navigate=follow width="100%" height="100%"
+      display="flex" flex-direction="column" background-color="page" color="text.primary" accent-color="accent"
+      column flex=1 min-height=0 position="relative"
+        for t in nav.tabs key=t.name
+          column role="tabpanel" id=`panel-${t.name}` position="absolute" inset=0
+            for e in t.stack key=e.id
+              column navigationKey=`${e.id}` navigationScroll=`content-${e.id}` position="absolute" inset=0
+                display="flex" flex-direction="column" background-color="page"
+                header display="flex" align-items="center" gap=8
+                  text (e.name == "read" and readingKey != "" ? chapter.title : titleOf(e.name)) role="heading"
+                    aria-level=(e.name == "settings" or e.name == "appearance" ? 2 : 1) flex=1 testId=`title-${e.name}`
+                  if e.name == "read" and readingKey != ""
+                    button press=previous disabled=(chapterNo <= 1) aria-label="Previous chapter" testId="previous"
+                      image "symbol:back"
+                    button press=next disabled=(chapterNo >= chapter.last) aria-label="Next chapter" testId="next"
+                      image "symbol:forward-chevron"
+                  if e.name == "library"
+                    // A header button is the bar's item on iOS; a link there isn't shown.
+                    button press=openSettings aria-label="Settings" testId="open-settings"
+                      image "symbol:settings"
+
+                // Read: the open Bible chapter, or how to open one.
+                if e.name == "read"
+                  if readingKey == ""
+                    EmptyState(symbol="symbol:book", title="Nothing open yet", message="Open a Bible from the Library to read it here.")
                   else
-                    text testId=`para-${p.id}` color="ink" font-size="1.0625rem" line-height=1.6 width="100%" max-width="42rem" margin-left="auto" margin-right="auto" padding-left=(p.kind == "poetry" ? 44 : 20) padding-right=20 padding-top=4 padding-bottom=8 box-sizing="border-box"
-                      for r in p.runs key=r.id
-                        if r.label
-                          text `${r.text} ` press=tapVerse(r.verse) font-size="0.75rem" font-weight=700 color="verseInk" background-color=(tapped == r.verse ? "picked" : "transparent") aria-label=`Verse ${r.verse}` testId=`verse-${r.verse}`
-                        else
-                          text r.text background-color=(tapped == r.verse ? "picked" : r.mark == "" ? "transparent" : r.mark) testId=`run-${r.id}`
+                    if chapter.message != ""
+                      text chapter.message color="text.secondary" padding=20 testId="chapter-message"
+                    list id=`content-${e.id}` appearance="none" virtualized=true estimated-item-height=120 flex=1 min-height=0 overflow-x="hidden" user-select="text" testId="chapter"
+                      for p in chapter.paras key=p.id
+                        view width="100%"
+                          if p.kind == "heading"
+                            text p.runs.map(r => r.text).join("") role="heading" aria-level=3 font-size="1.0625rem" font-weight=600 width="100%" max-width="42rem" margin-left="auto" margin-right="auto" padding-left=20 padding-right=20 padding-top=18 padding-bottom=6 box-sizing="border-box"
+                          else
+                            text testId=`para-${p.id}` font-size="1.0625rem" line-height=1.6 width="100%" max-width="42rem" margin-left="auto" margin-right="auto" padding-left=(p.kind == "poetry" ? 44 : 20) padding-right=20 padding-top=4 padding-bottom=8 box-sizing="border-box"
+                              for r in p.runs key=r.id
+                                if r.label
+                                  text `${r.text} ` press=tapVerse(r.verse) font-size="0.75rem" font-weight=700 color="text.secondary" background-color=(tapped == r.verse ? "selection" : "transparent") aria-label=`Verse ${r.verse}` testId=`verse-${r.verse}`
+                                else
+                                  text r.text background-color=(tapped == r.verse ? "selection" : r.mark == "" ? "transparent" : r.mark) testId=`run-${r.id}`
+
+                else if e.name == "studyspace"
+                  EmptyState(symbol="symbol:compose", title="Studyspace", message="An open canvas for your study comes in a later build.")
+                else if e.name == "notes"
+                  EmptyState(symbol="symbol:document", title="No notes yet", message="Notes come in a later build.")
+                else if e.name == "search"
+                  EmptyState(symbol="symbol:search", title="Search", message="Search comes in a later build.")
+
+                // Library: the installed publications. A Bible opens in Read.
+                else if e.name == "library"
+                  list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0 width="100%" max-width="48rem" align-self="center" background-color="page" testId="shelf"
+                    if shelf.message != ""
+                      section
+                        text shelf.message color="text.secondary" testId="shelf-message"
+                    section
+                      for p in shelf.pubs key=p.key
+                        button press=open(p.key) testId=`pub-${p.symbol}`
+                          column flex=1 min-width=0 gap=2
+                            text p.title color="text.primary"
+                            text p.detail font="-exact-subheadline" color="text.secondary"
+                          image "symbol:forward-chevron"
+
+                else if e.name == "settings"
+                  list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0 width="100%" max-width="48rem" align-self="center" background-color="page" testId="settings"
+                    section
+                      link href=path("appearance") testId="settings-appearance"
+                        text "Appearance" flex=1
+                        text nameOf(themeChoices(), themeId) color="text.secondary" testId="settings-appearance-value"
+                        image "symbol:forward-chevron"
+
+                // Settings › Appearance: three radio groups, each applying at once
+                // (themes-spec.md §3 rule 12); the preview is the page in the result.
+                else if e.name == "appearance"
+                  // Drawn on the theme's own page and cards, not the platform's grouped
+                  // list: the preview has to show the page, and its highlights are runs.
+                  list id=`content-${e.id}` appearance="none" flex=1 min-height=0 overflow-x="hidden" testId="appearance"
+                    view width="100%" max-width="40rem" margin-left="auto" margin-right="auto" padding=16 padding-bottom=32 box-sizing="border-box" display="flex" flex-direction="column" gap=8
+                      column gap=8 padding=16 border-radius=12 background-color="surface.raised" border-width=1 border-style="solid" border-color="line.separator" testId="preview"
+                        text font-size="1.0625rem" line-height=1.6
+                          text "In the beginning" background-color="highlight.yellow"
+                          text " "
+                          text "was the Word," background-color="highlight.green"
+                          text " "
+                          text "and the Word" background-color="highlight.blue"
+                          text " "
+                          text "was with God," background-color="highlight.pink"
+                          text " "
+                          text "and the Word" background-color="highlight.purple"
+                          text " "
+                          text "was God." background-color="highlight.orange"
+                        text font="-exact-subheadline" color="text.secondary"
+                          text "See "
+                          text "Genesis 1:1" color="text.primary" text-decoration="underline"
+                          text "."
+
+                      text "Theme" role="heading" aria-level=2 font="-exact-subheadline" font-weight=600 color="text.secondary" padding-top=16 padding-left=16
+                      column background-color="surface.raised" border-radius=12 border-width=1 border-style="solid" border-color="line.separator" padding-left=16 padding-right=16
+                        row role="radiogroup" aria-label="Theme" appearance="none" flex-wrap="wrap" gap=12 padding-top=8 padding-bottom=8 testId="themes"
+                          for c in themeChoices() key=c.id
+                            button role="radio" aria-checked=(themeId == c.id) press=chooseTheme(c.id) aria-label=`${c.name}, theme`
+                              aria-description="Changes the reading colors" testId=`theme-${c.id}` appearance="none"
+                              display="flex" flex-direction="column" align-items="center" gap=6 min-width=72
+                              // Under Automatic the tile is split: the light page top-left, the dark bottom-right.
+                              view -exact-mode=`theme=${c.id}` width=64 height=64 border-radius=14 overflow="hidden" position="relative"
+                                if appearanceId == "automatic"
+                                  view position="absolute" inset=0 background-color="page" color-scheme="light"
+                                  view position="absolute" inset=0 background-color="page" color-scheme="dark" clip-path="path('M 64 0 L 64 64 L 0 64 Z')"
+                                else
+                                  view position="absolute" inset=0 background-color="page"
+                                view position="absolute" inset=0 border-radius=14 border-style="solid"
+                                  border-width=(themeId == c.id ? 3 : 1) border-color=(themeId == c.id ? "accent" : "line.outline")
+                                // Last, so the ring is drawn under it, not over it.
+                                if appearanceId == "automatic"
+                                  text "Aa" aria-hidden=true position="absolute" left=10 top=8 font-weight=600 color="text.primary" color-scheme="light"
+                                else
+                                  text "Aa" aria-hidden=true position="absolute" left=10 top=8 font-weight=600 color="text.primary"
+                              row gap=4 align-items="center"
+                                if themeId == c.id
+                                  image "symbol:checkmark" aria-hidden=true color="accent" font="-exact-footnote"
+                                text c.name font="-exact-footnote" font-weight=(themeId == c.id ? 700 : 400)
+
+                      text "Accent" role="heading" aria-level=2 font="-exact-subheadline" font-weight=600 color="text.secondary" padding-top=16 padding-left=16
+                      column background-color="surface.raised" border-radius=12 border-width=1 border-style="solid" border-color="line.separator" padding-left=16 padding-right=16
+                        // Six dots, then the chosen accent's name: a ring, a checkmark and a bold label.
+                        row role="radiogroup" aria-label="Accent" appearance="none" flex-wrap="wrap" gap=6 padding-top=8 testId="accents"
+                          for a in accents key=a.id
+                            button role="radio" aria-checked=(accentId == a.id) press=chooseAccent(a.id) aria-label=`${a.name}, accent`
+                              testId=`accent-${a.id}` appearance="none" -exact-mode=`accent=${a.id}`
+                              width=48 height=48 border-radius=24 padding=4 box-sizing="border-box"
+                              border-width=2 border-style="solid" border-color=(accentId == a.id ? "accent" : "transparent")
+                              view width="100%" height="100%" border-radius=20 background-color="accent" display="flex" align-items="center" justify-content="center"
+                                if accentId == a.id
+                                  image "symbol:checkmark" aria-hidden=true color="on.accent"
+                        text nameOf(accents, accentId) font="-exact-footnote" font-weight=700 padding-bottom=8 aria-hidden=true testId="accent-name"
+
+                      text "Appearance" role="heading" aria-level=2 font="-exact-subheadline" font-weight=600 color="text.secondary" padding-top=16 padding-left=16
+                      column background-color="surface.raised" border-radius=12 border-width=1 border-style="solid" border-color="line.separator" padding-left=16 padding-right=16
+                        row role="radiogroup" aria-label="Appearance" appearance="none" flex-wrap="wrap" gap=12 padding-top=8 padding-bottom=8 testId="appearances"
+                          for c in appearanceChoices() key=c.id
+                            button role="radio" aria-checked=(appearanceId == c.id) press=chooseAppearance(c.id) aria-label=`${c.name}, appearance`
+                              aria-description=(c.id == "automatic" ? "Follows the system light or dark setting" : "")
+                              testId=`appearance-${c.id}` appearance="none"
+                              display="flex" flex-direction="column" align-items="center" gap=6 min-width=72
+                              view width=64 height=44 border-radius=10 overflow="hidden" position="relative"
+                                view position="absolute" inset=0 background-color="page" color-scheme=(c.id == "dark" ? "dark" : "light")
+                                if c.id == "automatic"
+                                  view position="absolute" inset=0 background-color="page" color-scheme="dark" clip-path="path('M 64 0 L 64 44 L 0 44 Z')"
+                                view position="absolute" inset=0 border-radius=10 border-style="solid"
+                                  border-width=(appearanceId == c.id ? 3 : 1) border-color=(appearanceId == c.id ? "accent" : "line.outline")
+                              row gap=4 align-items="center"
+                                if appearanceId == c.id
+                                  image "symbol:checkmark" aria-hidden=true color="accent" font="-exact-footnote"
+                                text c.name font="-exact-footnote" font-weight=(appearanceId == c.id ? 700 : 400)
+
+      // The iOS tab bar; on iPad and wider windows, the sidebar. Its icons
+      // stay monochrome and the selected tab takes the accent (rule 6).
+      row role="tablist" testId="tabs"
+        button role="tab" aria-controls="panel-read" aria-selected=(nav.tab == "read") press=pick("read") testId="tab-read" flex=1
+          image "symbol:book"
+          text "Read"
+        button role="tab" aria-controls="panel-studyspace" aria-selected=(nav.tab == "studyspace") press=pick("studyspace") testId="tab-studyspace" flex=1
+          image "symbol:compose"
+          text "Studyspace"
+        button role="tab" aria-controls="panel-notes" aria-selected=(nav.tab == "notes") press=pick("notes") testId="tab-notes" flex=1
+          image "symbol:icon.notes"
+          text "Notes"
+        button role="tab" aria-controls="panel-library" aria-selected=(nav.tab == "library") press=pick("library") testId="tab-library" flex=1
+          image "symbol:icon.library"
+          text "Library"
+        button role="tab" aria-controls="panel-search" aria-selected=(nav.tab == "search") press=pick("search") testId="tab-search" flex=1
+          image "symbol:search"
+          text "Search"
