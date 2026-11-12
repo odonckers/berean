@@ -55,9 +55,10 @@ accent. The
 images go up as the `screenshots-ios` artifact, full size, and in the
 job's log as base64 between `-----BEGIN PNG` markers. The same comment
 workflow posts them, to `pr-<n>-ios/` on `ci-screenshots`. A run takes
-under an hour. The first launch of the app on a fresh simulator sometimes
-never reaches Exact's agent, so each try has a time limit, and the tests
-and each capture try once more on a restarted simulator before failing. Actions › exact › Run workflow takes a
+about an hour. The first launch of the app on a fresh simulator sometimes
+never reaches Exact's agent, so each try has a time limit, the tests get
+up to three tries and each capture two, each retry on a restarted
+simulator. Actions › exact › Run workflow takes a
 PR number too.
 
 ## How it works

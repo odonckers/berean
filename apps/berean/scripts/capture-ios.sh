@@ -72,7 +72,12 @@ again() {
   local udid="$1"
   drive "$@" && return 0
   echo "-- restarting the simulator and trying $2 again"
-  xcrun simctl shutdown "$udid" 2>/dev/null || true
+  xcrun simctl shutdown "$udid" || true
+  # A boot sent before the shutdown finishes finds the device still booted.
+  for _ in $(seq 1 30); do
+    xcrun simctl list devices | grep "$udid" | grep -q Shutdown && break
+    sleep 2
+  done
   xcrun simctl boot "$udid"
   xcrun simctl bootstatus "$udid" -b
   drive "$@"
