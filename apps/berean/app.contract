@@ -89,6 +89,8 @@ component Berean
     nav = back(nav)
   action follow(url: string)
     nav = go(nav, url)
+  action openSettings
+    nav = go(nav, path("settings"))
   action open(key: string)
     readingKey = key
     tapped = 0
@@ -131,7 +133,8 @@ component Berean
                     button press=next disabled=(chapterNo >= chapter.last) aria-label="Next chapter" testId="next"
                       image "symbol:forward-chevron"
                   if e.name == "library"
-                    link href=path("settings") aria-label="Settings" testId="open-settings"
+                    // A header button is the bar's item on iOS; a link there isn't shown.
+                    button press=openSettings aria-label="Settings" testId="open-settings"
                       image "symbol:settings"
 
                 // Read: the open Bible chapter, or how to open one.
