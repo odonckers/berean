@@ -54,8 +54,14 @@ const KINDS = {
     dir: (pr) => `pr-${pr}-ios`,
     intro: (commit, runLink) =>
       `${commit} of the Exact app (apps/berean) on the iOS Simulator: an iPhone 17 Pro and an 11-inch iPad Pro. Tap one to open it at full size; the set is also in the screenshots-ios artifact of ${runLink}. Review these before merging (docs/screenshots.md).`,
-    screens: ['library', 'read', 'tapped'],
-    titles: { library: 'Library', read: 'Read', tapped: 'Read, after tapping a verse' },
+    screens: ['library', 'read', 'tapped', 'appearance', 'appearance-sepia'],
+    titles: {
+      library: 'Library',
+      read: 'Read',
+      tapped: 'Read, after tapping a verse',
+      appearance: 'Settings › Appearance',
+      'appearance-sepia': 'Appearance, after picking Sepia and its fourth accent',
+    },
     rows: [
       [
         ['phone-light', 'iPhone, light', 200],

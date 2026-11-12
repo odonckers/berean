@@ -233,14 +233,14 @@ fn chapter_value(read: &BibleChapter, book_name: &str, last: u32) -> Value {
                                 &text[start..end],
                                 part.verse,
                                 false,
-                                "markGreen",
+                                "highlight.green",
                             ));
                             out.push(run(format!("{id}c"), &text[end..], part.verse, false, ""));
                             continue;
                         }
                     }
                     let mark = if part.verse == MARKED_VERSE {
-                        "markYellow"
+                        "highlight.yellow"
                     } else {
                         ""
                     };

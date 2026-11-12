@@ -141,8 +141,8 @@ fn the_study_bible_installs_from_the_inbox_and_reads() {
     assert_eq!(labelled.iter().max(), Some(&36), "John 3 has 36 verses");
     assert!(runs
         .iter()
-        .any(|r| r.1 == MARKED_VERSE && r.3 == "markYellow"));
-    let green: Vec<_> = runs.iter().filter(|r| r.3 == "markGreen").collect();
+        .any(|r| r.1 == MARKED_VERSE && r.3 == "highlight.yellow"));
+    let green: Vec<_> = runs.iter().filter(|r| r.3 == "highlight.green").collect();
     assert_eq!(green.len(), 1, "one highlighted word");
     assert_eq!(green[0].1, MARKED_WORD_VERSE);
     assert!(green[0].0.chars().count() > 6);

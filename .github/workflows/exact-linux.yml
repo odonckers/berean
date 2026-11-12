@@ -10,6 +10,7 @@ on:
   pull_request:
     paths:
       - "apps/berean/**"
+      - "docs/design/themes/tokens.json"
       - "core/berean-core/**"
       - "core/Cargo.toml"
       - "core/Cargo.lock"
@@ -73,6 +74,13 @@ jobs:
 
       - name: Exact at the pinned commit
         run: scripts/fetch-exact.sh
+
+      - name: Colours match the design
+        # app.tamber and app.contract's names are made from
+        # docs/design/themes/tokens.json; this fails when either has drifted.
+        run: |
+          bun scripts/tamber-from-tokens.ts --check
+          ./exact.mjs tamber check .
 
       - name: Rust (rust-toolchain.toml)
         run: rustup show active-toolchain || rustup toolchain install

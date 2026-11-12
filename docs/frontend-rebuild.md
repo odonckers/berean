@@ -1,6 +1,6 @@
 # Frontend rebuild on Exact
 
-Status: **slice 1, the test build, merged (#118); slice 2, CI, in review** (Owen said go on Nov 11, 2026). The app is in
+Status: **slices 1 and 2, the test build and CI, merged (#118, #119); slice 4, the shell, theme and Appearance, in review; slice 3, covers, waits on #116** (Owen said go on Nov 11, 2026). The app is in
 `apps/berean`; what the test build found is under [Test build findings](#test-build-findings).
 Nothing merges without Owen's yes.
 
@@ -251,6 +251,13 @@ which needs the core on WebAssembly.
 - Tabs (Read, Studyspace, Notes, Library, Search) with a stack each; iPad
   layout; Berean's four themes and accents as tokens; Appearance as the
   first settings screen.
+- Done this way: `apps/berean/scripts/tamber-from-tokens.ts` makes
+  `app.tamber` and the picker's names from `docs/design/themes/tokens.json`
+  (exact-linux checks they match). The theme and accent are Tamber axes the
+  person sets (`setMode`), light and dark are each token's `light-dark()`,
+  and the choices are kept per device. Library pushes Settings › Appearance.
+  Still to come: the Increase Contrast sets (Exact can't vary a token by it
+  yet), the AX-size list layout for the picker, and the reader's **Aa** sheet.
 
 ### 5. Library
 
