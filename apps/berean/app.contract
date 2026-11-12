@@ -189,9 +189,10 @@ component Berean
                 // Settings › Appearance: three radio groups, each applying at once
                 // (themes-spec.md §3 rule 12); the preview is the page in the result.
                 else if e.name == "appearance"
-                  list id=`content-${e.id}` appearance="auto" listStyle="inset-grouped" flex=1 min-height=0 width="100%" max-width="48rem" align-self="center" background-color="page" testId="appearance"
-                    // The preview is the theme's own page, not the list's card.
-                    section background-color="transparent"
+                  // Drawn on the theme's own page and cards, not the platform's grouped
+                  // list: the preview has to show the page, and its highlights are runs.
+                  list id=`content-${e.id}` appearance="none" flex=1 min-height=0 overflow-x="hidden" testId="appearance"
+                    view width="100%" max-width="40rem" margin-left="auto" margin-right="auto" padding=16 padding-bottom=32 box-sizing="border-box" display="flex" flex-direction="column" gap=8
                       column gap=8 padding=16 border-radius=12 background-color="surface.raised" border-width=1 border-style="solid" border-color="line.separator" testId="preview"
                         text font-size="1.0625rem" line-height=1.6
                           text "In the beginning" background-color="highlight.yellow"
@@ -210,64 +211,64 @@ component Berean
                           text "Genesis 1:1" color="text.primary" text-decoration="underline"
                           text "."
 
-                    section
-                      header
-                        text "Theme"
-                      row role="radiogroup" aria-label="Theme" appearance="none" flex-wrap="wrap" gap=12 padding-top=8 padding-bottom=8 testId="themes"
-                        for c in themeChoices() key=c.id
-                          button role="radio" aria-checked=(themeId == c.id) press=chooseTheme(c.id) aria-label=`${c.name}, theme`
-                            aria-description="Changes the reading colors" testId=`theme-${c.id}` appearance="none"
-                            display="flex" flex-direction="column" align-items="center" gap=6 min-width=72
-                            // Under Automatic the tile is split: the light page top-left, the dark bottom-right.
-                            view -exact-mode=`theme=${c.id}` width=64 height=64 border-radius=14 overflow="hidden" position="relative"
-                              if appearanceId == "automatic"
-                                view position="absolute" inset=0 background-color="page" color-scheme="light"
-                                view position="absolute" inset=0 background-color="page" color-scheme="dark" clip-path="path('M 64 0 L 64 64 L 0 64 Z')"
-                                text "Aa" aria-hidden=true position="absolute" left=10 top=8 font-weight=600 color="text.primary" color-scheme="light"
-                              else
-                                view position="absolute" inset=0 background-color="page"
-                                text "Aa" aria-hidden=true position="absolute" left=10 top=8 font-weight=600 color="text.primary"
-                              view position="absolute" inset=0 border-radius=14 border-style="solid"
-                                border-width=(themeId == c.id ? 3 : 1) border-color=(themeId == c.id ? "accent" : "line.outline")
-                            row gap=4 align-items="center"
-                              if themeId == c.id
-                                image "symbol:checkmark" aria-hidden=true color="accent" font="-exact-footnote"
-                              text c.name font="-exact-footnote" font-weight=(themeId == c.id ? 700 : 400)
+                      text "Theme" role="heading" aria-level=2 font="-exact-subheadline" font-weight=600 color="text.secondary" padding-top=16 padding-left=16
+                      column background-color="surface.raised" border-radius=12 border-width=1 border-style="solid" border-color="line.separator" padding-left=16 padding-right=16
+                        row role="radiogroup" aria-label="Theme" appearance="none" flex-wrap="wrap" gap=12 padding-top=8 padding-bottom=8 testId="themes"
+                          for c in themeChoices() key=c.id
+                            button role="radio" aria-checked=(themeId == c.id) press=chooseTheme(c.id) aria-label=`${c.name}, theme`
+                              aria-description="Changes the reading colors" testId=`theme-${c.id}` appearance="none"
+                              display="flex" flex-direction="column" align-items="center" gap=6 min-width=72
+                              // Under Automatic the tile is split: the light page top-left, the dark bottom-right.
+                              view -exact-mode=`theme=${c.id}` width=64 height=64 border-radius=14 overflow="hidden" position="relative"
+                                if appearanceId == "automatic"
+                                  view position="absolute" inset=0 background-color="page" color-scheme="light"
+                                  view position="absolute" inset=0 background-color="page" color-scheme="dark" clip-path="path('M 64 0 L 64 64 L 0 64 Z')"
+                                else
+                                  view position="absolute" inset=0 background-color="page"
+                                view position="absolute" inset=0 border-radius=14 border-style="solid"
+                                  border-width=(themeId == c.id ? 3 : 1) border-color=(themeId == c.id ? "accent" : "line.outline")
+                                // Last, so the ring is drawn under it, not over it.
+                                if appearanceId == "automatic"
+                                  text "Aa" aria-hidden=true position="absolute" left=10 top=8 font-weight=600 color="text.primary" color-scheme="light"
+                                else
+                                  text "Aa" aria-hidden=true position="absolute" left=10 top=8 font-weight=600 color="text.primary"
+                              row gap=4 align-items="center"
+                                if themeId == c.id
+                                  image "symbol:checkmark" aria-hidden=true color="accent" font="-exact-footnote"
+                                text c.name font="-exact-footnote" font-weight=(themeId == c.id ? 700 : 400)
 
-                    section
-                      header
-                        text "Accent"
-                      // Six dots, then the chosen accent's name: a ring, a checkmark and a bold label.
-                      row role="radiogroup" aria-label="Accent" appearance="none" flex-wrap="wrap" gap=6 padding-top=8 testId="accents"
-                        for a in accents key=a.id
-                          button role="radio" aria-checked=(accentId == a.id) press=chooseAccent(a.id) aria-label=`${a.name}, accent`
-                            testId=`accent-${a.id}` appearance="none" -exact-mode=`accent=${a.id}`
-                            width=48 height=48 border-radius=24 padding=4 box-sizing="border-box"
-                            border-width=2 border-style="solid" border-color=(accentId == a.id ? "accent" : "transparent")
-                            view width="100%" height="100%" border-radius=20 background-color="accent" display="flex" align-items="center" justify-content="center"
-                              if accentId == a.id
-                                image "symbol:checkmark" aria-hidden=true color="on.accent"
-                      text nameOf(accents, accentId) font="-exact-footnote" font-weight=700 padding-bottom=8 aria-hidden=true testId="accent-name"
+                      text "Accent" role="heading" aria-level=2 font="-exact-subheadline" font-weight=600 color="text.secondary" padding-top=16 padding-left=16
+                      column background-color="surface.raised" border-radius=12 border-width=1 border-style="solid" border-color="line.separator" padding-left=16 padding-right=16
+                        // Six dots, then the chosen accent's name: a ring, a checkmark and a bold label.
+                        row role="radiogroup" aria-label="Accent" appearance="none" flex-wrap="wrap" gap=6 padding-top=8 testId="accents"
+                          for a in accents key=a.id
+                            button role="radio" aria-checked=(accentId == a.id) press=chooseAccent(a.id) aria-label=`${a.name}, accent`
+                              testId=`accent-${a.id}` appearance="none" -exact-mode=`accent=${a.id}`
+                              width=48 height=48 border-radius=24 padding=4 box-sizing="border-box"
+                              border-width=2 border-style="solid" border-color=(accentId == a.id ? "accent" : "transparent")
+                              view width="100%" height="100%" border-radius=20 background-color="accent" display="flex" align-items="center" justify-content="center"
+                                if accentId == a.id
+                                  image "symbol:checkmark" aria-hidden=true color="on.accent"
+                        text nameOf(accents, accentId) font="-exact-footnote" font-weight=700 padding-bottom=8 aria-hidden=true testId="accent-name"
 
-                    section
-                      header
-                        text "Appearance"
-                      row role="radiogroup" aria-label="Appearance" appearance="none" flex-wrap="wrap" gap=12 padding-top=8 padding-bottom=8 testId="appearances"
-                        for c in appearanceChoices() key=c.id
-                          button role="radio" aria-checked=(appearanceId == c.id) press=chooseAppearance(c.id) aria-label=`${c.name}, appearance`
-                            aria-description=(c.id == "automatic" ? "Follows the system light or dark setting" : "")
-                            testId=`appearance-${c.id}` appearance="none"
-                            display="flex" flex-direction="column" align-items="center" gap=6 min-width=72
-                            view width=64 height=44 border-radius=10 overflow="hidden" position="relative"
-                              view position="absolute" inset=0 background-color="page" color-scheme=(c.id == "dark" ? "dark" : "light")
-                              if c.id == "automatic"
-                                view position="absolute" inset=0 background-color="page" color-scheme="dark" clip-path="path('M 64 0 L 64 44 L 0 44 Z')"
-                              view position="absolute" inset=0 border-radius=10 border-style="solid"
-                                border-width=(appearanceId == c.id ? 3 : 1) border-color=(appearanceId == c.id ? "accent" : "line.outline")
-                            row gap=4 align-items="center"
-                              if appearanceId == c.id
-                                image "symbol:checkmark" aria-hidden=true color="accent" font="-exact-footnote"
-                              text c.name font="-exact-footnote" font-weight=(appearanceId == c.id ? 700 : 400)
+                      text "Appearance" role="heading" aria-level=2 font="-exact-subheadline" font-weight=600 color="text.secondary" padding-top=16 padding-left=16
+                      column background-color="surface.raised" border-radius=12 border-width=1 border-style="solid" border-color="line.separator" padding-left=16 padding-right=16
+                        row role="radiogroup" aria-label="Appearance" appearance="none" flex-wrap="wrap" gap=12 padding-top=8 padding-bottom=8 testId="appearances"
+                          for c in appearanceChoices() key=c.id
+                            button role="radio" aria-checked=(appearanceId == c.id) press=chooseAppearance(c.id) aria-label=`${c.name}, appearance`
+                              aria-description=(c.id == "automatic" ? "Follows the system light or dark setting" : "")
+                              testId=`appearance-${c.id}` appearance="none"
+                              display="flex" flex-direction="column" align-items="center" gap=6 min-width=72
+                              view width=64 height=44 border-radius=10 overflow="hidden" position="relative"
+                                view position="absolute" inset=0 background-color="page" color-scheme=(c.id == "dark" ? "dark" : "light")
+                                if c.id == "automatic"
+                                  view position="absolute" inset=0 background-color="page" color-scheme="dark" clip-path="path('M 64 0 L 64 44 L 0 44 Z')"
+                                view position="absolute" inset=0 border-radius=10 border-style="solid"
+                                  border-width=(appearanceId == c.id ? 3 : 1) border-color=(appearanceId == c.id ? "accent" : "line.outline")
+                              row gap=4 align-items="center"
+                                if appearanceId == c.id
+                                  image "symbol:checkmark" aria-hidden=true color="accent" font="-exact-footnote"
+                                text c.name font="-exact-footnote" font-weight=(appearanceId == c.id ? 700 : 400)
 
       // The iOS tab bar; on iPad and wider windows, the sidebar. Its icons
       // stay monochrome and the selected tab takes the accent (rule 6).
